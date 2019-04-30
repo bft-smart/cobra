@@ -9,6 +9,11 @@ public class ConfidentialMessage {
     private final byte[] plainData;
     private final VerifiableShare[] shares;
 
+    public ConfidentialMessage() {
+        plainData = null;
+        shares = null;
+    }
+
     public ConfidentialMessage(byte[] plainData, VerifiableShare... shares) {
         this.plainData = plainData;
         this.shares = shares;
@@ -90,10 +95,23 @@ public class ConfidentialMessage {
     @Override
     public int hashCode() {
         int result = Arrays.hashCode(plainData);
-        for (VerifiableShare share : shares) {
-            result = 31 * result + Arrays.hashCode(share.getSharedData());
-            result = 31 * result + share.getCommitments().hashCode();
+        if (shares != null) {
+            for (VerifiableShare share : shares) {
+                result = 31 * result + Arrays.hashCode(share.getSharedData());
+                result = 31 * result + share.getCommitments().hashCode();
+            }
         }
         return result;
+    }
+
+    @Override
+    public String toString() {
+        StringBuilder sb = new StringBuilder();
+        sb.append("[plainData: ");
+        sb.append(Arrays.toString(plainData));
+        sb.append(" - shares: ");
+        sb.append(Arrays.toString(shares));
+        sb.append(']');
+        return sb.toString();
     }
 }

@@ -1,0 +1,41 @@
+<?xml version="1.0"?>
+<project default="main">
+    <property name="base.dir" location="."/>
+    <property name="src.dir" location="src"/>
+    <property name="build.dir" location="build"/>
+    <property name="dist.dir" location="bin"/>
+    <property name="lib.dir" location="lib"/>
+
+    <target name="main" depends="clean,compile,jar" description="Main target">
+        <echo>
+            Building the .jar file.
+        </echo>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+    </target>
+
+    <path id="libs">
+        <fileset dir="${lib.dir}" includes="*.jar"/>
+    </path>
+
+    <target name="compile" description="Compilation target">
+        <mkdir dir="${build.dir}"/>
+        <javac classpathref="libs" source="1.8" target="1.8" destdir="${build.dir}" nowarn="on" debug="true">
+            <src path="${src.dir}"/>
+        </javac>
+    </target>
+
+    <target name="jar" description="Compression target">
+        <jar jarfile="${dist.dir}/Confidential-BFT-SMaRt.jar">
+            <fileset dir="${build.dir}">
+                <include name="**/*.class" />
+            </fileset>
+            <fileset dir="${base.dir}">
+                <include name="config/*" />
+            </fileset>
+        </jar>
+    </target>
+
+</project>

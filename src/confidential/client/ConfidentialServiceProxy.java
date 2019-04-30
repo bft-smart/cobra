@@ -27,8 +27,7 @@ public class ConfidentialServiceProxy {
         Comparator<byte[]> comparator = new ConfidentialComparator();
 
         this.service = new ServiceProxy(clientId, null, comparator, extractor, null);
-        this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentViewF(),
-                service.getViewManager().getCurrentViewProcesses());
+        this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
     }
 
     public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
@@ -41,6 +40,16 @@ public class ConfidentialServiceProxy {
         return composeResponse(response);
     }
 
+    public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        byte[] request = composeRequest(plainData, confidentialData);
+        if (request == null)
+            return null;
+
+        byte[] response = service.invokeUnordered(request);
+
+        return composeResponse(response);
+    }
+
     public void close() {
         service.close();
     }
@@ -49,57 +58,36 @@ public class ConfidentialServiceProxy {
         if (response == null)
             return null;
         ExtractedResponse extractedResponse = ExtractedResponse.deserialize(response);
+        if (extractedResponse == null)
+            return null;
         OpenPublishedShares[] openShares = extractedResponse.getOpenShares();
-        byte[][] confidentialData = new byte[openShares.length][];
-        for (int i = 0; i < openShares.length; i++)
-            confidentialData[i] = confidentialityScheme.combine(openShares[i]);
+        byte[][] confidentialData = openShares != null ? new byte[openShares.length][] : null;
+        if (openShares != null) {
+            for (int i = 0; i < openShares.length; i++)
+                confidentialData[i] = confidentialityScheme.combine(openShares[i]);
+        }
         return new Response(extractedResponse.getPlainData(), confidentialData);
     }
 
     private byte[] composeRequest(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-            MessageType type = getMessageType(plainData, confidentialData);
 
-            out.write((byte)type.ordinal());
-            PrivatePublishedShares privateShares;
+            out.write((byte)MessageType.CLIENT.ordinal());
 
-            switch (type) {
-                case EMPTY:
-                    break;
-                case PLAIN:
-                    out.writeInt(plainData.length);
-                    out.write(plainData);
-                    break;
-                case SINGLE:
-                    privateShares = confidentialityScheme.share(confidentialData[0]);
+            out.writeInt(plainData == null ? -1 : plainData.length);
+            if (plainData != null)
+                out.write(plainData);
+
+            out.writeInt(confidentialData == null ? -1 : confidentialData.length);
+            if (confidentialData != null) {
+                PrivatePublishedShares privateShares;
+                for (byte[] secret : confidentialData) {
+                    privateShares = confidentialityScheme.share(secret);
                     privateShares.writeExternal(out);
-                    break;
-                case MULTIPLE:
-                    out.writeInt(confidentialData.length);
-                    for (byte[] secret : confidentialData) {
-                        privateShares = confidentialityScheme.share(secret);
-                        privateShares.writeExternal(out);
-                    }
-                    break;
-                case PLAIN_SINGLE:
-                    out.writeInt(plainData.length);
-                    out.write(plainData);
-                    privateShares = confidentialityScheme.share(confidentialData[0]);
-                    privateShares.writeExternal(out);
-                    break;
-                case PLAIN_MULTIPLE:
-                    out.writeInt(plainData.length);
-                    out.write(plainData);
-                    out.writeInt(confidentialData.length);
-                    for (byte[] secret : confidentialData) {
-                        privateShares = confidentialityScheme.share(secret);
-                        privateShares.writeExternal(out);
-                    }
-                    break;
-                default:
-                    logger.warn("Invalid request type");
+                }
             }
+
             out.flush();
             bos.flush();
             return bos.toByteArray();
@@ -107,19 +95,5 @@ public class ConfidentialServiceProxy {
             logger.error("Occurred while composing request", e);
             return null;
         }
-    }
-
-    private MessageType getMessageType(byte[] plainData, byte[][] confidentialData) {
-        if (plainData != null && confidentialData != null) {
-            if (confidentialData.length == 1)
-                return MessageType.PLAIN_SINGLE;
-            else
-                return MessageType.PLAIN_MULTIPLE;
-        }
-        if (plainData != null)
-            return MessageType.PLAIN;
-        if (confidentialData != null)
-            return confidentialData.length == 1 ? MessageType.SINGLE : MessageType.MULTIPLE;
-        return MessageType.EMPTY;
     }
 }

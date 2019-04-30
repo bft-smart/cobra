@@ -1,5 +1,6 @@
 package confidential.client;
 
+import bftsmart.reconfiguration.views.View;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.secretsharing.OpenPublishedShares;
@@ -17,14 +18,15 @@ public class ClientConfidentialityScheme {
     private final Map<BigInteger, Key> keys;
     private final VSSFacade vss;
 
-    public ClientConfidentialityScheme(int currentViewF, int[] currentViewProcesses) throws SecretSharingException {
+    public ClientConfidentialityScheme(View view) throws SecretSharingException {
+        int[] currentViewProcesses = view.getProcesses();
         keys = new HashMap<>(currentViewProcesses.length);
         BigInteger[] shareholders = new BigInteger[currentViewProcesses.length];
         for (int i = 0; i < currentViewProcesses.length; i++) {
             shareholders[i] = BigInteger.valueOf(currentViewProcesses[i] + 1);
             keys.put(shareholders[i], new SecretKeySpec(defaultKeys[i].toByteArray(), shareEncryptionAlgorithm));
         }
-        vss = new VSSFacade(p, generator, field, currentViewF, shareholders, dataEncryptionAlgorithm,
+        vss = new VSSFacade(p, generator, field, view.getF(), shareholders, dataEncryptionAlgorithm,
                 dataEncryptionKeySize, shareEncryptionAlgorithm);
     }
 
