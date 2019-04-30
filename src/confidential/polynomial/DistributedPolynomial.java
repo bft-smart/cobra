@@ -37,8 +37,6 @@ public class DistributedPolynomial {
     private byte[] serialize(PolynomialMessage message) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-            out.write((byte)MessageType.APPLICATION.ordinal());
-
             message.writeExternal(out);
             out.flush();
             bos.flush();

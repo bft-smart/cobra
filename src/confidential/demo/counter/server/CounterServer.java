@@ -4,6 +4,7 @@ import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
 import confidential.ConfidentialMessage;
 import confidential.server.ConfidentialRecoverable;
+import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.secretsharing.VerifiableShare;
@@ -33,5 +34,15 @@ public class CounterServer extends ConfidentialRecoverable {
         int i = counter.incrementAndGet();
         logger.debug("Unordered - Counter: {} Client: {}", i, msgCtx.getSender());
         return new ConfidentialMessage(String.valueOf(i).getBytes());
+    }
+
+    @Override
+    public ConfidentialSnapshot getConfidentialSnapshot() {
+        return new ConfidentialSnapshot(String.valueOf(counter).getBytes());
+    }
+
+    @Override
+    public void installConfidentialSnapshot(ConfidentialSnapshot snapshot) {
+        counter = new AtomicInteger(Integer.parseInt(new String(snapshot.getPlainData())));
     }
 }

@@ -3,16 +3,14 @@ package confidential.demo.map.server;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
 import confidential.ConfidentialMessage;
-import confidential.server.ConfidentialRecoverable;
 import confidential.demo.map.client.Operation;
+import confidential.server.ConfidentialRecoverable;
+import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.secretsharing.VerifiableShare;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectInputStream;
+import java.io.*;
 import java.util.Map;
 import java.util.TreeMap;
 
@@ -95,5 +93,40 @@ public class KVStoreServer extends ConfidentialRecoverable {
             logger.error("Failed to attend unordered request from {}", msgCtx.getSender(), e);
         }
         return null;
+    }
+
+    @Override
+    public ConfidentialSnapshot getConfidentialSnapshot() {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutput out = new ObjectOutputStream(bos)) {
+            out.writeInt(map.size());
+            VerifiableShare[] shares = new VerifiableShare[map.size()];
+            int i = 0;
+            for (Map.Entry<String, VerifiableShare> e : map.entrySet()) {
+                out.writeUTF(e.getKey());
+                shares[i++] = e.getValue();
+            }
+            out.flush();
+            bos.flush();
+            return new ConfidentialSnapshot(bos.toByteArray(), shares);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return null;
+    }
+
+    @Override
+    public void installConfidentialSnapshot(ConfidentialSnapshot snapshot) {
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(snapshot.getPlainData());
+             ObjectInput in = new ObjectInputStream(bis)) {
+            int size = in.readInt();
+            map = new TreeMap<>();
+            VerifiableShare[] shares = snapshot.getShares();
+            for (int i = 0; i < size; i++) {
+                map.put(in.readUTF(), shares[i]);
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 }
