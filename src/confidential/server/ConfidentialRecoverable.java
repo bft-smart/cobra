@@ -10,6 +10,7 @@ import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.MessageType;
+import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
 import confidential.statemanagement.ConfidentialSnapshot;
 import confidential.statemanagement.ConfidentialStateLog;
@@ -20,10 +21,13 @@ import vss.facade.SecretSharingException;
 import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.VerifiableShare;
 
+import javax.crypto.NoSuchPaddingException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -39,6 +43,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     private ReentrantLock logLock;
     private ConfidentialStateManager stateManager;
     private DistributedPolynomial distributedPolynomial;
+    private InterServersCommunication interServersCommunication;
     private int checkpointPeriod;
     private List<byte[]> commands;
     private List<MessageContext> msgContexts;
@@ -55,16 +60,21 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         logger.debug("setting replica context");
         this.replicaContext = replicaContext;
         this.stateLock = new ReentrantLock();
-        InterServersCommunication serversCommunication = new InterServersCommunication(
+        interServersCommunication = new InterServersCommunication(
                 replicaContext.getServerCommunicationSystem(), replicaContext.getSVController());
-        distributedPolynomial = new DistributedPolynomial(serversCommunication, replicaContext.getSVController());
         checkpointPeriod = replicaContext.getStaticConfiguration().getCheckpointPeriod();
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
+            distributedPolynomial = new DistributedPolynomial(interServersCommunication,
+                    replicaContext.getSVController(), confidentialityScheme.getCommitmentScheme(),
+                    confidentialityScheme.getField());
+
             log = getLog();
             getStateManager().askCurrentConsensusId();
         } catch (SecretSharingException e) {
             logger.error("Failed to initialize ServerConfidentialityScheme", e);
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException | NoSuchProviderException e) {
+            logger.error("Failed to initialize DistributePolynomial", e);
         }
     }
 
@@ -180,12 +190,12 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
 
     @Override
     public byte[] executeOrdered(byte[] command, MessageContext msgCtx) {
-        Request request = deserializeRequest(command, msgCtx);
+        Request request = preprocessRequest(command, msgCtx);
         if (request == null)
             return null;
         byte[] preprocessedCommand = request.serialize();
         if (request.getType() == MessageType.APPLICATION) {
-            logger.debug("Received application message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
+            logger.debug("Received application ordered message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
             return new byte[0];
         }
 
@@ -200,10 +210,11 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
 
     @Override
     public byte[] executeUnordered(byte[] command, MessageContext msgCtx) {
-        Request request = deserializeRequest(command, msgCtx);
+        Request request = preprocessRequest(command, msgCtx);
         if (request == null)
             return null;
         if (request.getType() == MessageType.APPLICATION) {
+            logger.debug("Received application unordered message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
 
             return new byte[0];
         }
@@ -218,7 +229,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
 
     public abstract void installConfidentialSnapshot(ConfidentialSnapshot snapshot);
 
-    private Request deserializeRequest(byte[] message, MessageContext msgCtx) {
+    private Request preprocessRequest(byte[] message, MessageContext msgCtx) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(message);
              ObjectInput in = new ObjectInputStream(bis)) {
             MessageType type = MessageType.getMessageType(in.read());
@@ -247,10 +258,8 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
                     break;
                 case APPLICATION:
                     len = in.readInt();
-                    if (len > -1) {
-                        plainData = new byte[len];
-                        in.readFully(plainData);
-                    }
+                    plainData = new byte[len];
+                    in.readFully(plainData);
                     result = new Request(type, plainData);
                     break;
             }

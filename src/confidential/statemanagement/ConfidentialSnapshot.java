@@ -3,8 +3,6 @@ package confidential.statemanagement;
 import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
-import java.util.ArrayList;
-import java.util.List;
 
 public class ConfidentialSnapshot {
     private byte[] plainData;

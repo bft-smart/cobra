@@ -1,4 +1,4 @@
-package confidential.server;
+package confidential.interServersCommunication;
 
 import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.core.messages.TOMMessage;

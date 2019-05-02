@@ -1,8 +1,10 @@
 package confidential.server;
 
 import bftsmart.reconfiguration.views.View;
+import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
+import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.VerifiableShare;
 
@@ -30,5 +32,17 @@ public class ServerConfidentialityScheme {
 
     public VerifiableShare extractShare(PrivatePublishedShares privateShares) throws SecretSharingException {
         return vss.extractShare(privateShares, shareholder, decipheringKey);
+    }
+
+    public CommitmentScheme getCommitmentScheme() {
+        return vss.getCommitmentScheme();
+    }
+
+    public InterpolationStrategy getInterpolationStrategy() {
+        return vss.getInterpolationStrategy();
+    }
+
+    public BigInteger getField() {
+        return field;
     }
 }

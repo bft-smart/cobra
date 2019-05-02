@@ -12,8 +12,9 @@ public class NewPolynomialMessage extends PolynomialMessage {
 
     public NewPolynomialMessage() {}
 
-    public NewPolynomialMessage(int sender, int f, BigInteger x, BigInteger y) {
-        super(sender);
+    public NewPolynomialMessage(int id, int sender, int f, int viewId, int leader, int[] viewMembers,
+                                BigInteger x, BigInteger y) {
+        super(id, sender, viewId, leader, viewMembers);
         this.f = f;
         this.x = x;
         this.y = y;
