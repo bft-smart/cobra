@@ -40,8 +40,10 @@ public class InterServersCommunication {
         communicationSystem.send(targets, new ForwardedMessage(msg.getSender(), msg));
     }
 
-    public void registerListener(InterServerMessageListener listener, InterServersMessageType... forTypes) {
-        for (InterServersMessageType type : forTypes)
+    public void registerListener(InterServerMessageListener listener, InterServersMessageType messageType,
+                                 InterServersMessageType... moreMessageTypes) {
+        listeners.put(messageType, listener);
+        for (InterServersMessageType type : moreMessageTypes)
             listeners.put(type, listener);
     }
 
@@ -52,7 +54,7 @@ public class InterServersCommunication {
         if (listener == null)
             logger.warn("Listener for message type {} not found", type);
         else
-            listener.messageReceived(type, message);
+            listener.messageReceived(type, m);
     }
 
     private byte[] serializeRequest(InterServersMessageType type, byte[] request) {

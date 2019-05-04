@@ -4,12 +4,12 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
-public class MissingProposalMessage extends PolynomialMessage {
+public class MissingProposalRequestMessage extends PolynomialMessage {
     private byte[][] missingProposals;
 
-    public MissingProposalMessage() {}
+    public MissingProposalRequestMessage() {}
 
-    public MissingProposalMessage(int id, int sender, int viewId, int leader, int[] viewMembers, byte[][] missingProposals) {
+    public MissingProposalRequestMessage(int id, int sender, int viewId, int leader, int[] viewMembers, byte[][] missingProposals) {
         super(id, sender, viewId, leader, viewMembers);
         this.missingProposals = missingProposals;
     }
@@ -29,7 +29,7 @@ public class MissingProposalMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
         missingProposals = new byte[in.readInt()][];
         int len = in.readInt();

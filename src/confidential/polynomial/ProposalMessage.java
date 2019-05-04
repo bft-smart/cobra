@@ -49,7 +49,7 @@ public class ProposalMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
         int len = in.readInt();
         encryptedPoints = new byte[len][];

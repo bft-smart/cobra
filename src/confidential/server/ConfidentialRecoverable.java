@@ -9,6 +9,7 @@ import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
+import confidential.ConfidentialMessage;
 import confidential.MessageType;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
@@ -65,12 +66,14 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         checkpointPeriod = replicaContext.getStaticConfiguration().getCheckpointPeriod();
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
-            distributedPolynomial = new DistributedPolynomial(interServersCommunication,
+            this.distributedPolynomial = new DistributedPolynomial(interServersCommunication,
                     replicaContext.getSVController(), confidentialityScheme.getCommitmentScheme(),
                     confidentialityScheme.getField());
-
+            stateManager.setDistributedPolynomial(distributedPolynomial);
+            stateManager.setInterpolationStrategy(confidentialityScheme.getInterpolationStrategy());
+            stateManager.setCommitmentScheme(confidentialityScheme.getCommitmentScheme());
             log = getLog();
-            getStateManager().askCurrentConsensusId();
+            stateManager.askCurrentConsensusId();
         } catch (SecretSharingException e) {
             logger.error("Failed to initialize ServerConfidentialityScheme", e);
         } catch (NoSuchPaddingException | NoSuchAlgorithmException | NoSuchProviderException e) {
@@ -194,18 +197,19 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         if (request == null)
             return null;
         byte[] preprocessedCommand = request.serialize();
+        byte[] response;
         if (request.getType() == MessageType.APPLICATION) {
             logger.debug("Received application ordered message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
-            return new byte[0];
+            interServersCommunication.messageReceived(request.getPlainData());
+            response = new byte[0];
+        } else {
+            stateLock.lock();
+            response = appExecuteOrdered(request.getPlainData(), request.getShares(), msgCtx).serialize();
+            stateLock.unlock();
         }
-
-        stateLock.lock();
-        confidential.ConfidentialMessage response = appExecuteOrdered(request.getPlainData(), request.getShares(), msgCtx);
-        stateLock.unlock();
-
         logRequest(preprocessedCommand, msgCtx);
 
-        return response.serialize();
+        return response;
     }
 
     @Override
@@ -215,15 +219,15 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             return null;
         if (request.getType() == MessageType.APPLICATION) {
             logger.debug("Received application unordered message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
-
+            interServersCommunication.messageReceived(request.getPlainData());
             return new byte[0];
         }
         return appExecuteUnordered(request.getPlainData(), request.getShares(), msgCtx).serialize();
     }
 
-    public abstract confidential.ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
+    public abstract ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
 
-    public abstract confidential.ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
+    public abstract ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
 
     public abstract ConfidentialSnapshot getConfidentialSnapshot();
 

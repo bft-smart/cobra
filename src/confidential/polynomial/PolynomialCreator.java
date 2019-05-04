@@ -15,11 +15,19 @@ import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.SecretKey;
+import javax.crypto.spec.SecretKeySpec;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.SecureRandom;
 import java.util.*;
+
+import static confidential.Configuration.defaultKeys;
+import static confidential.Configuration.shareEncryptionAlgorithm;
 
 public class PolynomialCreator {
     private Logger logger = LoggerFactory.getLogger("confidential");
@@ -44,11 +52,14 @@ public class PolynomialCreator {
     private Set<Integer> conflictList;
     private Set<Integer> acceptList;
     private List<VoteMessage> votes;
+    private PolynomialCreationListener creationListener;
+    private List<byte[]> invalidProposals;
+    private SecretKey defaultKey = new SecretKeySpec(defaultKeys[0].toByteArray(), "AES");
 
 
     public PolynomialCreator(int id, int processId, BigInteger shareholderId, BigInteger field, int f, SecureRandom rndGenerator,
                              Cipher cipher, CommitmentScheme commitmentScheme,
-                             InterServersCommunication serversCommunication) {
+                             InterServersCommunication serversCommunication, PolynomialCreationListener creationListener) {
         this.id = id;
         this.processId = processId;
         this.field = field;
@@ -66,6 +77,7 @@ public class PolynomialCreator {
         this.conflictList = new HashSet<>();
         this.acceptList = new HashSet<>();
         this.votes = new LinkedList<>();
+        this.creationListener = creationListener;
     }
 
     public int getId() {
@@ -128,6 +140,7 @@ public class PolynomialCreator {
         }
 
         byte[] cryptHash = TOMUtil.computeHash(serializedMessage);
+        message.setCryptographicHash(cryptHash);
         proposals.put(Arrays.hashCode(cryptHash), message);
         if (proposals.size() > 2 * f)
             acceptNewProposals = false;
@@ -158,7 +171,7 @@ public class PolynomialCreator {
     }
 
     public PolynomialMessage processProposalSet(ProposalSetMessage message) {
-        List<byte[]> invalidProposals = new LinkedList<>();
+        invalidProposals = new LinkedList<>();
         int[] receivedNodes = message.getReceivedNodes();
         byte[][] receivedProposals = message.getReceivedProposals();
         int myIndex = getIndexOf(processId, message.getViewMembers());
@@ -199,20 +212,51 @@ public class PolynomialCreator {
         );
     }
 
-    public PolynomialMessage generateMissingProposalsMessage() {
+    public PolynomialMessage requestMissingProposals() {
         byte[][] missingProposalsArray = new byte[missingProposals.size()][];
         int i = 0;
         for (byte[] missingProposal : missingProposals) {
             missingProposalsArray[i++] = missingProposal;
         }
 
-        return new MissingProposalMessage(
+        return new MissingProposalRequestMessage(
                 id,
                 processId,
                 newPolynomialMessage.getViewId(),
                 newPolynomialMessage.getLeader(),
                 newPolynomialMessage.getViewMembers(),
                 missingProposalsArray
+        );
+    }
+
+    public PolynomialMessage processMissingProposals(MissingProposalsMessage message) {
+        ProposalMessage[] missingProposals = message.getMissingProposals();
+        int myIndex = getIndexOf(processId, message.getViewMembers());
+        SecretKey myKey = serversCommunication.getSecretKey(processId);
+
+        for (ProposalMessage proposal : missingProposals) {
+            byte[] serializedProposal = serialize(proposal);
+            proposal.setCryptographicHash(TOMUtil.computeHash(serializedProposal));
+            int proposalHash = Arrays.hashCode(proposal.getCryptographicHash());
+
+            byte[] encryptedPoint = proposal.getEncryptedPoints()[myIndex];
+            BigInteger point = decrypt(myKey, encryptedPoint);
+            finalProposalSet.put(proposalHash, proposal);
+            decryptedPoints.put(proposalHash, point);
+            if (!isValidPoint(point, proposal.getCommitments()))
+                invalidProposals.add(proposal.getCryptographicHash());
+        }
+        byte[][] invalidProposalArray = new byte[invalidProposals.size()][];
+        int counter = 0;
+        for (byte[] invalidProposal : invalidProposals)
+            invalidProposalArray[counter++] = invalidProposal;
+        return new VoteMessage(
+                id,
+                processId,
+                newPolynomialMessage.getViewId(),
+                newPolynomialMessage.getLeader(),
+                newPolynomialMessage.getViewMembers(),
+                invalidProposalArray
         );
     }
 
@@ -277,7 +321,25 @@ public class PolynomialCreator {
         return terminated;
     }
 
-    public VerifiableShare getFinalPoint() {
+
+    public PolynomialMessage generateMissingProposalsResponse(MissingProposalRequestMessage message) {
+        ProposalMessage[] missingProposals = new ProposalMessage[message.getMissingProposals().length];
+        for (int i = 0; i < missingProposals.length; i++) {
+            int hash = Arrays.hashCode(message.getMissingProposals()[i]);
+            missingProposals[i] = proposals.get(hash);
+        }
+
+        return new MissingProposalsMessage(
+                id,
+                processId,
+                newPolynomialMessage.getViewId(),
+                newPolynomialMessage.getLeader(),
+                newPolynomialMessage.getViewMembers(),
+                missingProposals
+        );
+    }
+
+    public void deliverResult() {
         logger.debug("I have selected {} proposals", finalProposalSet.size());
         finalProposalSet.values().forEach(p -> logger.debug("Proposal from {}", p.getSender()));
 
@@ -290,7 +352,9 @@ public class PolynomialCreator {
         }
         Share share = new Share(shareholderId, finalPoint);
         Commitments commitments = commitmentScheme.sumCommitments(allCommitments);
-        return new VerifiableShare(share, commitments, null);
+        VerifiableShare point =  new VerifiableShare(share, commitments, null);
+
+        creationListener.onPolynomialCreation(newPolynomialMessage.getReason(), newPolynomialMessage.getId(), point);
     }
 
     private boolean isValidPoint(BigInteger point, Commitments commitments) {
@@ -310,6 +374,7 @@ public class PolynomialCreator {
     }
 
     private byte[] encrypt(Key key, BigInteger data) {
+        key = defaultKey;
         try {
             cipher.init(Cipher.ENCRYPT_MODE, key);
             return cipher.doFinal(data.toByteArray());
@@ -320,11 +385,25 @@ public class PolynomialCreator {
     }
 
     private BigInteger decrypt(Key key, byte[] encryptedData) {
+        key = defaultKey;
         try {
             cipher.init(Cipher.DECRYPT_MODE, key);
             return new BigInteger(cipher.doFinal(encryptedData));
         } catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
             logger.error("Failed to decipher data", e);
+        }
+        return null;
+    }
+
+    private byte[] serialize(PolynomialMessage message) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutput out = new ObjectOutputStream(bos)) {
+            message.writeExternal(out);
+            out.flush();
+            bos.flush();
+            return bos.toByteArray();
+        } catch (IOException e) {
+            logger.warn("Polynomial message serialization failed", e);
         }
         return null;
     }

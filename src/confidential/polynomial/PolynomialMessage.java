@@ -54,7 +54,7 @@ public class PolynomialMessage implements Externalizable {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException {
         id = in.readInt();
         sender = in.readInt();
         viewId = in.readInt();

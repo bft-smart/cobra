@@ -9,15 +9,17 @@ public class NewPolynomialMessage extends PolynomialMessage {
     private int f;
     private BigInteger x;
     private BigInteger y;
+    private PolynomialCreationReason reason;
 
     public NewPolynomialMessage() {}
 
     public NewPolynomialMessage(int id, int sender, int f, int viewId, int leader, int[] viewMembers,
-                                BigInteger x, BigInteger y) {
+                                BigInteger x, BigInteger y, PolynomialCreationReason reason) {
         super(id, sender, viewId, leader, viewMembers);
         this.f = f;
         this.x = x;
         this.y = y;
+        this.reason = reason;
     }
 
     public int getF() {
@@ -32,6 +34,10 @@ public class NewPolynomialMessage extends PolynomialMessage {
         return y;
     }
 
+    public PolynomialCreationReason getReason() {
+        return reason;
+    }
+
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         super.writeExternal(out);
@@ -43,10 +49,12 @@ public class NewPolynomialMessage extends PolynomialMessage {
         b = y.toByteArray();
         out.writeInt(b.length);
         out.write(b);
+
+        out.write((byte)reason.ordinal());
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
         f = in.readInt();
         byte[] b = new byte[in.readInt()];
@@ -56,5 +64,6 @@ public class NewPolynomialMessage extends PolynomialMessage {
         b = new byte[in.readInt()];
         in.readFully(b);
         y = new BigInteger(b);
+        reason = PolynomialCreationReason.getReason(in.read());
     }
 }

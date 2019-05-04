@@ -9,6 +9,8 @@ import java.util.List;
 public class ProcessedVotesMessage extends PolynomialMessage {
     private List<VoteMessage> votes;
 
+    public ProcessedVotesMessage() {}
+
     public ProcessedVotesMessage(int id, int processId, int viewId, int leader, int[] viewMembers, List<VoteMessage> votes) {
         super(id, processId, viewId, leader, viewMembers);
         this.votes = votes;
@@ -27,7 +29,7 @@ public class ProcessedVotesMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
+    public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
         int size = in.readInt();
         votes = new ArrayList<>(size);
