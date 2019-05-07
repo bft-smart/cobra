@@ -3,5 +3,5 @@ package confidential.polynomial;
 import vss.secretsharing.VerifiableShare;
 
 public interface PolynomialCreationListener {
-    void onPolynomialCreation(PolynomialCreationReason reason, int id, VerifiableShare point);
+    void onPolynomialCreation(PolynomialContext context, VerifiableShare point);
 }

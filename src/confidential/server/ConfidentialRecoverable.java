@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.security.NoSuchAlgorithmException;
-import java.security.NoSuchProviderException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -43,7 +42,6 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     private ReentrantLock stateLock;
     private ReentrantLock logLock;
     private ConfidentialStateManager stateManager;
-    private DistributedPolynomial distributedPolynomial;
     private InterServersCommunication interServersCommunication;
     private int checkpointPeriod;
     private List<byte[]> commands;
@@ -66,9 +64,8 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         checkpointPeriod = replicaContext.getStaticConfiguration().getCheckpointPeriod();
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
-            this.distributedPolynomial = new DistributedPolynomial(interServersCommunication,
-                    replicaContext.getSVController(), confidentialityScheme.getCommitmentScheme(),
-                    confidentialityScheme.getField());
+            DistributedPolynomial distributedPolynomial = new DistributedPolynomial(processId, interServersCommunication,
+                    confidentialityScheme.getCommitmentScheme(), confidentialityScheme.getField());
             stateManager.setDistributedPolynomial(distributedPolynomial);
             stateManager.setInterpolationStrategy(confidentialityScheme.getInterpolationStrategy());
             stateManager.setCommitmentScheme(confidentialityScheme.getCommitmentScheme());
@@ -76,7 +73,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             stateManager.askCurrentConsensusId();
         } catch (SecretSharingException e) {
             logger.error("Failed to initialize ServerConfidentialityScheme", e);
-        } catch (NoSuchPaddingException | NoSuchAlgorithmException | NoSuchProviderException e) {
+        } catch (NoSuchPaddingException | NoSuchAlgorithmException e) {
             logger.error("Failed to initialize DistributePolynomial", e);
         }
     }

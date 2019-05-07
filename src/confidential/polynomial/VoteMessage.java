@@ -9,8 +9,8 @@ public class VoteMessage extends PolynomialMessage {
 
     public VoteMessage() {}
 
-    public VoteMessage(int id, int sender, int viewId, int leader, int[] viewMembers, byte[][] invalidProposals) {
-        super(id, sender, viewId, leader, viewMembers);
+    public VoteMessage(int id, int sender, byte[][] invalidProposals) {
+        super(id, sender);
         this.invalidProposals = invalidProposals;
     }
 

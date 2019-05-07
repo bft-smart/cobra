@@ -11,8 +11,8 @@ public class ProcessedVotesMessage extends PolynomialMessage {
 
     public ProcessedVotesMessage() {}
 
-    public ProcessedVotesMessage(int id, int processId, int viewId, int leader, int[] viewMembers, List<VoteMessage> votes) {
-        super(id, processId, viewId, leader, viewMembers);
+    public ProcessedVotesMessage(int id, int processId, List<VoteMessage> votes) {
+        super(id, processId);
         this.votes = votes;
     }
 

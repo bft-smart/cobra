@@ -1,7 +1,5 @@
 package confidential.polynomial;
 
-import bftsmart.reconfiguration.ServerViewController;
-import bftsmart.reconfiguration.views.View;
 import confidential.interServersCommunication.InterServerMessageListener;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
@@ -11,10 +9,13 @@ import vss.commitment.CommitmentScheme;
 
 import javax.crypto.Cipher;
 import javax.crypto.NoSuchPaddingException;
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectInputStream;
 import java.math.BigInteger;
-import java.security.*;
-import java.util.Arrays;
+import java.security.NoSuchAlgorithmException;
+import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -23,7 +24,6 @@ public class DistributedPolynomial implements InterServerMessageListener {
     private static final byte[] SEED = "confidential".getBytes();
 
     private InterServersCommunication serversCommunication;
-    private ServerViewController svController;
     private SecureRandom rndGenerator;
     private CommitmentScheme commitmentScheme;
     private BigInteger field;
@@ -33,17 +33,16 @@ public class DistributedPolynomial implements InterServerMessageListener {
     private int processId;
     private BigInteger shareholderId;
 
-    public DistributedPolynomial(InterServersCommunication serversCommunication, ServerViewController svController,
+    public DistributedPolynomial(int processId, InterServersCommunication serversCommunication,
                                  CommitmentScheme commitmentScheme, BigInteger field) throws NoSuchPaddingException,
-            NoSuchAlgorithmException, NoSuchProviderException {
+            NoSuchAlgorithmException {
         this.serversCommunication = serversCommunication;
-        this.svController = svController;
         this.commitmentScheme = commitmentScheme;
         this.field = field;
         this.rndGenerator = new SecureRandom(SEED);
         this.polynomialCreators = new HashMap<>();
         this.cipher = Cipher.getInstance("AES");//svController.getStaticConf().getSecretKeyAlgorithm(), svController.getStaticConf().getSecretKeyAlgorithmProvider());
-        this.processId = svController.getStaticConf().getProcessId();
+        this.processId = processId;
         this.shareholderId = BigInteger.valueOf(processId + 1);
         this.listeners = new HashMap<>();
         serversCommunication.registerListener(this,
@@ -61,22 +60,29 @@ public class DistributedPolynomial implements InterServerMessageListener {
         return shareholderId;
     }
 
-    public CommitmentScheme getCommitmentScheme() {
-        return commitmentScheme;
-    }
-
     public void registerCreationListener(PolynomialCreationListener listener, PolynomialCreationReason reason) {
         listeners.put(reason, listener);
     }
 
-    public void createNewPolynomial(int id, int f, int leader, int viewId, int[] viewMembers, BigInteger a, BigInteger b, PolynomialCreationReason reason) {
-        NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage(id,
-                svController.getStaticConf().getProcessId(), f, viewId,leader, viewMembers, a, b, reason);
-        byte[] request = serialize(newPolynomialMessage);
-        if (request != null) {
-            logger.debug("Sending NewPolynomialMessage to {} with id {}", Arrays.toString(viewMembers), id);
-            serversCommunication.sendUnordered(InterServersMessageType.NEW_POLYNOMIAL, request, viewMembers);
+    public void createNewPolynomial(PolynomialContext context) {
+        if (polynomialCreators.containsKey(context.getId())) {
+            logger.debug("Polynomial with id {} is already being created", context.getId());
+            return;
         }
+
+        PolynomialCreator polynomialCreator = new PolynomialCreator(
+                context,
+                processId,
+                shareholderId,
+                field,
+                rndGenerator,
+                cipher,
+                commitmentScheme,
+                serversCommunication,
+                listeners.get(context.getReason())
+        );
+        polynomialCreators.put(context.getId(), polynomialCreator);
+        polynomialCreator.sendNewPolynomialCreationRequest();
     }
 
     @Override
@@ -87,7 +93,7 @@ public class DistributedPolynomial implements InterServerMessageListener {
                 case NEW_POLYNOMIAL:
                     NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage();
                     newPolynomialMessage.readExternal(in);
-                    generateProposal(newPolynomialMessage);
+                    processNewPolynomialMessage(newPolynomialMessage);
                     break;
                 case POLYNOMIAL_PROPOSAL:
                     ProposalMessage proposalMessage = new ProposalMessage();
@@ -125,23 +131,15 @@ public class DistributedPolynomial implements InterServerMessageListener {
         }
     }
 
-    private void generateProposal(NewPolynomialMessage message) {
+    private void processNewPolynomialMessage(NewPolynomialMessage message) {
         logger.debug("Received polynomial generation message from {} with id {}", message.getSender(), message.getId());
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
-        if (polynomialCreator != null) {
-            logger.error("Received new polynomial generation message with id {} that exists", message.getId());
+        if (polynomialCreator == null) {
+            logger.error("There is no active polynomial creation with id {}", message.getId());
             return;
         }
-        logger.debug("Staring new polynomial creation with id {}", message.getId());
-        polynomialCreator = new PolynomialCreator(message.getId(), processId, shareholderId, field,
-                message.getF(), rndGenerator, cipher, commitmentScheme, serversCommunication, listeners.get(message.getReason()));
-        polynomialCreators.put(polynomialCreator.getId(), polynomialCreator);
-        PolynomialMessage response = polynomialCreator.generateProposal(message);
-        byte[] request = serialize(response);
-        if (request != null) {
-            logger.debug("Sending ProposalMessage to {} with id {}", Arrays.toString(message.getViewMembers()), response.getId());
-            serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_PROPOSAL, request, message.getViewMembers());
-        }
+
+        polynomialCreator.processNewPolynomialMessage(message);
     }
 
     private void processProposal(byte[] serializedMessage, ProposalMessage message) {
@@ -152,17 +150,6 @@ public class DistributedPolynomial implements InterServerMessageListener {
             return;
         }
         polynomialCreator.processProposal(serializedMessage, message);
-
-        if (svController.getStaticConf().getProcessId() == message.getLeader()) {
-            PolynomialMessage response = polynomialCreator.generateProposalSet();
-            if (response != null) {
-                byte[] request = serialize(response);
-                if (request != null) {
-                    logger.debug("I'm leader and I'm sending proposal set to {}", Arrays.toString(message.getViewMembers()));
-                    serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_PROPOSAL_SET, request, response.getViewMembers());
-                }
-            }
-        }
     }
 
     private void processProposalSet(ProposalSetMessage message) {
@@ -172,22 +159,7 @@ public class DistributedPolynomial implements InterServerMessageListener {
             logger.error("There is no active polynomial creation with id {}", message.getId());
             return;
         }
-        PolynomialMessage response = polynomialCreator.processProposalSet(message);
-        if (response == null) {
-            PolynomialMessage missingProposal = polynomialCreator.requestMissingProposals();
-            byte[] request = serialize(missingProposal);
-            if (request != null) {
-                logger.debug("Asking missing proposals from {} with id {}", message.getLeader(), message.getId());
-                serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_REQUEST_MISSING_PROPOSALS, request,
-                        message.getLeader());
-            }
-        } else {
-            byte[] request = serialize(response);
-            if (request != null) {
-                logger.debug("Sending votes to {} with id {}", message.getLeader(), message.getId());
-                serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_VOTE, request, message.getLeader());
-            }
-        }
+        polynomialCreator.processProposalSet(message);
     }
 
     private void processVote(VoteMessage message) {
@@ -199,20 +171,12 @@ public class DistributedPolynomial implements InterServerMessageListener {
         }
 
         boolean terminated = polynomialCreator.processVote(message);
-
-        if (!terminated)
-            return;
-        PolynomialMessage response = polynomialCreator.getProcessedVotes();
-        byte[] request = serialize(response);
-        if (request != null) {
-            logger.debug("Sending processed votes to {} with id {}", Arrays.toString(message.getViewMembers()),
-                    message.getId());
-            serversCommunication.sendOrdered(InterServersMessageType.POLYNOMIAL_PROCESSED_VOTES, request, message.getViewMembers());
-        }
+        if (terminated)
+            polynomialCreator.sendProcessedVotes();
     }
 
     private void processVotes(ProcessedVotesMessage message) {
-        logger.debug("Received processed votes from {} for polynomial creation id {}", message.getSender(), message.getLeader());
+        logger.debug("Received processed votes from {} for polynomial creation id {}", message.getSender(), message.getId());
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
         if (polynomialCreator == null) {
             logger.error("There is no active polynomial creation with id {}", message.getId());
@@ -220,11 +184,11 @@ public class DistributedPolynomial implements InterServerMessageListener {
         }
         boolean terminated = polynomialCreator.processVotes(message);
         if (terminated) {
-            logger.debug("I have my point");
             polynomialCreator.deliverResult();
             polynomialCreators.remove(message.getId());
         } else {
-            logger.debug("The leader {} is faulty. Changing view", message.getLeader());
+            polynomialCreator.startViewChange();
+
         }
     }
 
@@ -236,12 +200,7 @@ public class DistributedPolynomial implements InterServerMessageListener {
             return;
         }
 
-        PolynomialMessage response = polynomialCreator.generateMissingProposalsResponse(message);
-        byte[] request = serialize(response);
-        if (request != null) {
-            logger.debug("Sending missing proposals to {} with id {}", message.getSender(), message.getId());
-            serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS, request, message.getSender());
-        }
+        polynomialCreator.generateMissingProposalsResponse(message);
     }
 
     private void processMissingProposals(MissingProposalsMessage message) {
@@ -252,24 +211,10 @@ public class DistributedPolynomial implements InterServerMessageListener {
             logger.error("There is no active polynomial creation with id {}", message.getId());
             return;
         }
-        PolynomialMessage response = polynomialCreator.processMissingProposals(message);
-        byte[] request = serialize(response);
-        if (request != null) {
-            logger.debug("Sending votes to {} with id {}", message.getLeader(), message.getId());
-            serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_VOTE, request, message.getLeader());
-        }
+        polynomialCreator.processMissingProposals(message);
     }
 
-    private byte[] serialize(PolynomialMessage message) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutput out = new ObjectOutputStream(bos)) {
-            message.writeExternal(out);
-            out.flush();
-            bos.flush();
-            return bos.toByteArray();
-        } catch (IOException e) {
-            logger.warn("Polynomial message serialization failed", e);
-        }
-        return null;
+    public BigInteger getField() {
+        return field;
     }
 }

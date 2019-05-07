@@ -6,64 +6,29 @@ import java.io.ObjectOutput;
 import java.math.BigInteger;
 
 public class NewPolynomialMessage extends PolynomialMessage {
-    private int f;
-    private BigInteger x;
-    private BigInteger y;
-    private PolynomialCreationReason reason;
+    private PolynomialContext context;
 
     public NewPolynomialMessage() {}
 
-    public NewPolynomialMessage(int id, int sender, int f, int viewId, int leader, int[] viewMembers,
-                                BigInteger x, BigInteger y, PolynomialCreationReason reason) {
-        super(id, sender, viewId, leader, viewMembers);
-        this.f = f;
-        this.x = x;
-        this.y = y;
-        this.reason = reason;
+    public NewPolynomialMessage(int sender, PolynomialContext context) {
+        super(context.getId(), sender);
+        this.context = context;
     }
 
-    public int getF() {
-        return f;
-    }
-
-    public BigInteger getX() {
-        return x;
-    }
-
-    public BigInteger getY() {
-        return y;
-    }
-
-    public PolynomialCreationReason getReason() {
-        return reason;
+    public PolynomialContext getContext() {
+        return context;
     }
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         super.writeExternal(out);
-        out.writeInt(f);
-        byte[] b = x.toByteArray();
-        out.writeInt(b.length);
-        out.write(b);
-
-        b = y.toByteArray();
-        out.writeInt(b.length);
-        out.write(b);
-
-        out.write((byte)reason.ordinal());
+        context.writeExternal(out);
     }
 
     @Override
     public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
-        f = in.readInt();
-        byte[] b = new byte[in.readInt()];
-        in.readFully(b);
-        x = new BigInteger(b);
-
-        b = new byte[in.readInt()];
-        in.readFully(b);
-        y = new BigInteger(b);
-        reason = PolynomialCreationReason.getReason(in.read());
+        context = new PolynomialContext();
+        context.readExternal(in);
     }
 }

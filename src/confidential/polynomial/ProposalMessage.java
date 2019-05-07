@@ -13,9 +13,8 @@ public class ProposalMessage extends PolynomialMessage {
 
     public ProposalMessage() {}
 
-    public ProposalMessage(int id, int sender, int viewId, int leader, int[] viewMembers, byte[][] encryptedPoints,
-                           Commitments commitments) {
-        super(id, sender, viewId, leader, viewMembers);
+    public ProposalMessage(int id, int sender, byte[][] encryptedPoints, Commitments commitments) {
+        super(id, sender);
         this.encryptedPoints = encryptedPoints;
         this.commitments = commitments;
     }

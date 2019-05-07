@@ -10,9 +10,8 @@ public class ProposalSetMessage extends PolynomialMessage {
 
     public ProposalSetMessage() {}
 
-    public ProposalSetMessage(int id, int sender, int viewId, int leader, int[] viewMembers, int[] receivedNodes,
-                              byte[][] receivedProposals) {
-        super(id, sender, viewId, leader, viewMembers);
+    public ProposalSetMessage(int id, int sender, int[] receivedNodes, byte[][] receivedProposals) {
+        super(id, sender);
         this.receivedNodes = receivedNodes;
         this.receivedProposals = receivedProposals;
     }
