@@ -103,7 +103,7 @@ class PolynomialCreator {
     }
 
     void processNewPolynomialMessage(NewPolynomialMessage newPolynomialMessage) {
-        if (newPolynomialRequestsFrom.size() > 2 * context.getF() + 1) {
+        if (newPolynomialRequestsFrom.size() > 2 * context.getF()) {
             logger.debug("I already have 2f+1 new polynomial Messages");
             return;
         }
@@ -284,7 +284,12 @@ class PolynomialCreator {
         ProposalMessage[] missingProposals = new ProposalMessage[message.getMissingProposals().length];
         for (int i = 0; i < missingProposals.length; i++) {
             int hash = Arrays.hashCode(message.getMissingProposals()[i]);
-            missingProposals[i] = proposals.get(hash);
+            ProposalMessage proposal = proposals.get(hash);
+            if (proposal == null) {
+                logger.debug("I do not have proposal requested by {}", message.getSender());
+                return;
+            }
+            missingProposals[i] = proposal;
         }
 
         MissingProposalsMessage missingProposalsMessage = new MissingProposalsMessage(

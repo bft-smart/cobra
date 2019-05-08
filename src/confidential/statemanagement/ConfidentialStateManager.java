@@ -178,6 +178,25 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     private void refreshState(VerifiableShare point) {
         logger.debug("Refreshing my state");
+        TimerTask refreshTriggerTask = new TimerTask() {
+            @Override
+            public void run() {
+                int id = sequenceNumber.getAndIncrement();
+                PolynomialContext context = new PolynomialContext(
+                        id,
+                        SVController.getCurrentViewF(),
+                        BigInteger.ZERO,
+                        BigInteger.ZERO,
+                        SVController.getCurrentViewAcceptors(),
+                        tomLayer.execManager.getCurrentLeader(),
+                        PolynomialCreationReason.RESHARING
+                );
+                logger.debug("Starting creation of new polynomial with id {} for resharing", id);
+                distributedPolynomial.createNewPolynomial(context);
+            }
+        };
+
+        refreshTimer.schedule(refreshTriggerTask, 30000);
     }
 
     @Override

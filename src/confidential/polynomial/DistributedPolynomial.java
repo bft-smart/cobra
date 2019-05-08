@@ -32,6 +32,7 @@ public class DistributedPolynomial implements InterServerMessageListener {
     private Map<PolynomialCreationReason, PolynomialCreationListener> listeners;
     private int processId;
     private BigInteger shareholderId;
+    private int lastPolynomialCreationProcessed;
 
     public DistributedPolynomial(int processId, InterServersCommunication serversCommunication,
                                  CommitmentScheme commitmentScheme, BigInteger field) throws NoSuchPaddingException,
@@ -45,6 +46,7 @@ public class DistributedPolynomial implements InterServerMessageListener {
         this.processId = processId;
         this.shareholderId = BigInteger.valueOf(processId + 1);
         this.listeners = new HashMap<>();
+        this.lastPolynomialCreationProcessed = -1;
         serversCommunication.registerListener(this,
                 InterServersMessageType.NEW_POLYNOMIAL,
                 InterServersMessageType.POLYNOMIAL_PROPOSAL,
@@ -72,20 +74,33 @@ public class DistributedPolynomial implements InterServerMessageListener {
         }
 
         if (polynomialCreator == null) {
-            polynomialCreator = new PolynomialCreator(
-                    context,
-                    processId,
-                    shareholderId,
-                    field,
-                    rndGenerator,
-                    cipher,
-                    commitmentScheme,
-                    serversCommunication,
-                    listeners.get(context.getReason())
-            );
-            polynomialCreators.put(context.getId(), polynomialCreator);
+            polynomialCreator = createNewPolynomialCreator(context);
+            if (polynomialCreator == null)
+                return;
         }
         polynomialCreator.sendNewPolynomialCreationRequest();
+    }
+
+    private PolynomialCreator createNewPolynomialCreator(PolynomialContext context) {
+        if (context.getId() <= lastPolynomialCreationProcessed) {
+            logger.debug("Polynomial creation id {} is old", context.getId());
+            return null;
+        }
+
+        PolynomialCreator polynomialCreator = new PolynomialCreator(
+                context,
+                processId,
+                shareholderId,
+                field,
+                rndGenerator,
+                cipher,
+                commitmentScheme,
+                serversCommunication,
+                listeners.get(context.getReason())
+        );
+        polynomialCreators.put(context.getId(), polynomialCreator);
+        lastPolynomialCreationProcessed = context.getId();
+        return polynomialCreator;
     }
 
     @Override
@@ -141,18 +156,9 @@ public class DistributedPolynomial implements InterServerMessageListener {
             logger.debug("There is no active polynomial creation with id {}", message.getId());
             logger.debug("Creating new polynomial creator for id {} and reason {}", message.getId(),
                     message.getContext().getReason());
-            polynomialCreator = new PolynomialCreator(
-                    message.getContext(),
-                    processId,
-                    shareholderId,
-                    field,
-                    rndGenerator,
-                    cipher,
-                    commitmentScheme,
-                    serversCommunication,
-                    listeners.get(message.getContext().getReason())
-            );
-            polynomialCreators.put(message.getContext().getId(), polynomialCreator);
+            polynomialCreator = createNewPolynomialCreator(message.getContext());
+            if (polynomialCreator == null)
+                return;
         }
 
         polynomialCreator.processNewPolynomialMessage(message);
