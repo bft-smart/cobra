@@ -153,7 +153,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     @Override
     public void onPolynomialCreation(PolynomialContext context, VerifiableShare point) {
-        logger.debug("Received my point {} for {}", context.getReason(), point.getShare());
+        logger.debug("Received my point for {}", context.getReason());
         if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
                 && context.getReason() == PolynomialCreationReason.RECOVERY) {
             if (onGoingRecoveryRequests.containsKey(context.getId()))

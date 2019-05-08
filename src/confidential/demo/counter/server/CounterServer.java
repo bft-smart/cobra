@@ -38,11 +38,13 @@ public class CounterServer extends ConfidentialRecoverable {
 
     @Override
     public ConfidentialSnapshot getConfidentialSnapshot() {
-        return new ConfidentialSnapshot(String.valueOf(counter).getBytes());
+        return new ConfidentialSnapshot(String.valueOf(counter.get()).getBytes());
     }
 
     @Override
     public void installConfidentialSnapshot(ConfidentialSnapshot snapshot) {
-        counter = new AtomicInteger(Integer.parseInt(new String(snapshot.getPlainData())));
+        int c = Integer.parseInt(new String(snapshot.getPlainData()));
+        logger.debug("Installing state: {}", c);
+        counter = new AtomicInteger(c);
     }
 }

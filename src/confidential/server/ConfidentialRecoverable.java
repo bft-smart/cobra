@@ -126,13 +126,14 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             int lastCheckpointCID = log.getLastCheckpointCID();
             lastCID = log.getLastCID();
 
+
             if (state.getSerializedState() != null) {
                 logger.info("Installing snapshot up to CID {}", lastCheckpointCID);
                 ConfidentialSnapshot snapshot = ConfidentialSnapshot.deserialize(state.getSerializedState());
                 installConfidentialSnapshot(snapshot);
             }
 
-            for (int cid = lastCheckpointCID + 1; cid <= lastCheckpointCID; cid++) {
+            for (int cid = lastCheckpointCID + 1; cid <= lastCID; cid++) {
                 try {
                     logger.debug("Processing and verifying batched requests for CID {}", cid);
                     CommandsInfo cmdInfo = log.getMessageBatch(cid);
