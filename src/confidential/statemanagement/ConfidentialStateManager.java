@@ -40,7 +40,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private Map<Integer, VerifiableShare> recoveryPoints;
     private BigInteger shareholder;
     private Set<Integer> sequenceNumbers;
-
+    private Timer refreshTimer;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
@@ -48,12 +48,33 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         onGoingRecoveryRequests = new HashMap<>();
         recoveryPoints = new HashMap<>();
         sequenceNumbers = new HashSet<>();
+        refreshTimer = new Timer("Refresh Timer");
     }
 
     public void setDistributedPolynomial(DistributedPolynomial distributedPolynomial) {
         this.shareholder = distributedPolynomial.getShareholderId();
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
+        distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
+        TimerTask refreshTriggerTask = new TimerTask() {
+            @Override
+            public void run() {
+                int id = sequenceNumber.getAndIncrement();
+                PolynomialContext context = new PolynomialContext(
+                        id,
+                        SVController.getCurrentViewF(),
+                        BigInteger.ZERO,
+                        BigInteger.ZERO,
+                        SVController.getCurrentViewAcceptors(),
+                        tomLayer.execManager.getCurrentLeader(),
+                        PolynomialCreationReason.RESHARING
+                );
+                logger.debug("Starting creation of new polynomial with id {} for resharing", id);
+                distributedPolynomial.createNewPolynomial(context);
+            }
+        };
+
+        refreshTimer.schedule(refreshTriggerTask, 30000);
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -120,17 +141,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     @Override
     public void SMRequestDeliver(SMMessage msg, boolean isBFT) {
-        if (msg instanceof RecoverySMMessage) {
-            RecoverySMMessage recoverySMMessage = (RecoverySMMessage)msg;
-            logger.debug("Received recovery request from {} with id {}", recoverySMMessage.getSender(),
-                    recoverySMMessage.getSequenceNumber());
-            if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null) {
-                if (recoveryPoints.containsKey(recoverySMMessage.getSequenceNumber()))
-                    sendRecoveryState(recoverySMMessage, recoveryPoints.remove(recoverySMMessage.getSequenceNumber()));
-                else
-                    onGoingRecoveryRequests.put(recoverySMMessage.getSequenceNumber(), recoverySMMessage);
-            }
-        } else if (msg instanceof DefaultSMMessage) {
+        if (msg instanceof DefaultSMMessage) {
             logger.debug("Received recovery request from {}", msg.getSender());
             if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null) {
                 int id = sequenceNumber.getAndIncrement();
@@ -153,14 +164,20 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     @Override
     public void onPolynomialCreation(PolynomialContext context, VerifiableShare point) {
-        logger.debug("Received my point for {}", context.getReason());
+        logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
         if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
                 && context.getReason() == PolynomialCreationReason.RECOVERY) {
             if (onGoingRecoveryRequests.containsKey(context.getId()))
                 sendRecoveryState(onGoingRecoveryRequests.remove(context.getId()), point);
             else
                 logger.debug("There is no recovery request for id {}", context.getId());
+        } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
+            refreshState(point);
         }
+    }
+
+    private void refreshState(VerifiableShare point) {
+        logger.debug("Refreshing my state");
     }
 
     @Override

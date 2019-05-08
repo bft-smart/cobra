@@ -89,6 +89,10 @@ class PolynomialCreator {
         this.myIndex = getIndexOf(processId, context.getMembers());
     }
 
+    public PolynomialContext getContext() {
+        return context;
+    }
+
     void sendNewPolynomialCreationRequest() {
         NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage(
                 processId, context);
@@ -174,7 +178,7 @@ class PolynomialCreator {
     }
 
     void processProposal(byte[] serializedMessage, ProposalMessage message) {
-        if (proposals.size() > 2 * context.getF() + 1) {
+        if (proposals.size() > 2 * context.getF()) {
             logger.debug("I already have {} proposals (2f + 1)", proposals.size());
             return;
         }
@@ -183,7 +187,7 @@ class PolynomialCreator {
         message.setCryptographicHash(cryptHash);
         proposals.put(Arrays.hashCode(cryptHash), message);
 
-        if (proposals.size() > 2 * context.getF() + 1 || processId == context.getLeader())
+        if (proposals.size() > 2 * context.getF() && processId == context.getLeader())
             generateAndSendProposalSet();
     }
 

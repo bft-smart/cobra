@@ -65,23 +65,26 @@ public class DistributedPolynomial implements InterServerMessageListener {
     }
 
     public void createNewPolynomial(PolynomialContext context) {
-        if (polynomialCreators.containsKey(context.getId())) {
-            logger.debug("Polynomial with id {} is already being created", context.getId());
+        PolynomialCreator polynomialCreator = polynomialCreators.get(context.getId());
+        if (polynomialCreator != null && polynomialCreator.getContext().getReason() != context.getReason() ) {
+            logger.debug("Polynomial with id {} is already being created for different reason", context.getId());
             return;
         }
 
-        PolynomialCreator polynomialCreator = new PolynomialCreator(
-                context,
-                processId,
-                shareholderId,
-                field,
-                rndGenerator,
-                cipher,
-                commitmentScheme,
-                serversCommunication,
-                listeners.get(context.getReason())
-        );
-        polynomialCreators.put(context.getId(), polynomialCreator);
+        if (polynomialCreator == null) {
+            polynomialCreator = new PolynomialCreator(
+                    context,
+                    processId,
+                    shareholderId,
+                    field,
+                    rndGenerator,
+                    cipher,
+                    commitmentScheme,
+                    serversCommunication,
+                    listeners.get(context.getReason())
+            );
+            polynomialCreators.put(context.getId(), polynomialCreator);
+        }
         polynomialCreator.sendNewPolynomialCreationRequest();
     }
 
@@ -135,8 +138,21 @@ public class DistributedPolynomial implements InterServerMessageListener {
         logger.debug("Received polynomial generation message from {} with id {}", message.getSender(), message.getId());
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
         if (polynomialCreator == null) {
-            logger.error("There is no active polynomial creation with id {}", message.getId());
-            return;
+            logger.debug("There is no active polynomial creation with id {}", message.getId());
+            logger.debug("Creating new polynomial creator for id {} and reason {}", message.getId(),
+                    message.getContext().getReason());
+            polynomialCreator = new PolynomialCreator(
+                    message.getContext(),
+                    processId,
+                    shareholderId,
+                    field,
+                    rndGenerator,
+                    cipher,
+                    commitmentScheme,
+                    serversCommunication,
+                    listeners.get(message.getContext().getReason())
+            );
+            polynomialCreators.put(message.getContext().getId(), polynomialCreator);
         }
 
         polynomialCreator.processNewPolynomialMessage(message);
