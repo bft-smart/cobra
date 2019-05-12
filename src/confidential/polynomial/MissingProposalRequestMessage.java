@@ -35,7 +35,7 @@ public class MissingProposalRequestMessage extends PolynomialMessage {
         int len = in.readInt();
         for (int i = 0; i < missingProposals.length; i++) {
             byte[] b = new byte[len];
-            in.readInt();
+            in.readFully(b);
             missingProposals[i] = b;
         }
     }
