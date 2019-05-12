@@ -66,6 +66,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
             DistributedPolynomial distributedPolynomial = new DistributedPolynomial(processId, interServersCommunication,
                     confidentialityScheme.getCommitmentScheme(), confidentialityScheme.getField());
+            new Thread(distributedPolynomial, "Distributed polynomial").start();
             stateManager.setDistributedPolynomial(distributedPolynomial);
             stateManager.setInterpolationStrategy(confidentialityScheme.getInterpolationStrategy());
             stateManager.setCommitmentScheme(confidentialityScheme.getCommitmentScheme());
@@ -197,8 +198,9 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         byte[] preprocessedCommand = request.serialize();
         byte[] response;
         if (request.getType() == MessageType.APPLICATION) {
-            logger.debug("Received application ordered message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
-            interServersCommunication.messageReceived(request.getPlainData());
+            logger.debug("Received application ordered message of {} in CID {}. Regency: {}", msgCtx.getSender(),
+                    msgCtx.getConsensusId(), msgCtx.getRegency());
+            interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             response = new byte[0];
         } else {
             stateLock.lock();
@@ -217,7 +219,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             return null;
         if (request.getType() == MessageType.APPLICATION) {
             logger.debug("Received application unordered message of {} in CID {}", msgCtx.getSender(), msgCtx.getConsensusId());
-            interServersCommunication.messageReceived(request.getPlainData());
+            interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             return new byte[0];
         }
         return appExecuteUnordered(request.getPlainData(), request.getShares(), msgCtx).serialize();

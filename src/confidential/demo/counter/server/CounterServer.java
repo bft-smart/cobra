@@ -25,14 +25,16 @@ public class CounterServer extends ConfidentialRecoverable {
     @Override
     public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         int i = counter.incrementAndGet();
-        logger.debug("Ordered - Counter: {} Client: {}", i, msgCtx.getSender());
+        logger.debug("Ordered - Counter: {} Client: {} CID: {} OpId: {}", i, msgCtx.getSender(),
+                msgCtx.getConsensusId(), msgCtx.getOperationId());
         return new ConfidentialMessage(String.valueOf(i).getBytes());
     }
 
     @Override
     public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         int i = counter.incrementAndGet();
-        logger.debug("Unordered - Counter: {} Client: {}", i, msgCtx.getSender());
+        logger.debug("Unordered - Counter: {} Client: {} - CID: {} OpId: {}", i, msgCtx.getSender(),
+                msgCtx.getConsensusId(), msgCtx.getOperationId());
         return new ConfidentialMessage(String.valueOf(i).getBytes());
     }
 

@@ -2,6 +2,7 @@ package confidential.interServersCommunication;
 
 import bftsmart.communication.ServerCommunicationSystem;
 import bftsmart.reconfiguration.ServerViewController;
+import bftsmart.tom.MessageContext;
 import bftsmart.tom.core.messages.ForwardedMessage;
 import bftsmart.tom.core.messages.TOMMessage;
 import confidential.MessageType;
@@ -47,14 +48,16 @@ public class InterServersCommunication {
             listeners.put(type, listener);
     }
 
-    public void messageReceived(byte[] message) {
+    public void messageReceived(byte[] message, MessageContext msgCtx) {
         InterServersMessageType type = InterServersMessageType.getType(message[0]);
         byte[] m = Arrays.copyOfRange(message, 1, message.length);
         InterServerMessageListener listener = listeners.get(type);
         if (listener == null)
             logger.warn("Listener for message type {} not found", type);
-        else
-            listener.messageReceived(type, m);
+        else {
+            InterServerMessageHolder holder = new InterServerMessageHolder(type, m, msgCtx);
+            listener.messageReceived(holder);
+        }
     }
 
     private byte[] serializeRequest(InterServersMessageType type, byte[] request) {

@@ -1,5 +1,6 @@
 package confidential.polynomial;
 
+import confidential.interServersCommunication.InterServerMessageHolder;
 import confidential.interServersCommunication.InterServerMessageListener;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
@@ -18,8 +19,12 @@ import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
-public class DistributedPolynomial implements InterServerMessageListener {
+public class DistributedPolynomial implements InterServerMessageListener, Runnable {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private static final byte[] SEED = "confidential".getBytes();
 
@@ -28,11 +33,13 @@ public class DistributedPolynomial implements InterServerMessageListener {
     private CommitmentScheme commitmentScheme;
     private BigInteger field;
     private Cipher cipher;
-    private Map<Integer, PolynomialCreator> polynomialCreators;
-    private Map<PolynomialCreationReason, PolynomialCreationListener> listeners;
+    private Map<Integer, PolynomialCreator> polynomialCreators;//TODO should I change to concurrentMap?
+    private Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
     private int processId;
     private BigInteger shareholderId;
     private int lastPolynomialCreationProcessed;
+    private BlockingQueue<InterServerMessageHolder> pendingMessages;
+    private Lock entryLock;
 
     public DistributedPolynomial(int processId, InterServersCommunication serversCommunication,
                                  CommitmentScheme commitmentScheme, BigInteger field) throws NoSuchPaddingException,
@@ -47,6 +54,8 @@ public class DistributedPolynomial implements InterServerMessageListener {
         this.shareholderId = BigInteger.valueOf(processId + 1);
         this.listeners = new HashMap<>();
         this.lastPolynomialCreationProcessed = -1;
+        this.pendingMessages = new LinkedBlockingQueue<>();
+        entryLock = new ReentrantLock(true);
         serversCommunication.registerListener(this,
                 InterServersMessageType.NEW_POLYNOMIAL,
                 InterServersMessageType.POLYNOMIAL_PROPOSAL,
@@ -63,22 +72,29 @@ public class DistributedPolynomial implements InterServerMessageListener {
     }
 
     public void registerCreationListener(PolynomialCreationListener listener, PolynomialCreationReason reason) {
+        entryLock.lock();
         listeners.put(reason, listener);
+        entryLock.unlock();
     }
 
     public void createNewPolynomial(PolynomialContext context) {
-        PolynomialCreator polynomialCreator = polynomialCreators.get(context.getId());
-        if (polynomialCreator != null && polynomialCreator.getContext().getReason() != context.getReason() ) {
-            logger.debug("Polynomial with id {} is already being created for different reason", context.getId());
-            return;
-        }
-
-        if (polynomialCreator == null) {
-            polynomialCreator = createNewPolynomialCreator(context);
-            if (polynomialCreator == null)
+        try {
+            entryLock.lock();
+            PolynomialCreator polynomialCreator = polynomialCreators.get(context.getId());
+            if (polynomialCreator != null && polynomialCreator.getContext().getReason() != context.getReason() ) {
+                logger.debug("Polynomial with id {} is already being created for different reason", context.getId());
                 return;
+            }
+
+            if (polynomialCreator == null) {
+                polynomialCreator = createNewPolynomialCreator(context);
+                if (polynomialCreator == null)
+                    return;
+            }
+            polynomialCreator.sendNewPolynomialCreationRequest();
+        } finally {
+            entryLock.unlock();
         }
-        polynomialCreator.sendNewPolynomialCreationRequest();
     }
 
     private PolynomialCreator createNewPolynomialCreator(PolynomialContext context) {
@@ -104,49 +120,68 @@ public class DistributedPolynomial implements InterServerMessageListener {
     }
 
     @Override
-    public void messageReceived(InterServersMessageType type, byte[] serializedMessage) {
-        try (ByteArrayInputStream bis = new ByteArrayInputStream(serializedMessage);
-             ObjectInput in = new ObjectInputStream(bis)) {
-            switch (type) {
-                case NEW_POLYNOMIAL:
-                    NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage();
-                    newPolynomialMessage.readExternal(in);
-                    processNewPolynomialMessage(newPolynomialMessage);
-                    break;
-                case POLYNOMIAL_PROPOSAL:
-                    ProposalMessage proposalMessage = new ProposalMessage();
-                    proposalMessage.readExternal(in);
-                    processProposal(serializedMessage, proposalMessage);
-                    break;
-                case POLYNOMIAL_PROPOSAL_SET:
-                    ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
-                    proposalSetMessage.readExternal(in);
-                    processProposalSet(proposalSetMessage);
-                    break;
-                case POLYNOMIAL_VOTE:
-                    VoteMessage voteMessage = new VoteMessage();
-                    voteMessage.readExternal(in);
-                    processVote(voteMessage);
-                    break;
-                case POLYNOMIAL_REQUEST_MISSING_PROPOSALS:
-                    MissingProposalRequestMessage missingProposalRequestMessage = new MissingProposalRequestMessage();
-                    missingProposalRequestMessage.readExternal(in);
-                    sendMissingProposals(missingProposalRequestMessage);
-                    break;
-                case POLYNOMIAL_MISSING_PROPOSALS:
-                    MissingProposalsMessage missingProposalsMessage = new MissingProposalsMessage();
-                    missingProposalsMessage.readExternal(in);
-                    processMissingProposals(missingProposalsMessage);
-                    break;
-                case POLYNOMIAL_PROCESSED_VOTES:
-                    ProcessedVotesMessage processedVotesMessage = new ProcessedVotesMessage();
-                    processedVotesMessage.readExternal(in);
-                    processVotes(processedVotesMessage);
-                    break;
-            }
-        } catch (IOException e) {
-            logger.error("Failed to deserialize polynomial message of type {}", type, e);
+    public void messageReceived(InterServerMessageHolder message) {
+
+        while (!pendingMessages.offer(message)){
+            logger.debug("Distributed polynomial pending message queue is full");
         }
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            try {
+                InterServerMessageHolder message = pendingMessages.take();
+                entryLock.lock();
+                try (ByteArrayInputStream bis = new ByteArrayInputStream(message.getSerializedMessage());
+                     ObjectInput in = new ObjectInputStream(bis)) {
+                    switch (message.getType()) {
+                        case NEW_POLYNOMIAL:
+                            NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage();
+                            newPolynomialMessage.readExternal(in);
+                            processNewPolynomialMessage(newPolynomialMessage);
+                            break;
+                        case POLYNOMIAL_PROPOSAL:
+                            ProposalMessage proposalMessage = new ProposalMessage();
+                            proposalMessage.readExternal(in);
+                            processProposal(message.getSerializedMessage(), proposalMessage);
+                            break;
+                        case POLYNOMIAL_PROPOSAL_SET:
+                            ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
+                            proposalSetMessage.readExternal(in);
+                            processProposalSet(proposalSetMessage);
+                            break;
+                        case POLYNOMIAL_VOTE:
+                            VoteMessage voteMessage = new VoteMessage();
+                            voteMessage.readExternal(in);
+                            processVote(voteMessage);
+                            break;
+                        case POLYNOMIAL_REQUEST_MISSING_PROPOSALS:
+                            MissingProposalRequestMessage missingProposalRequestMessage = new MissingProposalRequestMessage();
+                            missingProposalRequestMessage.readExternal(in);
+                            sendMissingProposals(missingProposalRequestMessage);
+                            break;
+                        case POLYNOMIAL_MISSING_PROPOSALS:
+                            MissingProposalsMessage missingProposalsMessage = new MissingProposalsMessage();
+                            missingProposalsMessage.readExternal(in);
+                            processMissingProposals(missingProposalsMessage);
+                            break;
+                        case POLYNOMIAL_PROCESSED_VOTES:
+                            ProcessedVotesMessage processedVotesMessage = new ProcessedVotesMessage();
+                            processedVotesMessage.readExternal(in);
+                            processVotes(processedVotesMessage, message.getMessageContext().getConsensusId());
+                            break;
+                    }
+                } catch (IOException e) {
+                    logger.error("Failed to deserialize polynomial message of type {}", message.getType(), e);
+                }
+            } catch (InterruptedException e) {
+                break;
+            } finally {
+                entryLock.unlock();
+            }
+        }
+        logger.debug("Exiting Distributed Polynomial");
     }
 
     private void processNewPolynomialMessage(NewPolynomialMessage message) {
@@ -197,8 +232,9 @@ public class DistributedPolynomial implements InterServerMessageListener {
             polynomialCreator.sendProcessedVotes();
     }
 
-    private void processVotes(ProcessedVotesMessage message) {
-        logger.debug("Received processed votes from {} for polynomial creation id {}", message.getSender(), message.getId());
+    private void processVotes(ProcessedVotesMessage message, int consensusId) {
+        logger.debug("Received processed votes from {} for polynomial creation id {} in cid {}", message.getSender(),
+                message.getId(), consensusId);
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
         if (polynomialCreator == null) {
             logger.error("There is no active polynomial creation with id {}", message.getId());
@@ -206,7 +242,7 @@ public class DistributedPolynomial implements InterServerMessageListener {
         }
         boolean terminated = polynomialCreator.processVotes(message);
         if (terminated) {
-            polynomialCreator.deliverResult();
+            polynomialCreator.deliverResult(consensusId);
             polynomialCreators.remove(message.getId());
         } else {
             polynomialCreator.startViewChange();

@@ -275,7 +275,7 @@ class PolynomialCreator {
                 processId,
                 missingProposalsArray
         );
-        logger.debug("Asking missing proposals from {} with id {}", context.getLeader(), context.getId());
+        logger.debug("Asking missing proposals to {} with id {}", context.getLeader(), context.getId());
         serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
                 serialize(missingProposalRequestMessage), context.getLeader());
     }
@@ -387,7 +387,7 @@ class PolynomialCreator {
     }
 
 
-    void deliverResult() {
+    void deliverResult(int consensusId) {
         logger.debug("I have selected {} proposals", finalProposalSet.size());
         finalProposalSet.values().forEach(p -> logger.debug("Proposal from {}", p.getSender()));
 
@@ -402,7 +402,7 @@ class PolynomialCreator {
         Commitments commitments = commitmentScheme.sumCommitments(allCommitments);
         VerifiableShare point =  new VerifiableShare(share, commitments, null);
 
-        creationListener.onPolynomialCreation(context, point);
+        creationListener.onPolynomialCreation(context, point, consensusId);
     }
 
     void startViewChange() {

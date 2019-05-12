@@ -37,7 +37,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private ReentrantLock lockTimer;
     private AtomicInteger sequenceNumber;
     private Map<Integer, SMMessage> onGoingRecoveryRequests;
-    private Map<Integer, VerifiableShare> recoveryPoints;
     private BigInteger shareholder;
     private Set<Integer> sequenceNumbers;
     private Timer refreshTimer;
@@ -46,7 +45,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         lockTimer = new ReentrantLock();
         sequenceNumber = new AtomicInteger();
         onGoingRecoveryRequests = new HashMap<>();
-        recoveryPoints = new HashMap<>();
         sequenceNumbers = new HashSet<>();
         refreshTimer = new Timer("Refresh Timer");
     }
@@ -56,25 +54,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
-        TimerTask refreshTriggerTask = new TimerTask() {
-            @Override
-            public void run() {
-                int id = sequenceNumber.getAndIncrement();
-                PolynomialContext context = new PolynomialContext(
-                        id,
-                        SVController.getCurrentViewF(),
-                        BigInteger.ZERO,
-                        BigInteger.ZERO,
-                        SVController.getCurrentViewAcceptors(),
-                        tomLayer.execManager.getCurrentLeader(),
-                        PolynomialCreationReason.RESHARING
-                );
-                logger.debug("Starting creation of new polynomial with id {} for resharing", id);
-                distributedPolynomial.createNewPolynomial(context);
-            }
-        };
-
-        refreshTimer.schedule(refreshTriggerTask, 30000);
+        setRefreshTimer();
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -160,43 +140,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             }
         }
-    }
-
-    @Override
-    public void onPolynomialCreation(PolynomialContext context, VerifiableShare point) {
-        logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
-        if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
-                && context.getReason() == PolynomialCreationReason.RECOVERY) {
-            if (onGoingRecoveryRequests.containsKey(context.getId()))
-                sendRecoveryState(onGoingRecoveryRequests.remove(context.getId()), point);
-            else
-                logger.debug("There is no recovery request for id {}", context.getId());
-        } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
-            refreshState(point);
-        }
-    }
-
-    private void refreshState(VerifiableShare point) {
-        logger.debug("Refreshing my state");
-        TimerTask refreshTriggerTask = new TimerTask() {
-            @Override
-            public void run() {
-                int id = sequenceNumber.getAndIncrement();
-                PolynomialContext context = new PolynomialContext(
-                        id,
-                        SVController.getCurrentViewF(),
-                        BigInteger.ZERO,
-                        BigInteger.ZERO,
-                        SVController.getCurrentViewAcceptors(),
-                        tomLayer.execManager.getCurrentLeader(),
-                        PolynomialCreationReason.RESHARING
-                );
-                logger.debug("Starting creation of new polynomial with id {} for resharing", id);
-                distributedPolynomial.createNewPolynomial(context);
-            }
-        };
-
-        refreshTimer.schedule(refreshTriggerTask, 30000);
     }
 
     @Override
@@ -298,10 +241,13 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             tomLayer.getSynchronizer().getLCManager().setNewLeader(currentLeader);
             tomLayer.execManager.setNewLeader(currentLeader);
 
+            logger.debug("currentRegency: {} currentLeader: {} currentView: {}", currentRegency,
+                    currentLeader, currentView);
+
             // I might have timed out before invoking the state transfer, so
             // stop my re-transmission of STOP messages for all regencies up to the current one
             if (currentRegency > 0) {
-                logger.debug("Removing STOP retransmissions up to regency {}", currentLeader);
+                logger.debug("Removing STOP retransmissions up to regency {}", currentRegency);
                 tomLayer.getSynchronizer().removeSTOPretransmissions(currentRegency - 1);
             }
             //if (currentRegency > 0)
@@ -354,6 +300,146 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         } finally {
             lockTimer.unlock();
         }
+    }
+
+    @Override
+    public void onPolynomialCreation(PolynomialContext context, VerifiableShare point, int consensusId) {
+        logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
+        if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
+                && context.getReason() == PolynomialCreationReason.RECOVERY) {
+            if (onGoingRecoveryRequests.containsKey(context.getId()))
+                sendRecoveryState(onGoingRecoveryRequests.remove(context.getId()), point);
+            else
+                logger.debug("There is no recovery request for id {}", context.getId());
+        } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
+            refreshState(point, consensusId);
+        }
+    }
+
+    private void refreshState(VerifiableShare point, int consensusId) {
+        try {
+            logger.debug("Renewing my state");
+
+
+            waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
+
+            logger.debug("trying to acquire deliverLock");
+            dt.deliverLock();
+            logger.debug("deliverLock acquired");
+
+
+            int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
+            if (currentRegency > 0) {
+                logger.debug("Removing STOP retransmissions up to regency {}", currentRegency);
+                tomLayer.getSynchronizer().removeSTOPretransmissions(currentRegency - 1);
+            }
+
+            logger.debug("Getting state up to {}", consensusId);
+            DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
+            if (appState == null) {
+                logger.debug("Something went wrong while retrieving state up to {}", consensusId);
+                return;
+            }
+
+            ApplicationState refreshedState = refreshState(point, appState);
+            if (refreshedState != null)
+                dt.update(refreshedState);
+            else
+                logger.debug("State renewal ignored. Something went wrong while renewing the state");
+
+            if (refreshedState != null)
+                logger.debug("State renewed");
+
+        } finally {
+            waitingCID = -1;
+            dt.canDeliver();//signal deliverThread that state has been installed
+            dt.deliverUnlock();
+            setRefreshTimer();
+        }
+
+    }
+
+    private DefaultApplicationState refreshState(VerifiableShare point, DefaultApplicationState appState) {
+        BigInteger shareholder = point.getShare().getShareholder();
+        BigInteger y = point.getShare().getShare();
+        Commitments refreshCommitments = point.getCommitments();
+        BigInteger field = distributedPolynomial.getField();
+        byte[] renewedSnapshot = null;
+        if (appState.hasState()) {
+            ConfidentialSnapshot snapshot = ConfidentialSnapshot.deserialize(appState.getState());
+            if (snapshot == null)
+                return null;
+            if (snapshot.getShares() != null && snapshot.getShares().length > 0) {
+                VerifiableShare[] oldShares = snapshot.getShares();
+                VerifiableShare[] renewedShares = new VerifiableShare[oldShares.length];
+                for (int i = 0; i < oldShares.length; i++) {
+                    VerifiableShare oldShare = oldShares[i];
+                    Share share = new Share(shareholder, y.add(oldShare.getShare().getShare()).mod(field));
+                    Commitments commitments = commitmentScheme.sumCommitments(oldShare.getCommitments(),
+                            refreshCommitments);
+                    renewedShares[i] = new VerifiableShare(share, commitments, oldShare.getSharedData());
+                }
+
+                renewedSnapshot = new ConfidentialSnapshot(snapshot.getPlainData(), renewedShares).serialize();
+            }
+        }
+
+        CommandsInfo[] oldLogs = appState.getMessageBatches();
+        CommandsInfo[] renewedLogs = new CommandsInfo[oldLogs.length];
+
+        for (int i = 0; i < oldLogs.length; i++) {
+            CommandsInfo oldLog = oldLogs[i];
+            byte[][] commands = new byte[oldLog.commands.length][];
+            for (int j = 0; j < oldLog.commands.length; j++) {
+                Request request = Request.deserialize(oldLog.commands[j]);
+                if (request == null || request.getShares() == null || request.getShares().length == 0)
+                    commands[j] = oldLog.commands[j];
+                else {
+                    VerifiableShare[] oldShares = request.getShares();
+                    VerifiableShare[] renewedShares = new VerifiableShare[oldShares.length];
+                    for (int k = 0; k < oldShares.length; k++) {
+                        VerifiableShare oldShare = oldShares[k];
+                        Share share = new Share(shareholder, y.add(oldShare.getShare().getShare()).mod(field));
+                        Commitments commitments = commitmentScheme.sumCommitments(oldShare.getCommitments(),
+                                refreshCommitments);
+                        renewedShares[k] = new VerifiableShare(share, commitments, oldShare.getSharedData());
+                    }
+                    commands[j] = new Request(request.getType(), request.getPlainData(), renewedShares).serialize();
+                }
+            }
+            renewedLogs[i] = new CommandsInfo(commands, oldLog.msgCtx);
+        }
+
+        return new DefaultApplicationState(
+                renewedLogs,
+                appState.getLastCheckpointCID(),
+                appState.getLastCID(),
+                renewedSnapshot == null ? appState.getState() : renewedSnapshot,
+                renewedSnapshot == null ? appState.getStateHash() : TOMUtil.computeHash(renewedSnapshot),
+                SVController.getStaticConf().getProcessId()
+        );
+    }
+
+    private void setRefreshTimer() {
+        TimerTask refreshTriggerTask = new TimerTask() {
+            @Override
+            public void run() {
+                int id = sequenceNumber.getAndIncrement();
+                PolynomialContext context = new PolynomialContext(
+                        id,
+                        SVController.getCurrentViewF(),
+                        BigInteger.ZERO,
+                        BigInteger.ZERO,
+                        SVController.getCurrentViewAcceptors(),
+                        tomLayer.execManager.getCurrentLeader(),
+                        PolynomialCreationReason.RESHARING
+                );
+                logger.debug("Starting creation of new polynomial with id {} for resharing", id);
+                distributedPolynomial.createNewPolynomial(context);
+            }
+        };
+
+        refreshTimer.schedule(refreshTriggerTask, 30000);
     }
 
     private boolean isValidState(RecoveryApplicationState state) {
@@ -596,7 +682,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         if (snapshot == null)
             return null;
         if (snapshot.getShares() == null)
-            return new ConfidentialSnapshot(snapshot.getPlainData());
+            return snapshot;
         byte[] plainData = snapshot.getPlainData();
         VerifiableShare[] shares = snapshot.getShares();
         int numShares = shares.length;
