@@ -15,11 +15,8 @@
  */
 package confidential.demo.ycsb;
 
-import bftsmart.demo.ycsb.YCSBMessage;
-import bftsmart.demo.ycsb.YCSBTable;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
-import bftsmart.tom.server.defaultservices.DefaultRecoverable;
 import confidential.ConfidentialMessage;
 import confidential.server.ConfidentialRecoverable;
 import confidential.statemanagement.ConfidentialSnapshot;
