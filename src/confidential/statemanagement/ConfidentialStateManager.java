@@ -599,7 +599,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.debug("Creating recovery state up to CID {} for {}", recoveryMessage.getCID(),
                 recoveryMessage.getSender());
         DefaultApplicationState appState = (DefaultApplicationState)dt.getRecoverer().getState(recoveryMessage.getCID(), true);
-        if (appState == null) {
+        if (appState == null || appState.getMessageBatches() == null) {
             logger.debug("Ignoring this state transfer request because app state is null");
             return;
         }
