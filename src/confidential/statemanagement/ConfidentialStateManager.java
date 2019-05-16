@@ -574,7 +574,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             for (int j = 0; j < t; j++) {
                 request = Request.deserialize(commandToRecover[j]);
                 if (request == null || request.getShares() == null || request.getShares().length == 0) {
-                    recoveredCommands[i] = commandToRecover[i];
+                    recoveredCommands[i] = commandToRecover[j];
                     continue commands;
                 }
                 if (shares == null)
