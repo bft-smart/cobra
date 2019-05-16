@@ -1,0 +1,1 @@
+java -cp "bin\*;lib\*" -Djava.security.properties="./config/java.security" -Dlogback.configurationFile=config\logback.xml %*

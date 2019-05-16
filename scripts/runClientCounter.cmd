@@ -1,1 +1,0 @@
-java -cp "bin\*;lib\*" -Djava.security.properties="./config/java.security" -Dlogback.configurationFile=config\logback.xml confidential.demo.counter.client.Client %1
