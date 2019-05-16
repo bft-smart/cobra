@@ -1,1 +1,1 @@
-java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -cp lib/*:bin/* com.yahoo.ycsb.Client -P config/workloads/workloada -s
+java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -cp lib/*:bin/* com.yahoo.ycsb.Client -P config/workloads/workloada -db $1 -s

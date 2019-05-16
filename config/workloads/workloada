@@ -43,12 +43,10 @@ maxexecutiontime=300
 
 smart-initkey=1000
 
-exportfile=C:\\Users\\robin\\Desktop\\bft-smart\\measurements.txt
-
 measurementtype=timeseries
 timeseries.granularity=1000
 
 threadcount=10
 
 #db=bftsmart.demo.ycsb.YCSBClient
-db=confidential.demo.ycsb.YCSBClient
+#db=confidential.demo.ycsb.YCSBClient
