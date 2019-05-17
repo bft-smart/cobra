@@ -41,7 +41,7 @@ public class YCSBServer extends ConfidentialRecoverable {
         if (args.length == 1) {
             new YCSBServer(new Integer(args[0]));
         } else {
-            System.out.println("Usage: java ... YCSBServer <replica_id>");
+            System.out.println("Usage: java ... YCSBConfidentialServer <replica_id>");
         }
     }
 
@@ -54,7 +54,7 @@ public class YCSBServer extends ConfidentialRecoverable {
     @Override
     public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         if (msgCtx != null && msgCtx.getConsensusId() % 1000 == 0 && !logPrinted) {
-            System.out.println("YCSBServer executing CID: " + msgCtx.getConsensusId());
+            System.out.println("YCSBConfidentialServer executing CID: " + msgCtx.getConsensusId());
             logPrinted = true;
         } else {
             logPrinted = false;
@@ -73,7 +73,7 @@ public class YCSBServer extends ConfidentialRecoverable {
                 switch (aRequest.getEntity()) {
                     case RECORD: // ##### entity: record #####
                         if (!mTables.containsKey(aRequest.getTable())) {
-                            mTables.put((String) aRequest.getTable(), new YCSBTable());
+                            mTables.put(aRequest.getTable(), new YCSBTable());
                         }
                         if (!mTables.get(aRequest.getTable()).containsKey(aRequest.getKey())) {
                             mTables.get(aRequest.getTable()).put(aRequest.getKey(), aRequest.getValues());
