@@ -41,6 +41,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private BigInteger shareholder;
     private Set<Integer> sequenceNumbers;
     private Timer refreshTimer;
+    private TimerTask refreshTriggerTask;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
@@ -303,6 +304,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     @Override
     public void onPolynomialCreation(PolynomialContext context, VerifiableShare point, int consensusId) {
         logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
+        if (sequenceNumber.get() <= context.getId())
+            sequenceNumber.set(context.getId() + 1);
         if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
                 && context.getReason() == PolynomialCreationReason.RECOVERY) {
             if (onGoingRecoveryRequests.containsKey(context.getId()))
@@ -310,6 +313,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             else
                 logger.debug("There is no recovery request for id {}", context.getId());
         } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
+            refreshTriggerTask.cancel();
             refreshState(point, consensusId);
         }
     }
@@ -416,7 +420,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     }
 
     private void setRefreshTimer() {
-        TimerTask refreshTriggerTask = new TimerTask() {
+        refreshTriggerTask = new TimerTask() {
             @Override
             public void run() {
                 int id = sequenceNumber.getAndIncrement();
