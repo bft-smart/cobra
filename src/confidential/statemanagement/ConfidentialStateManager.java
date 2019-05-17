@@ -27,8 +27,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener {
+    private static final long REFRESH_PERIOD = 120000;
     private Logger logger = LoggerFactory.getLogger("confidential");
-    private final static long INIT_TIMEOUT = 40000;
+    private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
     private CommitmentScheme commitmentScheme;
     private InterpolationStrategy interpolationStrategy;
@@ -54,7 +55,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
-        //setRefreshTimer();
+        setRefreshTimer();
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -85,6 +86,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.info("Sending request for state up to CID {} to {}", waitingCID,
                 Arrays.toString(SVController.getCurrentViewOtherAcceptors()));
         tomLayer.getCommunication().send(SVController.getCurrentViewOtherAcceptors(), recoverySMMessage);
+
+        tomLayer.requestsTimer.Enabled(false);
 
         TimerTask stateTask = new TimerTask() {
             @Override
@@ -147,13 +150,20 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         try {
             lockTimer.lock();
             RecoverySMMessage recoverySMMessage = (RecoverySMMessage)msg;
-            logger.debug("State up to cid {} from {}", msg.getCID(), msg.getSender());
+            logger.info("{} sent me state up to cid {}", msg.getSender(), msg.getCID());
             logger.debug("waitingCID: {}" , waitingCID);
             if (!SVController.getStaticConf().isStateTransferEnabled())
                 return;
+
+            if (waitingCID == -1 || msg.getCID() != waitingCID) {
+                logger.debug("I am not waiting for state or state contains different cid. WaitingCID: {} RequestCID: {}",
+                        waitingCID, msg.getCID());
+                return;
+            }
             int currentRegency = -1;
             int currentLeader = -1;
             View currentView = null;
+
             if (!appStateOnly) {
                 senderRegencies.put(msg.getSender(), msg.getRegency());
                 senderLeaders.put(msg.getSender(), msg.getLeader());
@@ -174,75 +184,43 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
 
             if (!isValidState((RecoveryApplicationState) msg.getState())) { //TODO store deserialized state
-                logger.debug("{} sent me invalid state", msg.getSender());
+                logger.info("{} sent me invalid state", msg.getSender());
                 return;
             }
 
-            logger.debug("{} sent me valid state", msg.getSender());
-            logger.debug("Received sequence number {} from {}", recoverySMMessage.getSequenceNumber(), msg.getSender());
+            logger.info("{} sent me valid state", msg.getSender());
+
             sequenceNumbers.add(recoverySMMessage.getSequenceNumber());
             senderStates.put(msg.getSender(), msg.getState());
 
             if (!enoughReplies())
                 return;
-            logger.debug("More than f states confirmed");
+
             if (currentRegency == -1 || currentLeader == -1 || currentView == null) {
-                if ((SVController.getCurrentViewN() / 2) < getReplies()) {
-                    waitingCID = -1;
-                    reset();
-
+                if (SVController.getCurrentViewN() - SVController.getCurrentViewF() <= getReplies()) {
+                    logger.info("currentRegency or currentLeader or currentView are -1 or null");
                     if (stateTimer != null)
                         stateTimer.cancel();
-
-                    if (appStateOnly)
-                        requestState();
-                } else if ((SVController.getCurrentViewN() - SVController.getCurrentViewF()) <= getReplies()) {
-                    logger.debug("Could not obtain the state, retrying");
                     reset();
-                    if (stateTimer != null)
-                        stateTimer.cancel();
-                    waitingCID = -1;
                     requestState();
-                } else
-                    logger.debug("State transfer not yet finished");
-                return;
-            }
-            logger.debug("Restoring state");
-            if (sequenceNumbers.size() > 1) {
-                logger.error("Sequence numbers are different");
-                reset();
-
-                if (stateTimer != null)
-                    stateTimer.cancel();
-
-                if (appStateOnly)
-                    requestState();
-                return;
+                    return;
+                } else {
+                    logger.info("Waiting for more than {} states", SVController.getQuorum());
+                    return;
+                }
             }
 
-            sequenceNumber.set(recoverySMMessage.getSequenceNumber());
-            logger.debug("Sequence number: {}", sequenceNumber);
-            state = recoverState(senderStates.values());
-            if (state == null) {
-                logger.debug("Failed to restore state. Retrying");
-                reset();
-
-                if (stateTimer != null)
-                    stateTimer.cancel();
-
-                if (appStateOnly)
-                    requestState();
-                return;
-            }
-            logger.debug("State restored");
+            logger.info("More than f states confirmed");
+            if (stateTimer != null)
+                stateTimer.cancel();
 
             tomLayer.getSynchronizer().getLCManager().setLastReg(currentRegency);
             tomLayer.getSynchronizer().getLCManager().setNextReg(currentRegency);
             tomLayer.getSynchronizer().getLCManager().setNewLeader(currentLeader);
             tomLayer.execManager.setNewLeader(currentLeader);
 
-            logger.debug("currentRegency: {} currentLeader: {} currentView: {}", currentRegency,
-                    currentLeader, currentView);
+            logger.info("currentRegency: {} currentLeader: {} currentViewId: {}", currentRegency,
+                    currentLeader, currentView.getId());
 
             // I might have timed out before invoking the state transfer, so
             // stop my re-transmission of STOP messages for all regencies up to the current one
@@ -253,11 +231,34 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             //if (currentRegency > 0)
             //    tomLayer.requestsTimer.setTimeout(tomLayer.requestsTimer.getTimeout() * (currentRegency * 2));
 
-            logger.debug("trying to acquire deliverLock");
+            logger.info("Restoring state");
+            if (sequenceNumbers.size() > 1) {
+                logger.error("Sequence numbers are different");
+                reset();
+                requestState();
+                return;
+            }
+
+            sequenceNumber.set(recoverySMMessage.getSequenceNumber());
+
+            state = recoverState(senderStates.values());
+
+            if (state == null) {
+                logger.error("Failed to reconstruct state. Retrying");
+                reset();
+                requestState();
+                return;
+            }
+            logger.info("State reconstructed");
+
             dt.deliverLock();
-            logger.debug("deliverLock acquired");
+
             waitingCID = -1;
+
+            logger.info("Updating state");
             dt.update(state);
+
+            logger.info("Last exec: {}", tomLayer.getLastExec());
 
             if (!appStateOnly && execManager.stopped()) {
                 Queue<ConsensusMessage> stoppedMsgs = execManager.getStoppedMsgs();
@@ -289,9 +290,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             tomLayer.requestsTimer.Enabled(true);
             tomLayer.requestsTimer.startTimer();
-            if (stateTimer != null) {
-                stateTimer.cancel();
-            }
 
             if (appStateOnly) {
                 appStateOnly = false;
@@ -323,10 +321,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
 
-            logger.debug("trying to acquire deliverLock");
             dt.deliverLock();
-            logger.debug("deliverLock acquired");
-
 
             int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
             if (currentRegency > 0) {
@@ -439,7 +434,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
         };
 
-        refreshTimer.schedule(refreshTriggerTask, 30000);
+        refreshTimer.schedule(refreshTriggerTask, REFRESH_PERIOD);
     }
 
     private boolean isValidState(RecoveryApplicationState state) {
@@ -636,6 +631,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.info("Sending recovery state up to {} to {}", recoveryState.getLastCID(),
                 recoveryMessage.getSender());
         tomLayer.getCommunication().send(new int[] {recoveryMessage.getSender()}, response);
+        logger.info("Recovery state sent");
     }
 
     private CommandsInfo[] createRecoveryLog(CommandsInfo[] log, VerifiableShare recoveryPoint) {
