@@ -287,7 +287,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             reset();
 
             logger.info("I updated the state!");
-
+            tomLayer.requestsTimer.clearAll();
             tomLayer.requestsTimer.Enabled(true);
             tomLayer.requestsTimer.startTimer();
 
