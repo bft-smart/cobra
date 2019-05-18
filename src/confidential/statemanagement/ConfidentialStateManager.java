@@ -290,7 +290,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             logger.info("I updated the state!");
             tomLayer.requestsTimer.clearAll();
             tomLayer.requestsTimer.Enabled(true);
-            tomLayer.requestsTimer.startTimer();
+            //tomLayer.requestsTimer.startTimer();
 
             if (appStateOnly) {
                 appStateOnly = false;
