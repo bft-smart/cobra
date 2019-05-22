@@ -8,14 +8,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.CommitmentScheme;
 
-import javax.crypto.Cipher;
-import javax.crypto.NoSuchPaddingException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
-import java.security.NoSuchAlgorithmException;
 import java.security.SecureRandom;
 import java.util.HashMap;
 import java.util.Map;
@@ -32,7 +29,6 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
     private SecureRandom rndGenerator;
     private CommitmentScheme commitmentScheme;
     private BigInteger field;
-    private Cipher cipher;
     private Map<Integer, PolynomialCreator> polynomialCreators;//TODO should I change to concurrentMap?
     private Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
     private int processId;
@@ -42,14 +38,12 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
     private Lock entryLock;
 
     public DistributedPolynomial(int processId, InterServersCommunication serversCommunication,
-                                 CommitmentScheme commitmentScheme, BigInteger field) throws NoSuchPaddingException,
-            NoSuchAlgorithmException {
+                                 CommitmentScheme commitmentScheme, BigInteger field) {
         this.serversCommunication = serversCommunication;
         this.commitmentScheme = commitmentScheme;
         this.field = field;
         this.rndGenerator = new SecureRandom(SEED);
         this.polynomialCreators = new HashMap<>();
-        this.cipher = Cipher.getInstance("AES");//svController.getStaticConf().getSecretKeyAlgorithm(), svController.getStaticConf().getSecretKeyAlgorithmProvider());
         this.processId = processId;
         this.shareholderId = BigInteger.valueOf(processId + 1);
         this.listeners = new HashMap<>();
@@ -109,7 +103,6 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
                 shareholderId,
                 field,
                 rndGenerator,
-                cipher,
                 commitmentScheme,
                 serversCommunication,
                 listeners.get(context.getReason())
@@ -144,7 +137,7 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
                         case POLYNOMIAL_PROPOSAL:
                             ProposalMessage proposalMessage = new ProposalMessage();
                             proposalMessage.readExternal(in);
-                            processProposal(message.getSerializedMessage(), proposalMessage);
+                            processProposal(proposalMessage);
                             break;
                         case POLYNOMIAL_PROPOSAL_SET:
                             ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
@@ -199,14 +192,14 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
         polynomialCreator.processNewPolynomialMessage(message);
     }
 
-    private void processProposal(byte[] serializedMessage, ProposalMessage message) {
+    private void processProposal(ProposalMessage message) {
         logger.debug("Received proposal from {} for polynomial creation id {}", message.getSender(), message.getId());
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
         if (polynomialCreator == null) {
             logger.error("There is no active polynomial creation with id {}", message.getId());
             return;
         }
-        polynomialCreator.processProposal(serializedMessage, message);
+        polynomialCreator.processProposal(message);
     }
 
     private void processProposalSet(ProposalSetMessage message) {

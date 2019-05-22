@@ -5,22 +5,23 @@ import vss.commitment.Commitments;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.math.BigInteger;
 
 public class ProposalMessage extends PolynomialMessage {
-    private byte[][] encryptedPoints;
+    private BigInteger point;
     private Commitments commitments;
     private byte[] cryptographicHash;
 
     public ProposalMessage() {}
 
-    public ProposalMessage(int id, int sender, byte[][] encryptedPoints, Commitments commitments) {
+    public ProposalMessage(int id, int sender, BigInteger point, Commitments commitments) {
         super(id, sender);
-        this.encryptedPoints = encryptedPoints;
+        this.point = point;
         this.commitments = commitments;
     }
 
-    public byte[][] getEncryptedPoints() {
-        return encryptedPoints;
+    public BigInteger getPoint() {
+        return point;
     }
 
     public Commitments getCommitments() {
@@ -38,11 +39,9 @@ public class ProposalMessage extends PolynomialMessage {
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         super.writeExternal(out);
-        out.writeInt(encryptedPoints.length);
-        for (byte[] v : encryptedPoints) {
-            out.writeInt(v.length);
-            out.write(v);
-        }
+        byte[] b = point.toByteArray();
+        out.writeInt(b.length);
+        out.write(b);
 
         commitments.writeExternal(out);
     }
@@ -50,14 +49,9 @@ public class ProposalMessage extends PolynomialMessage {
     @Override
     public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
-        int len = in.readInt();
-        encryptedPoints = new byte[len][];
-        for (int i = 0; i < encryptedPoints.length; i++) {
-            len = in.readInt();
-            byte[] b = new byte[len];
-            in.readFully(b);
-            encryptedPoints[i] = b;
-        }
+        byte[] b = new byte[in.readInt()];
+        in.readFully(b);
+        point = new BigInteger(b);
 
         commitments = new Commitments();
         commitments.readExternal(in);

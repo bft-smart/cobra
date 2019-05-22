@@ -5,16 +5,16 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 public class MissingProposalRequestMessage extends PolynomialMessage {
-    private byte[][] missingProposals;
+    private byte[] missingProposals;
 
     public MissingProposalRequestMessage() {}
 
-    public MissingProposalRequestMessage(int id, int sender, byte[][] missingProposals) {
+    public MissingProposalRequestMessage(int id, int sender, byte[] missingProposals) {
         super(id, sender);
         this.missingProposals = missingProposals;
     }
 
-    public byte[][] getMissingProposals() {
+    public byte[] getMissingProposalCryptographicHash() {
         return missingProposals;
     }
 
@@ -22,21 +22,13 @@ public class MissingProposalRequestMessage extends PolynomialMessage {
     public void writeExternal(ObjectOutput out) throws IOException {
         super.writeExternal(out);
         out.writeInt(missingProposals.length);
-        out.writeInt(missingProposals[0].length);
-        for (byte[] missingProposal : missingProposals) {
-            out.write(missingProposal);
-        }
+        out.write(missingProposals);
     }
 
     @Override
     public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
-        missingProposals = new byte[in.readInt()][];
-        int len = in.readInt();
-        for (int i = 0; i < missingProposals.length; i++) {
-            byte[] b = new byte[len];
-            in.readFully(b);
-            missingProposals[i] = b;
-        }
+        missingProposals = new byte[in.readInt()];
+        in.readFully(missingProposals);
     }
 }

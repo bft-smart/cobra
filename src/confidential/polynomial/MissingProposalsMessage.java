@@ -5,37 +5,29 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 public class MissingProposalsMessage extends PolynomialMessage {
-    private ProposalMessage[] missingProposals;
+    private ProposalMessage missingProposal;
 
     public MissingProposalsMessage() {}
 
-    public MissingProposalsMessage(int id, int sender, ProposalMessage[] missingProposals) {
+    public MissingProposalsMessage(int id, int sender, ProposalMessage missingProposal) {
         super(id, sender);
-        this.missingProposals = missingProposals;
+        this.missingProposal = missingProposal;
     }
 
-    public ProposalMessage[] getMissingProposals() {
-        return missingProposals;
+    public ProposalMessage getMissingProposal() {
+        return missingProposal;
     }
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         super.writeExternal(out);
-        out.writeInt(missingProposals.length);
-        for (ProposalMessage missingProposal : missingProposals) {
-            missingProposal.writeExternal(out);
-        }
+        missingProposal.writeExternal(out);
     }
 
     @Override
     public void readExternal(ObjectInput in) throws IOException {
         super.readExternal(in);
-        int len = in.readInt();
-        missingProposals = new ProposalMessage[len];
-        for (int i = 0; i < len; i++) {
-            ProposalMessage proposal = new ProposalMessage();
-            proposal.readExternal(in);
-            missingProposals[i] = proposal;
-        }
+        missingProposal = new ProposalMessage();
+        missingProposal.readExternal(in);
     }
 }

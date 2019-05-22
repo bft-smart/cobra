@@ -22,12 +22,10 @@ import vss.facade.SecretSharingException;
 import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.VerifiableShare;
 
-import javax.crypto.NoSuchPaddingException;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -74,8 +72,6 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             stateManager.askCurrentConsensusId();
         } catch (SecretSharingException e) {
             logger.error("Failed to initialize ServerConfidentialityScheme", e);
-        } catch (NoSuchPaddingException | NoSuchAlgorithmException e) {
-            logger.error("Failed to initialize DistributePolynomial", e);
         }
     }
 
