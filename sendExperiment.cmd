@@ -15,7 +15,11 @@ rem xcopy %SRC%\lib\*.jar %DST%\lib\
 xcopy /e /q %SRC%\config\* %DST%\config\
 rem xcopy %SRC%\scripts\*.sh %DST%\
 
-rm %DST%\config\currentView
+del %DST%\config\currentView
+rmdir /s /q %DST%\config\keysECDSA
+rmdir /s /q %DST%\config\keysRSA
+rmdir /s /q %DST%\config\keysSSL_TLS
+rmdir /s /q %DST%\config\keysSunEC
 
 scp -r %DST% %QUINTA_USER%@quinta.navigators.di.fc.ul.pt:/home/users/%QUINTA_USER%
 
