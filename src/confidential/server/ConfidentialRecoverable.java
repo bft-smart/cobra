@@ -320,7 +320,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         }
 
         if (cid > 0 && (cid % checkpointPeriod) == 0) {
-            logger.debug("Performing checkpoint for consensus " + cid);
+            logger.info("Performing checkpoint for consensus " + cid);
             stateLock.lock();
             ConfidentialSnapshot snapshot = getConfidentialSnapshot();
             stateLock.unlock();

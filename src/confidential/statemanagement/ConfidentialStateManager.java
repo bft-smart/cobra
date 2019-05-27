@@ -5,6 +5,8 @@ import bftsmart.reconfiguration.views.View;
 import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.SMMessage;
 import bftsmart.statemanagement.StateManager;
+import bftsmart.tom.core.DeliveryThread;
+import bftsmart.tom.core.TOMLayer;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
@@ -26,7 +28,7 @@ import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener {
+public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, VerificationCompleted {
     private static final long REFRESH_PERIOD = 120000;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
@@ -42,6 +44,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private Set<Integer> sequenceNumbers;
     private Timer refreshTimer;
     private TimerTask refreshTriggerTask;
+    private StateVerifierHandlerThread stateVerifierHandlerThread;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
@@ -56,7 +59,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
-        setRefreshTimer();
+        //setRefreshTimer();
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -65,6 +68,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     public void setCommitmentScheme(CommitmentScheme commitmentScheme) {
         this.commitmentScheme = commitmentScheme;
+    }
+
+    @Override
+    public void init(TOMLayer tomLayer, DeliveryThread dt) {
+        super.init(tomLayer, dt);
+        tomLayer.requestsTimer.Enabled(false);
     }
 
     @Override
@@ -106,6 +115,11 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 triggerTimeout(message);
             }
         };
+
+        stateVerifierHandlerThread = new StateVerifierHandlerThread(this, SVController.getCurrentViewF(),
+                commitmentScheme);
+        stateVerifierHandlerThread.start();
+
         stateTimer = new Timer("State Timer");
         timeout *= 2;
         stateTimer.schedule(stateTask, timeout);
@@ -161,14 +175,35 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                         waitingCID, msg.getCID());
                 return;
             }
+            if (!appStateOnly) {
+                senderRegencies.put(msg.getSender(), msg.getRegency());
+                senderLeaders.put(msg.getSender(), msg.getLeader());
+                senderViews.put(msg.getSender(), msg.getView());
+            }
+
+            logger.debug("Submitting state from {} to verification", msg.getSender());
+            stateVerifierHandlerThread.addStateForVerification(recoverySMMessage);
+        } finally {
+            lockTimer.unlock();
+        }
+    }
+
+    @Override
+    public void onVerificationCompleted(boolean valid, RecoverySMMessage msg) {
+        try {
+            lockTimer.lock();
+            if (!valid) {
+                logger.info("{} sent me invalid state", msg.getSender());
+                return;
+            }
+
+            logger.info("{} sent me valid state", msg.getSender());
+
             int currentRegency = -1;
             int currentLeader = -1;
             View currentView = null;
 
             if (!appStateOnly) {
-                senderRegencies.put(msg.getSender(), msg.getRegency());
-                senderLeaders.put(msg.getSender(), msg.getLeader());
-                senderViews.put(msg.getSender(), msg.getView());
                 if (enoughRegencies(msg.getRegency())) {
                     currentRegency = msg.getRegency();
                 }
@@ -184,14 +219,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 currentView = SVController.getCurrentView();
             }
 
-            if (!isValidState((RecoveryApplicationState) msg.getState())) { //TODO store deserialized state
-                logger.info("{} sent me invalid state", msg.getSender());
-                return;
-            }
-
-            logger.info("{} sent me valid state", msg.getSender());
-
-            sequenceNumbers.add(recoverySMMessage.getSequenceNumber());
+            sequenceNumbers.add(msg.getSequenceNumber());
             senderStates.put(msg.getSender(), msg.getState());
 
             if (!enoughReplies())
@@ -212,6 +240,9 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
 
             logger.info("More than f states confirmed");
+
+            stateVerifierHandlerThread.interrupt();
+
             if (stateTimer != null)
                 stateTimer.cancel();
 
@@ -240,7 +271,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 return;
             }
 
-            sequenceNumber.set(recoverySMMessage.getSequenceNumber());
+            sequenceNumber.set(msg.getSequenceNumber());
 
             state = recoverState(senderStates.values());
 
@@ -254,7 +285,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             dt.deliverLock();
 
-            waitingCID = -1;
 
             logger.info("Updating state");
             dt.update(state);
@@ -281,6 +311,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
 
             isInitializing = false;
+
+            waitingCID = -1;
 
             dt.canDeliver();
             dt.deliverUnlock();
@@ -441,38 +473,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         refreshTimer.schedule(refreshTriggerTask, REFRESH_PERIOD);
     }
 
-    private boolean isValidState(RecoveryApplicationState state) {
-        Commitments recoveryCommitments = state.getTransferPolynomialCommitments();
-        if (state.hasState()) {
-            ConfidentialSnapshot recoverySnapshot = ConfidentialSnapshot.deserialize(state.getState());
-            if (recoverySnapshot == null)
-                return false;
-            if (recoverySnapshot.getShares() != null) {
-                for (VerifiableShare share : recoverySnapshot.getShares()) {
-                    Commitments commitments = commitmentScheme.sumCommitments(share.getCommitments(), recoveryCommitments);
-                    if (!commitmentScheme.checkValidity(share.getShare(), commitments))
-                        return false;
-                }
-            }
-        }
 
-        CommandsInfo[] recoveryLog = state.getMessageBatches();
-        for (CommandsInfo commandsInfo : recoveryLog) {
-            for (byte[] command : commandsInfo.commands) {
-                Request request = Request.deserialize(command);
-                if (request == null)
-                    return false;
-                if (request.getShares() != null) {
-                    for (VerifiableShare share : request.getShares()) {
-                        Commitments commitments = commitmentScheme.sumCommitments(share.getCommitments(), recoveryCommitments);
-                        if (!commitmentScheme.checkValidity(share.getShare(), commitments))
-                            return false;
-                    }
-                }
-            }
-        }
-        return true;
-    }
 
     private ApplicationState recoverState(Collection<ApplicationState> recoveryStates) {
         if (recoveryStates.size() <= SVController.getCurrentViewF()) {

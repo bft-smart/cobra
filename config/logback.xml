@@ -31,14 +31,14 @@
     <!-- To use async logging use ref="ASYNC" instead -->
   </root>
 
-  <logger name="confidential" level="INFO">
-    <!--<appender-ref ref="FILE"/>-->
+  <logger name="confidential" level="DEBUG">
+    <appender-ref ref="FILE"/>
     <appender-ref ref="MIN-STDOUT" />
       <!--<appender-ref ref="STDOUT" /> -->
   </logger>
 
   <logger name="demo" level="INFO">
-    <!--<appender-ref ref="FILE"/>-->
+    <appender-ref ref="FILE"/>
     <appender-ref ref="MIN-STDOUT" />
     <!--<appender-ref ref="STDOUT" /> -->
   </logger>
@@ -50,7 +50,7 @@
 
 
   <logger name="bftsmart" level="INFO">
-    <!--<appender-ref ref="FILE"/>-->
+    <appender-ref ref="FILE"/>
     <appender-ref ref="MIN-STDOUT" />
       <!--<appender-ref ref="STDOUT" /> -->
   </logger>
