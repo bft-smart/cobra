@@ -181,8 +181,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 senderViews.put(msg.getSender(), msg.getView());
             }
 
-            logger.debug("Submitting state from {} to verification", msg.getSender());
-            stateVerifierHandlerThread.addStateForVerification(recoverySMMessage);
+            if (stateVerifierHandlerThread.isAlive()) {
+                logger.debug("Submitting state from {} to verification", msg.getSender());
+                stateVerifierHandlerThread.addStateForVerification(recoverySMMessage);
+            } else {
+                onVerificationCompleted(false, recoverySMMessage);
+            }
         } finally {
             lockTimer.unlock();
         }
@@ -192,12 +196,17 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     public void onVerificationCompleted(boolean valid, RecoverySMMessage msg) {
         try {
             lockTimer.lock();
-            if (!valid) {
+            if (valid) {
+                logger.info("{} sent me valid state", msg.getSender());
+                sequenceNumbers.add(msg.getSequenceNumber());
+                senderStates.put(msg.getSender(), msg.getState());
+            } else if (!enoughReplies()) {
                 logger.info("{} sent me invalid state", msg.getSender());
                 return;
             }
 
-            logger.info("{} sent me valid state", msg.getSender());
+            if (!enoughReplies())
+                return;
 
             int currentRegency = -1;
             int currentLeader = -1;
@@ -218,12 +227,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
                 currentView = SVController.getCurrentView();
             }
-
-            sequenceNumbers.add(msg.getSequenceNumber());
-            senderStates.put(msg.getSender(), msg.getState());
-
-            if (!enoughReplies())
-                return;
 
             if (currentRegency == -1 || currentLeader == -1 || currentView == null) {
                 if (SVController.getCurrentViewN() - SVController.getCurrentViewF() <= getReplies()) {
