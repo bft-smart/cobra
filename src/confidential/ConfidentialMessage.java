@@ -7,14 +7,14 @@ import java.util.Arrays;
 
 public class ConfidentialMessage {
     private final byte[] plainData;
-    private final VerifiableShare[] shares;
+    private final ConfidentialData[] shares;
 
     public ConfidentialMessage() {
         plainData = null;
         shares = null;
     }
 
-    public ConfidentialMessage(byte[] plainData, VerifiableShare... shares) {
+    public ConfidentialMessage(byte[] plainData, ConfidentialData... shares) {
         this.plainData = plainData;
         this.shares = shares;
     }
@@ -23,7 +23,7 @@ public class ConfidentialMessage {
         return plainData;
     }
 
-    public VerifiableShare[] getShares() {
+    public ConfidentialData[] getShares() {
         return shares;
     }
 
@@ -35,7 +35,7 @@ public class ConfidentialMessage {
                 out.write(plainData);
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
-                for (VerifiableShare share : shares)
+                for (ConfidentialData share : shares)
                     share.writeExternal(out);
             }
             out.flush();
@@ -56,11 +56,11 @@ public class ConfidentialMessage {
                 in.readFully(plainData);
 
             len = in.readInt();
-            VerifiableShare[] shares = len == -1 ? null : new VerifiableShare[len];
+            ConfidentialData[] shares = len == -1 ? null : new ConfidentialData[len];
             if (len != -1) {
-                VerifiableShare share;
+                ConfidentialData share;
                 for (int i = 0; i < shares.length; i++) {
-                    share = new VerifiableShare();
+                    share = new ConfidentialData();
                     share.readExternal(in);
                     shares[i] = share;
                 }
@@ -86,9 +86,9 @@ public class ConfidentialMessage {
         if (shares.length != that.shares.length)
             return false;
         for (int i = 0; i < shares.length; i++)
-            if (!Arrays.equals(shares[i].getSharedData(), that.shares[i].getSharedData())
-                    || !shares[i].getCommitments().equals(that.shares[i].getCommitments()))
+            if (!shares[i].equals(that.shares[i]))
                 return false;
+
         return true;
     }
 
@@ -96,9 +96,8 @@ public class ConfidentialMessage {
     public int hashCode() {
         int result = Arrays.hashCode(plainData);
         if (shares != null) {
-            for (VerifiableShare share : shares) {
-                result = 31 * result + Arrays.hashCode(share.getSharedData());
-                result = 31 * result + share.getCommitments().hashCode();
+            for (ConfidentialData share : shares) {
+                result = 31 * result + share.hashCode();
             }
         }
         return result;

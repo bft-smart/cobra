@@ -2,6 +2,7 @@ package confidential.client;
 
 import bftsmart.tom.core.messages.TOMMessage;
 import bftsmart.tom.util.Extractor;
+import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import org.slf4j.Logger;
@@ -18,9 +19,11 @@ import java.util.Map;
 public class ConfidentialExtractor implements Extractor {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private Map<Integer, LinkedList<ConfidentialMessage>> responses;
+    private Map<Integer, VerifiableShare> shares;
 
     public ConfidentialExtractor() {
         responses = new HashMap<>();
+        shares = new HashMap<>();
     }
 
 
@@ -59,7 +62,7 @@ public class ConfidentialExtractor implements Extractor {
                     VerifiableShare[][] verifiableShares = new VerifiableShare[numSecret][sameContent];
                     int i = 0;
                     for (ConfidentialMessage confidentialMessage : msgList) {
-                        VerifiableShare[] shareI = confidentialMessage.getShares();
+                        ConfidentialData[] shareI = confidentialMessage.getShares();
                         for (int j = 0; j < numSecret; j++) {
                             verifiableShares[j][i] = shareI[j];
                         }

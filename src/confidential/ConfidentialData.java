@@ -6,8 +6,10 @@ import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
+import java.util.Objects;
 
 public class ConfidentialData implements Externalizable {
     private VerifiableShare share;
@@ -52,5 +54,38 @@ public class ConfidentialData implements Externalizable {
                 publicShares.add(share);
             }
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (o == null || getClass() != o.getClass()) return false;
+        ConfidentialData that = (ConfidentialData) o;
+        if (!Arrays.equals(share.getSharedData(), that.share.getSharedData())
+                || !share.getCommitments().equals(that.share.getCommitments()))
+            return false;
+        if (publicShares == null && that.publicShares == null)
+            return true;
+        if (publicShares == null || that.publicShares == null)
+            return false;
+        for (int i = 0; i < publicShares.size(); i++) {
+            if (!Arrays.equals(publicShares.get(i).getSharedData(), that.publicShares.get(i).getSharedData())
+                    || !publicShares.get(i).getCommitments().equals(that.publicShares.get(i).getCommitments()))
+                return false;
+        }
+        return true;
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Arrays.hashCode(share.getSharedData());
+        result = 31 * result + share.getCommitments().hashCode();
+        if (publicShares != null) {
+            for (VerifiableShare share : publicShares) {
+                result = 31 * result + Arrays.hashCode(share.getSharedData());
+                result = 31 * result + share.getCommitments().hashCode();
+            }
+        }
+        return result;
     }
 }
