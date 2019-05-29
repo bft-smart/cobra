@@ -9,6 +9,7 @@ import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
+import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.MessageType;
 import confidential.interServersCommunication.InterServersCommunication;
@@ -146,6 +147,10 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
 
                     for (int i = 0; i < commands.length; i++) {
                         Request request = Request.deserialize(commands[i]);
+                        if (request == null) {
+                            logger.warn("Request is null");
+                            continue;
+                        }
                         if (request.getType() == MessageType.APPLICATION) {
                             logger.debug("Ignoring application request");
                             continue;
@@ -218,12 +223,13 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             return new byte[0];
         }
+
         return appExecuteUnordered(request.getPlainData(), request.getShares(), msgCtx).serialize();
     }
 
-    public abstract ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
+    public abstract ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
 
-    public abstract ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
+    public abstract ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
 
     public abstract ConfidentialSnapshot getConfidentialSnapshot();
 
@@ -244,14 +250,14 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
                         in.readFully(plainData);
                     }
                     len = in.readInt();
-                    VerifiableShare[] shares = null;
+                    ConfidentialData[] shares = null;
                     if (len != -1) {
-                        shares = new VerifiableShare[len];
+                        shares = new ConfidentialData[len];
                         PrivatePublishedShares publishedShares;
                         for (int i = 0; i < len; i++) {
                             publishedShares = new PrivatePublishedShares();
                             publishedShares.readExternal(in);
-                            shares[i] = confidentialityScheme.extractShare(publishedShares);
+                            shares[i] = new ConfidentialData(confidentialityScheme.extractShare(publishedShares));
                         }
                     }
                     result = new Request(type, plainData, shares);

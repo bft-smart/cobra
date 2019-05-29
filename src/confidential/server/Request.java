@@ -1,5 +1,6 @@
 package confidential.server;
 
+import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.MessageType;
 import vss.secretsharing.VerifiableShare;
@@ -9,9 +10,9 @@ import java.io.*;
 public final class Request {
     private MessageType type;
     private byte[] plainData;
-    private VerifiableShare[] shares;
+    private ConfidentialData[] shares;
 
-    public Request(MessageType type, byte[] plainData, VerifiableShare... shares) {
+    public Request(MessageType type, byte[] plainData, ConfidentialData... shares) {
         this.type = type;
         this.plainData = plainData;
         this.shares = shares;
@@ -25,7 +26,7 @@ public final class Request {
         return plainData;
     }
 
-    public VerifiableShare[] getShares() {
+    public ConfidentialData[] getShares() {
         return shares;
     }
 
@@ -38,7 +39,7 @@ public final class Request {
                 out.write(plainData);
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
-                for (VerifiableShare share : shares)
+                for (ConfidentialData share : shares)
                     share.writeExternal(out);
             }
             out.flush();
@@ -60,11 +61,11 @@ public final class Request {
                 in.readFully(plainData);
 
             len = in.readInt();
-            VerifiableShare[] shares = len == -1 ? null : new VerifiableShare[len];
+            ConfidentialData[] shares = len == -1 ? null : new ConfidentialData[len];
             if (len != -1) {
-                VerifiableShare share;
+                ConfidentialData share;
                 for (int i = 0; i < shares.length; i++) {
-                    share = new VerifiableShare();
+                    share = new ConfidentialData();
                     share.readExternal(in);
                     shares[i] = share;
                 }
