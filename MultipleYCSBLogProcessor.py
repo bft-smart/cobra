@@ -89,6 +89,20 @@ def extract_values(log_files):
     return throughputs, read_latency, update_latency
 
 
+def compute_avg(throughput, read_latency, update_latency):
+    throughput_avg = sum(throughput) / len(throughput)
+    read_avg = 0
+    update_avg = 0
+    if read_latency:
+        read_avg = sum(read_latency) / len(read_latency)
+    if update_latency:
+        update_avg = sum(update_latency) / len(update_latency)
+    print("Throughput avg:", throughput_avg, "ops/s")
+    print("Read latency avg:", read_avg, "us")
+    print("Update latency avg:", update_avg, "us")
+    return throughput_avg, read_avg, update_avg
+
+
 if __name__ == '__main__':
     if len(sys.argv) < 3:
         print("Usage: <title> <log file> [<log file>]")
@@ -98,23 +112,30 @@ if __name__ == '__main__':
 
     throughput_values, read_latency, update_latency = extract_values(sys.argv[2:])
 
+    throughput_avg, read_avg, update_avg = compute_avg(throughput_values, read_latency, update_latency)
+
     graph_n_rows = 2
     graph_n_cols = 1
 
     plt.suptitle(title)
     plt.subplot(graph_n_rows, graph_n_cols, 1)
-    plt.plot(throughput_values)
+    plt.plot(throughput_values, "b", label="Throughput (avg: " + str(round(throughput_avg)) + " ops/s)")
+    plt.hlines(throughput_avg, 0, 300, colors="b")
+    plt.grid(linestyle='dotted')
     plt.title("Throughput")
     plt.ylabel("Throughput (ops/sec)")
+    plt.legend()
 
     plt.subplot(graph_n_rows, graph_n_cols, 2)
     if update_latency:
-        plt.plot(update_latency, "r", label="Update")
+        plt.plot(update_latency, "r", label="Update (avg: " + str(round(update_avg)) + " us)")
+        plt.hlines(update_avg, 0, 300, colors="r")
     if read_latency:
-        plt.plot(read_latency, "g", label="Read")
+        plt.plot(read_latency, "g", label="Read (avg: " + str(round(read_avg)) + " us)")
+        plt.hlines(read_avg, 0, 300, colors="g")
     plt.title("Latency")
     plt.ylabel("Latency (us)")
-
+    plt.grid(linestyle='dotted')
     plt.legend()
 
     plt.show()
