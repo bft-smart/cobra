@@ -7,65 +7,71 @@ def load_log_file(filename):
 
     with open(filename) as log_file:
         for line in log_file:
-            if "ops/sec" in line and "READ" in line and "UPDATE" in line:
+            if "ops/sec" in line and ("UPDATE" in line or "READ" in line):
                 lines.append(line)
     return lines
 
-
-def plot_throughput(lines):
+def extract_values(lines):
     throughput = []
+    read_latency = []
+    update_latency = []
+
+    update = "[UPDATE" in lines[0].split(";")[2].split()
+    read = "[READ" in lines[0].split(";")[2].split()
+
+    if update:
+        print ("Log has update latency")
+
+    if read:
+        print ("Log has read latency")
 
     for line in lines:
-        value = line.split(";")[1].split()[0].replace(",", ".")
-        throughput.append(float(value))
+        sep_values = line.split(";")
+        t_value = sep_values[1].split()[0].replace(",", ".")
+        throughput.append(float(t_value))
+        latency = sep_values[2].split()
+        if read:
+            index = latency.index("[READ")
+            r_value = latency[index + 1].split("=")[1].split("]")[0].replace(",", ".")
+            read_latency.append(float(r_value))
+        if update:
+            index = latency.index("[UPDATE")
+            u_value = latency[index + 1].split("=")[1].split("]")[0].replace(",", ".")
+            update_latency.append(float(u_value))
 
-    return throughput
-
-
-def plot_read_latency(lines):
-    latency = []
-    for line in lines:
-        value = line.split(";")[2].split()[1].split("=")[1].split("]")[0].replace(",", ".")
-        latency.append(float(value))
-    return latency
-
-
-def plot_update_latency(lines):
-    latency = []
-    for line in lines:
-        value = line.split(";")[2].split()[3].split("=")[1].split("]")[0].replace(",", ".")
-        latency.append(float(value))
-    return latency
+    return throughput, read_latency, update_latency
 
 
-if len(sys.argv) != 3:
-    print("Usage: <title> <log file>")
-    exit(-1)
+if __name__ == '__main__':
+    if len(sys.argv) != 3:
+        print("Usage: <title> <log file>")
+        exit(-1)
 
-logFile = sys.argv[2]
-title = sys.argv[1]
-print("Reading log file ", logFile)
+    logFile = sys.argv[2]
+    title = sys.argv[1]
+    print("Reading log file ", logFile)
 
-log = load_log_file(logFile)
-throughput_values = plot_throughput(log)
-read_latency = plot_read_latency(log)
-update_latency = plot_update_latency(log)
+    log = load_log_file(logFile)
 
-graph_n_rows = 2
-graph_n_cols = 1
+    throughput_values, read_latency, update_latency = extract_values(log)
 
-plt.suptitle(title)
-plt.subplot(graph_n_rows, graph_n_cols, 1)
-plt.plot(throughput_values)
-plt.title("Throughput")
-plt.ylabel("Throughput (ops/sec)")
+    graph_n_rows = 2
+    graph_n_cols = 1
 
-plt.subplot(graph_n_rows, graph_n_cols, 2)
-plt.plot(update_latency, "r", label="Update")
-plt.plot(read_latency, "g", label="Read")
-plt.title("Latency")
-plt.ylabel("Latency (us)")
+    plt.suptitle(title)
+    plt.subplot(graph_n_rows, graph_n_cols, 1)
+    plt.plot(throughput_values)
+    plt.title("Throughput")
+    plt.ylabel("Throughput (ops/sec)")
 
-plt.legend()
+    plt.subplot(graph_n_rows, graph_n_cols, 2)
+    if update_latency:
+        plt.plot(update_latency, "r", label="Update")
+    if read_latency:
+        plt.plot(read_latency, "g", label="Read")
+    plt.title("Latency")
+    plt.ylabel("Latency (us)")
 
-plt.show()
+    plt.legend()
+
+    plt.show()

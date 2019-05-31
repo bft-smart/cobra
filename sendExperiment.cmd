@@ -20,6 +20,7 @@ rmdir /s /q %DST%\config\keysECDSA
 rmdir /s /q %DST%\config\keysRSA
 rmdir /s /q %DST%\config\keysSSL_TLS
 rmdir /s /q %DST%\config\keysSunEC
+rmdir /s /q %DST%\config\workloads
 
 scp -r %DST% %QUINTA_USER%@quinta.navigators.di.fc.ul.pt:/home/users/%QUINTA_USER%
 
