@@ -12,6 +12,7 @@ import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.Map;
@@ -19,11 +20,9 @@ import java.util.Map;
 public class ConfidentialExtractor implements Extractor {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private Map<Integer, LinkedList<ConfidentialMessage>> responses;
-    private Map<Integer, VerifiableShare> shares;
 
     public ConfidentialExtractor() {
         responses = new HashMap<>();
-        shares = new HashMap<>();
     }
 
 
@@ -54,35 +53,45 @@ public class ConfidentialExtractor implements Extractor {
 
         for (LinkedList<ConfidentialMessage> msgList : responses.values()) {
             if (msgList.size() == sameContent) {
-                byte[] plainData = msgList.getFirst().getPlainData();
                 ConfidentialMessage firstMsg = msgList.getFirst();
-                OpenPublishedShares[] multipleOpenShares = null;
-                if (firstMsg.getShares() != null) {
-                    int numSecret = firstMsg.getShares().length;
-                    VerifiableShare[][] verifiableShares = new VerifiableShare[numSecret][sameContent];
-                    int i = 0;
+                byte[] plainData = firstMsg.getPlainData();
+
+                OpenPublishedShares[] secrets = null;
+
+                if (firstMsg.getShares() != null) { // this response has secret data
+                    int numSecrets = firstMsg.getShares().length;
+                    ArrayList<LinkedList<VerifiableShare>> verifiableShares = new ArrayList<>(numSecrets);
+                    for (int i = 0; i < numSecrets; i++) {
+                        verifiableShares.add(new LinkedList<>());
+                    }
+                    secrets = new OpenPublishedShares[numSecrets];
+
                     for (ConfidentialMessage confidentialMessage : msgList) {
-                        ConfidentialData[] shareI = confidentialMessage.getShares();
-                        for (int j = 0; j < numSecret; j++) {
-                            verifiableShares[j][i] = shareI[j];
+                        ConfidentialData[] sharesI = confidentialMessage.getShares();
+                        for (int i = 0; i < numSecrets; i++) {
+                            verifiableShares.get(i).add(sharesI[i].getShare());
+                            if (sharesI[i].getPublicShares() != null) {
+                                verifiableShares.get(i).addAll(sharesI[i].getPublicShares());
+                            }
                         }
-                        i++;
                     }
 
-                    multipleOpenShares = new OpenPublishedShares[numSecret];
                     Commitments commitments;
                     byte[] shareData;
                     Share[] shares;
-                    for (int j = 0; j < numSecret; j++) {
-                        shares = new Share[verifiableShares[j].length];
-                        commitments = verifiableShares[j][0].getCommitments();
-                        shareData = verifiableShares[j][0].getSharedData();
-                        for (int k = 0; k < shares.length; k++)
-                            shares[k] = verifiableShares[j][k].getShare();
-                        multipleOpenShares[j] = new OpenPublishedShares(shares, commitments, shareData);
+                    for (int i = 0; i < numSecrets; i++) {
+                        LinkedList<VerifiableShare> secretI = verifiableShares.get(i);
+                        shares = new Share[secretI.size()];
+                        commitments = secretI.getFirst().getCommitments();
+                        shareData = secretI.getFirst().getSharedData();
+                        int k = 0;
+                        for (VerifiableShare verifiableShare : secretI) {
+                            shares[k++] = verifiableShare.getShare();
+                        }
+                        secrets[i] = new OpenPublishedShares(shares, commitments, shareData);
                     }
                 }
-                ExtractedResponse extractedResponse = new ExtractedResponse(plainData, multipleOpenShares);
+                ExtractedResponse extractedResponse = new ExtractedResponse(plainData, secrets);
                 TOMMessage lastMsg = tomMessages[lastReceived];
                 return new TOMMessage(lastMsg.getSender(),
                         lastMsg.getSession(), lastMsg.getSequence(),

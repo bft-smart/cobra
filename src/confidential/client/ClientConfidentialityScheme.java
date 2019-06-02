@@ -17,6 +17,7 @@ import static confidential.Configuration.*;
 public class ClientConfidentialityScheme {
     private final Map<BigInteger, Key> keys;
     private final VSSFacade vss;
+    private int threshold;
 
     public ClientConfidentialityScheme(View view) throws SecretSharingException {
         int[] currentViewProcesses = view.getProcesses();
@@ -26,12 +27,20 @@ public class ClientConfidentialityScheme {
             shareholders[i] = BigInteger.valueOf(currentViewProcesses[i] + 1);
             keys.put(shareholders[i], new SecretKeySpec(defaultKeys[i].toByteArray(), shareEncryptionAlgorithm));
         }
-        vss = new VSSFacade(p, generator, field, view.getF(), shareholders, dataEncryptionAlgorithm,
+        threshold = view.getF();
+        vss = new VSSFacade(p, generator, field, shareholders, dataEncryptionAlgorithm,
                 dataEncryptionKeySize, shareEncryptionAlgorithm);
     }
 
+    public void updateParameters(View view) throws SecretSharingException {
+        threshold = view.getF();
+        for (int process : view.getProcesses()) {
+            vss.addShareholder(BigInteger.valueOf(process));
+        }
+    }
+
     public PrivatePublishedShares share(byte[] secret) throws SecretSharingException {
-        return vss.share(secret, keys);
+        return vss.share(threshold, secret, keys);
     }
 
 

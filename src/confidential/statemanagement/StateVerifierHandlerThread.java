@@ -1,6 +1,7 @@
 package confidential.statemanagement;
 
 import bftsmart.tom.server.defaultservices.CommandsInfo;
+import confidential.ConfidentialData;
 import confidential.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -79,7 +80,8 @@ public class StateVerifierHandlerThread extends Thread {
             if (recoverySnapshot == null)
                 return false;
             if (recoverySnapshot.getShares() != null) {
-                for (VerifiableShare share : recoverySnapshot.getShares()) {
+                for (ConfidentialData secretData : recoverySnapshot.getShares()) {
+                    VerifiableShare share = secretData.getShare();
                     Commitments commitments = commitmentScheme.sumCommitments(share.getCommitments(), recoveryCommitments);
                     if (!commitmentScheme.checkValidity(share.getShare(), commitments))
                         return false;
@@ -94,7 +96,8 @@ public class StateVerifierHandlerThread extends Thread {
                 if (request == null)
                     return false;
                 if (request.getShares() != null) {
-                    for (VerifiableShare share : request.getShares()) {
+                    for (ConfidentialData secretData : request.getShares()) {
+                        VerifiableShare share = secretData.getShare();
                         Commitments commitments = commitmentScheme.sumCommitments(share.getCommitments(), recoveryCommitments);
                         if (!commitmentScheme.checkValidity(share.getShare(), commitments))
                             return false;

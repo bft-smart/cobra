@@ -9,16 +9,21 @@ import java.io.ObjectOutput;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.Objects;
 
 public class ConfidentialData implements Externalizable {
     private VerifiableShare share;
-    private List<VerifiableShare> publicShares;
+    private LinkedList<VerifiableShare> publicShares;
 
     public ConfidentialData() {}
 
     public ConfidentialData(VerifiableShare share) {
         this.share = share;
+    }
+
+    public ConfidentialData(VerifiableShare share, LinkedList<VerifiableShare> publicShares) {
+        this.share = share;
+        if (publicShares != null)
+            this.publicShares = new LinkedList<>(publicShares);
     }
 
     public void addPublicShare(VerifiableShare share) {
@@ -27,7 +32,11 @@ public class ConfidentialData implements Externalizable {
         publicShares.add(share);
     }
 
-    public List<VerifiableShare> getPublicShares() {
+    public VerifiableShare getShare() {
+        return share;
+    }
+
+    public LinkedList<VerifiableShare> getPublicShares() {
         return publicShares;
     }
 

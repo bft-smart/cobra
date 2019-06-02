@@ -10,6 +10,7 @@ import bftsmart.tom.core.TOMLayer;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
+import confidential.ConfidentialData;
 import confidential.polynomial.DistributedPolynomial;
 import confidential.polynomial.PolynomialContext;
 import confidential.polynomial.PolynomialCreationListener;
@@ -23,6 +24,7 @@ import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
+import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -394,7 +396,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     }
 
     private DefaultApplicationState refreshState(VerifiableShare point, DefaultApplicationState appState) {
-        BigInteger shareholder = point.getShare().getShareholder();
         BigInteger y = point.getShare().getShare();
         Commitments refreshCommitments = point.getCommitments();
         BigInteger field = distributedPolynomial.getField();
@@ -404,17 +405,23 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             if (snapshot == null)
                 return null;
             if (snapshot.getShares() != null && snapshot.getShares().length > 0) {
-                VerifiableShare[] oldShares = snapshot.getShares();
-                VerifiableShare[] renewedShares = new VerifiableShare[oldShares.length];
-                for (int i = 0; i < oldShares.length; i++) {
-                    VerifiableShare oldShare = oldShares[i];
-                    Share share = new Share(shareholder, y.add(oldShare.getShare().getShare()).mod(field));
-                    Commitments commitments = commitmentScheme.sumCommitments(oldShare.getCommitments(),
+                ConfidentialData[] secretData = snapshot.getShares();
+                for (ConfidentialData oldShare : secretData) {
+                    VerifiableShare vs = oldShare.getShare();
+                    vs.getShare().setShare(y.add(vs.getShare().getShare()).mod(field));
+                    Commitments commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
                             refreshCommitments);
-                    renewedShares[i] = new VerifiableShare(share, commitments, oldShare.getSharedData());
+                    vs.setCommitments(commitments);
+                    if (oldShare.getPublicShares() != null)
+                        for (VerifiableShare publicShare : oldShare.getPublicShares()) {
+                            publicShare.getShare().setShare(y.add(publicShare.getShare().getShare()).mod(field));
+                            commitments = commitmentScheme.sumCommitments(publicShare.getCommitments(),
+                                    refreshCommitments);
+                            publicShare.setCommitments(commitments);
+                        }
                 }
 
-                renewedSnapshot = new ConfidentialSnapshot(snapshot.getPlainData(), renewedShares).serialize();
+                renewedSnapshot = new ConfidentialSnapshot(snapshot.getPlainData(), secretData).serialize();
             }
         }
 
@@ -429,16 +436,22 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 if (request == null || request.getShares() == null || request.getShares().length == 0)
                     commands[j] = oldLog.commands[j];
                 else {
-                    VerifiableShare[] oldShares = request.getShares();
-                    VerifiableShare[] renewedShares = new VerifiableShare[oldShares.length];
-                    for (int k = 0; k < oldShares.length; k++) {
-                        VerifiableShare oldShare = oldShares[k];
-                        Share share = new Share(shareholder, y.add(oldShare.getShare().getShare()).mod(field));
-                        Commitments commitments = commitmentScheme.sumCommitments(oldShare.getCommitments(),
+                    ConfidentialData[] secretData = request.getShares();
+                    for (ConfidentialData oldShare : secretData) {
+                        VerifiableShare vs = oldShare.getShare();
+                        vs.getShare().setShare(y.add(vs.getShare().getShare()).mod(field));
+                        Commitments commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
                                 refreshCommitments);
-                        renewedShares[k] = new VerifiableShare(share, commitments, oldShare.getSharedData());
+                        vs.setCommitments(commitments);
+                        if (oldShare.getPublicShares() != null)
+                            for (VerifiableShare publicShare : oldShare.getPublicShares()) {
+                                publicShare.getShare().setShare(y.add(publicShare.getShare().getShare()).mod(field));
+                                commitments = commitmentScheme.sumCommitments(publicShare.getCommitments(),
+                                        refreshCommitments);
+                                publicShare.setCommitments(commitments);
+                            }
                     }
-                    commands[j] = new Request(request.getType(), request.getPlainData(), renewedShares).serialize();
+                    commands[j] = new Request(request.getType(), request.getPlainData(), secretData).serialize();
                 }
             }
             renewedLogs[i] = new CommandsInfo(commands, oldLog.msgCtx);
@@ -486,7 +499,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
         int counter = 1;
 
-        //Recovering log and checking if all the members used same recovery polynomial
+        //Recovering log and checking if all the members used the same recovery polynomial
         Iterator<ApplicationState> iterator = recoveryStates.iterator();
         RecoveryApplicationState firstState = (RecoveryApplicationState) iterator.next();
         CommandsInfo[][] recoveryLog = new CommandsInfo[firstState.getMessageBatches().length][recoveryStates.size()];
@@ -521,14 +534,16 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 ConfidentialSnapshot.deserialize(firstState.getSerializedState()) : null;
 
         byte[] snapshotPlainData = firstSnapshot == null ? null : firstSnapshot.getPlainData();
-        VerifiableShare[] shares = firstSnapshot != null && firstSnapshot.getShares() != null ?
-                new VerifiableShare[firstSnapshot.getShares().length] : null;
+        ConfidentialData[] shares = firstSnapshot != null && firstSnapshot.getShares() != null ?
+                new ConfidentialData[firstSnapshot.getShares().length] : null;
 
 
         if (shares != null) {
-            Share[][] recoveryShares = new Share[shares.length][recoveryStates.size()];
-            for (int i = 0; i < firstSnapshot.getShares().length; i++) {
-                recoveryShares[i][0] = firstSnapshot.getShares()[i].getShare();
+            int numSecrets = firstSnapshot.getShares().length;
+
+            Share[][] recoveryShares = new Share[numSecrets][recoveryStates.size()];
+            for (int i = 0; i < numSecrets; i++) {
+                recoveryShares[i][0] = firstSnapshot.getShares()[i].getShare().getShare();
             }
             counter = 1;
             while (iterator.hasNext()) {
@@ -536,16 +551,18 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 ConfidentialSnapshot recoverySnapshot = ConfidentialSnapshot.deserialize(recoveryState.getSerializedState());
                 if (recoverySnapshot == null)
                     return null;
-                for (int i = 0; i < recoverySnapshot.getShares().length; i++) {
-                    recoveryShares[i][counter] = recoverySnapshot.getShares()[i].getShare();
+                for (int i = 0; i < numSecrets; i++) {
+                    recoveryShares[i][counter] = recoverySnapshot.getShares()[i].getShare().getShare();
                 }
                 counter++;
             }
 
-            for (int i = 0; i < shares.length; i++) {
+            for (int i = 0; i < numSecrets; i++) {
                 Share share = new Share(shareholder, interpolationStrategy.interpolateAt(shareholder, recoveryShares[i]));
-                VerifiableShare vs = firstSnapshot.getShares()[i];
-                shares[i] = new VerifiableShare(share, vs.getCommitments(), vs.getSharedData());
+                ConfidentialData cd = firstSnapshot.getShares()[i];
+                VerifiableShare vs = cd.getShare();
+                VerifiableShare recoveredVS = new VerifiableShare(share, vs.getCommitments(), vs.getSharedData());
+                shares[i] = new ConfidentialData(recoveredVS, cd.getPublicShares());
             }
         }
 
@@ -564,15 +581,16 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         int numCommands = commandsInfos[0].commands.length;
         int t = commandsInfos.length;
         byte[][] recoveredCommands = new byte[numCommands][];
+        byte[][] commandToRecover = new byte[t][];
 
         commands: for (int i = 0; i < numCommands; i++) {
-            byte[][] commandToRecover = new byte[t][];
             for (int j = 0; j < t; j++) {
                 commandToRecover[j] = commandsInfos[j].commands[i];
             }
 
             Request request = null;
             Share[][] shares = null;
+            int numSecrets = -1;
 
             for (int j = 0; j < t; j++) {
                 request = Request.deserialize(commandToRecover[j]);
@@ -580,19 +598,23 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     recoveredCommands[i] = commandToRecover[j];
                     continue commands;
                 }
+                numSecrets = request.getShares().length;
                 if (shares == null)
-                    shares = new Share[request.getShares().length][t];
-                for (int k = 0; k < request.getShares().length; k++) {
-                    shares[k][j] = request.getShares()[k].getShare();
+                    shares = new Share[numSecrets][t];
+                for (int k = 0; k < numSecrets; k++) {
+                    ConfidentialData secret = request.getShares()[k];
+                    shares[k][j] = secret.getShare().getShare();
                 }
             }
-            VerifiableShare[] verifiableShares = new VerifiableShare[request.getShares().length];
-            for (int j = 0; j < verifiableShares.length; j++) {
+            ConfidentialData[] recoveredSecretData = new ConfidentialData[numSecrets];
+            for (int j = 0; j < numSecrets; j++) {
                 Share share = new Share(shareholder, interpolationStrategy.interpolateAt(shareholder, shares[j]));
-                VerifiableShare vs = request.getShares()[j];
-                verifiableShares[j] = new VerifiableShare(share, vs.getCommitments(), vs.getSharedData());
+                ConfidentialData cd = request.getShares()[j];
+                VerifiableShare vs = cd.getShare();
+                VerifiableShare recoveredVS = new VerifiableShare(share, vs.getCommitments(), vs.getSharedData());
+                recoveredSecretData[j] = new ConfidentialData(recoveredVS, cd.getPublicShares());
             }
-            recoveredCommands[i] = new Request(request.getType(), request.getPlainData(), verifiableShares).serialize();
+            recoveredCommands[i] = new Request(request.getType(), request.getPlainData(), recoveredSecretData).serialize();
         }
 
         return new CommandsInfo(recoveredCommands, commandsInfos[0].msgCtx);
@@ -644,8 +666,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     private CommandsInfo[] createRecoveryLog(CommandsInfo[] log, VerifiableShare recoveryPoint) {
         CommandsInfo[] recoveryLog = new CommandsInfo[log.length];
-
-        BigInteger shareholder = recoveryPoint.getShare().getShareholder();
+        BigInteger field = distributedPolynomial.getField();
         BigInteger y = recoveryPoint.getShare().getShare();
         for (int i = 0; i < log.length; i++) {
             byte[][] commands = log[i].commands;
@@ -657,23 +678,17 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     recoveryCommands[j] = commands[j];
                     continue;
                 }
-                VerifiableShare[] shares = request.getShares();
+                ConfidentialData[] shares = request.getShares();
                 if (shares == null) {
                     recoveryCommands[j] = commands[j];
                 } else {
-                    VerifiableShare[] recoveryShares = new VerifiableShare[shares.length];
-
-                    for (int k = 0; k < shares.length; k++) {
-                        VerifiableShare shareToRecover = shares[k];
-                        BigInteger share = y.add(shareToRecover.getShare().getShare()).mod(distributedPolynomial.getField());
-                        recoveryShares[k] = new VerifiableShare(
-                                new Share(shareholder, share),
-                                shareToRecover.getCommitments(),
-                                shareToRecover.getSharedData()
-                        );
+                    for (ConfidentialData shareToRecover : shares) {
+                        VerifiableShare vs = shareToRecover.getShare();
+                        BigInteger share = y.add(vs.getShare().getShare()).mod(field);
+                        vs.getShare().setShare(share);
                     }
 
-                    recoveryCommands[j] = new Request(request.getType(), request.getPlainData(), recoveryShares).serialize();
+                    recoveryCommands[j] = new Request(request.getType(), request.getPlainData(), shares).serialize();
                 }
             }
             recoveryLog[i] = new CommandsInfo(recoveryCommands, log[i].msgCtx);
@@ -688,23 +703,16 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         if (snapshot.getShares() == null)
             return snapshot;
         byte[] plainData = snapshot.getPlainData();
-        VerifiableShare[] shares = snapshot.getShares();
-        int numShares = shares.length;
-        VerifiableShare[] recoveryShares = new VerifiableShare[numShares];
-        BigInteger shareholder = recoveryPoint.getShare().getShareholder();
+        ConfidentialData[] shares = snapshot.getShares();
         BigInteger y = recoveryPoint.getShare().getShare();
-        VerifiableShare shareToRecover;
+        BigInteger field = distributedPolynomial.getField();
 
-        for (int i = 0; i < numShares; i++) {
-            shareToRecover = shares[i];
-            BigInteger share = y.add(shareToRecover.getShare().getShare()).mod(distributedPolynomial.getField());
-            recoveryShares[i] = new VerifiableShare(
-                    new Share(shareholder, share),
-                    shareToRecover.getCommitments(),
-                    shareToRecover.getSharedData()
-            );
+        for (ConfidentialData confidentialData : shares) {
+            VerifiableShare vs = confidentialData.getShare();
+            BigInteger share = y.add(vs.getShare().getShare()).mod(field);
+            vs.getShare().setShare(share);
         }
 
-        return new ConfidentialSnapshot(plainData, recoveryShares);
+        return new ConfidentialSnapshot(plainData, shares);
     }
 }
