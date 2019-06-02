@@ -27,7 +27,7 @@ public class ServerConfidentialityScheme {
         for (int i = 0; i < currentViewProcesses.length; i++) {
             shareholder[i] = BigInteger.valueOf(currentViewProcesses[i] + 1);
         }
-        vss = new VSSFacade(p, generator, field, view.getF(), shareholder, dataEncryptionAlgorithm, dataEncryptionKeySize, shareEncryptionAlgorithm);
+        vss = new VSSFacade(p, generator, field, shareholder, dataEncryptionAlgorithm, dataEncryptionKeySize, shareEncryptionAlgorithm);
     }
 
     public VerifiableShare extractShare(PrivatePublishedShares privateShares) throws SecretSharingException {

@@ -17,10 +17,10 @@ package confidential.demo.ycsb.confidential;
 
 import com.yahoo.ycsb.ByteIterator;
 import com.yahoo.ycsb.DB;
+import confidential.ConfidentialData;
 import confidential.client.ConfidentialServiceProxy;
 import confidential.client.Response;
 import vss.facade.SecretSharingException;
-import vss.secretsharing.VerifiableShare;
 
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -85,7 +85,7 @@ public class YCSBConfidentialClient extends DB {
     public int read(String table, String key,
                     Set<String> fields, HashMap<String, ByteIterator> result) {
         try {
-            HashMap<String, VerifiableShare> results = new HashMap<>();
+            HashMap<String, ConfidentialData> results = new HashMap<>();
             YCSBConfidentialMessage request = YCSBConfidentialMessage.newReadRequest(table, key, fields, results);
             Response reply = proxy.invokeUnordered(request.getBytes());
             YCSBConfidentialMessage replyMsg = YCSBConfidentialMessage.getObject(reply.getPainData());
