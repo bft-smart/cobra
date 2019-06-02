@@ -207,8 +207,10 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 return;
             }
 
-            if (!enoughReplies())
+            if (!enoughReplies()) {
+                logger.debug("I don't have f + 1 valid replies");
                 return;
+            }
 
             int currentRegency = -1;
             int currentLeader = -1;
@@ -308,7 +310,9 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 execManager.restart();
             }
 
+            logger.debug("Processing out of context messages");
             tomLayer.processOutOfContext();
+            logger.debug("Finished processing out of context messages");
 
             if (SVController.getCurrentViewId() != currentView.getId()) {
                 logger.info("Installing current view!");

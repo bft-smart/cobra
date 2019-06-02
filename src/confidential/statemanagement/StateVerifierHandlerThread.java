@@ -20,7 +20,7 @@ public class StateVerifierHandlerThread extends Thread {
     private BlockingQueue<RecoverySMMessage> recoveryMessages;
     private VerificationCompleted listener;
     private CommitmentScheme commitmentScheme;
-    private final int f;
+    private final int quorum;
     private AtomicInteger validStates;
     private ExecutorService executor;
     private Thread thisThread;
@@ -30,8 +30,8 @@ public class StateVerifierHandlerThread extends Thread {
         this.recoveryMessages = new LinkedBlockingQueue<>();
         this.listener = listener;
         this.commitmentScheme = commitmentScheme;
-        this.f = f;
-        this.executor = Executors.newFixedThreadPool(f + 1);
+        this.quorum = f + 1;//TODO should be 2f + 1
+        this.executor = Executors.newFixedThreadPool(quorum);
         this.validStates = new AtomicInteger(0);
         this.thisThread = this;
     }
@@ -50,7 +50,7 @@ public class StateVerifierHandlerThread extends Thread {
         while (true) {
             try {
                 RecoverySMMessage recoveryMessage = recoveryMessages.take();
-                if (validStates.get() > f) {
+                if (validStates.get() > quorum) {
                     logger.debug("I have already f + 1 valid states. Ignoring {}'s state", recoveryMessage.getSender());
                     break;
                 }
@@ -60,16 +60,16 @@ public class StateVerifierHandlerThread extends Thread {
                     if (valid)
                         validStates.incrementAndGet();
 
-                    if (validStates.get() <= f + 1)
+                    if (validStates.get() <= quorum)
                         listener.onVerificationCompleted(valid, recoveryMessage);
-                    if (validStates.get() > f)
+                    if (validStates.get() > quorum)
                         thisThread.interrupt();
                 });
             } catch (InterruptedException e) {
                 break;
             }
         }
-        executor.shutdownNow();
+
         logger.debug("Exiting state verifier handler thread");
     }
 
