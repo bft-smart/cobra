@@ -15,6 +15,7 @@
  */
 package confidential.demo.ycsb.confidential;
 
+import confidential.ConfidentialData;
 import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
@@ -45,7 +46,7 @@ public class YCSBConfidentialMessage implements Serializable {
     private Set<String> fields;
     private String[] values;
     private int result = -1;
-    private HashMap<String, VerifiableShare> results;
+    private HashMap<String, ConfidentialData> results;
     private String errorMsg;
 
     private YCSBConfidentialMessage() {
@@ -73,7 +74,7 @@ public class YCSBConfidentialMessage implements Serializable {
         return message;
     }
 
-    public static YCSBConfidentialMessage newReadRequest(String table, String key, Set<String> fields, HashMap<String, VerifiableShare> results) {
+    public static YCSBConfidentialMessage newReadRequest(String table, String key, Set<String> fields, HashMap<String, ConfidentialData> results) {
         YCSBConfidentialMessage message = new YCSBConfidentialMessage();
         message.type = Type.READ;
         message.entity = Entity.RECORD;
@@ -96,7 +97,7 @@ public class YCSBConfidentialMessage implements Serializable {
         return message;
     }
 
-    public static YCSBConfidentialMessage newReadResponse(HashMap<String, VerifiableShare> results, int result) {
+    public static YCSBConfidentialMessage newReadResponse(HashMap<String, ConfidentialData> results, int result) {
         YCSBConfidentialMessage message = new YCSBConfidentialMessage();
         message.result = result;
         message.results = results;
@@ -151,7 +152,7 @@ public class YCSBConfidentialMessage implements Serializable {
         return result;
     }
 
-    public HashMap<String, VerifiableShare> getResults() {
+    public HashMap<String, ConfidentialData> getResults() {
         return results;
     }
 

@@ -2,13 +2,13 @@ package confidential.demo.map.server;
 
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
+import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.demo.map.client.Operation;
 import confidential.server.ConfidentialRecoverable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.Map;
@@ -16,21 +16,21 @@ import java.util.TreeMap;
 
 public class KVStoreServer extends ConfidentialRecoverable {
     private Logger logger = LoggerFactory.getLogger("demo");
-    private Map<String, VerifiableShare> map;
+    private Map<String, ConfidentialData> map;
 
-    public KVStoreServer(int processId) {
+    KVStoreServer(int processId) {
         super(processId);
         map = new TreeMap<>();
         new ServiceReplica(processId, this, this);
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(plainData);
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
             String str;
-            VerifiableShare value;
+            ConfidentialData value;
             switch (op) {
                 case GET:
                     str = in.readUTF();
@@ -56,9 +56,9 @@ public class KVStoreServer extends ConfidentialRecoverable {
                 case GET_ALL:
                     if (map.isEmpty())
                         return new ConfidentialMessage();
-                    VerifiableShare[] allValues = new VerifiableShare[map.size()];
+                    ConfidentialData[] allValues = new ConfidentialData[map.size()];
                     int i = 0;
-                    for (VerifiableShare share : map.values())
+                    for (ConfidentialData share : map.values())
                         allValues[i++] = share;
                     return new ConfidentialMessage(null, allValues);
             }
@@ -69,12 +69,12 @@ public class KVStoreServer extends ConfidentialRecoverable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(plainData);
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
             String str;
-            VerifiableShare value;
+            ConfidentialData value;
             switch (op) {
                 case GET:
                     str = in.readUTF();
@@ -86,7 +86,7 @@ public class KVStoreServer extends ConfidentialRecoverable {
                 case GET_ALL:
                     if (map.isEmpty())
                         return new ConfidentialMessage();
-                    VerifiableShare[] allValues = (VerifiableShare[]) map.values().toArray();
+                    ConfidentialData[] allValues = (ConfidentialData[]) map.values().toArray();
                     return new ConfidentialMessage(null, allValues);
             }
         } catch (IOException e) {
@@ -100,9 +100,9 @@ public class KVStoreServer extends ConfidentialRecoverable {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
             out.writeInt(map.size());
-            VerifiableShare[] shares = new VerifiableShare[map.size()];
+            ConfidentialData[] shares = new ConfidentialData[map.size()];
             int i = 0;
-            for (Map.Entry<String, VerifiableShare> e : map.entrySet()) {
+            for (Map.Entry<String, ConfidentialData> e : map.entrySet()) {
                 out.writeUTF(e.getKey());
                 shares[i++] = e.getValue();
             }
@@ -121,7 +121,7 @@ public class KVStoreServer extends ConfidentialRecoverable {
              ObjectInput in = new ObjectInputStream(bis)) {
             int size = in.readInt();
             map = new TreeMap<>();
-            VerifiableShare[] shares = snapshot.getShares();
+            ConfidentialData[] shares = snapshot.getShares();
             for (int i = 0; i < size; i++) {
                 map.put(in.readUTF(), shares[i]);
             }

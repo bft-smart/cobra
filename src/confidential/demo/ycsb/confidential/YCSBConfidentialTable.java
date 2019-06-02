@@ -15,6 +15,7 @@
  */
 package confidential.demo.ycsb.confidential;
 
+import confidential.ConfidentialData;
 import vss.secretsharing.VerifiableShare;
 
 import java.io.Serializable;
@@ -26,6 +27,6 @@ import java.util.TreeMap;
  * @author Marcel Santos
  *
  */
-public class YCSBConfidentialTable extends TreeMap<String, HashMap<String, VerifiableShare>> implements Serializable {
+public class YCSBConfidentialTable extends TreeMap<String, HashMap<String, ConfidentialData>> implements Serializable {
     private static final long serialVersionUID = 3786544460082473686L;
 }

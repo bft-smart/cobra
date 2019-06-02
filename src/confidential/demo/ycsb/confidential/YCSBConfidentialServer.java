@@ -17,6 +17,7 @@ package confidential.demo.ycsb.confidential;
 
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
+import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.server.ConfidentialRecoverable;
 import confidential.statemanagement.ConfidentialSnapshot;
@@ -54,7 +55,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         if (msgCtx != null && msgCtx.getConsensusId() % 1000 == 0 && !logPrinted) {
             logger.info("YCSBConfidentialServer executing CID: " + msgCtx.getConsensusId());
             logPrinted = true;
@@ -83,7 +84,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
                                 reply = YCSBConfidentialMessage.newErrorMessage("values.length != shares.length");
                                 break;
                             }
-                            HashMap<String, VerifiableShare> map = new HashMap<>(values.length);
+                            HashMap<String, ConfidentialData> map = new HashMap<>(values.length);
                             for (int i = 0; i < values.length; i++) {
                                 map.put(values[i], shares[i]);
                             }
@@ -108,7 +109,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
                             reply = YCSBConfidentialMessage.newErrorMessage("values.length != shares.length");
                             break;
                         }
-                        HashMap<String, VerifiableShare> map = new HashMap<>(values.length);
+                        HashMap<String, ConfidentialData> map = new HashMap<>(values.length);
                         for (int i = 0; i < values.length; i++) {
                             map.put(values[i], shares[i]);
                         }
@@ -128,7 +129,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         YCSBConfidentialMessage aRequest = YCSBConfidentialMessage.getObject(plainData);
         YCSBConfidentialMessage reply = YCSBConfidentialMessage.newErrorMessage("");
         if (aRequest == null) {
@@ -167,16 +168,16 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
 
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-            List<VerifiableShare> shares = new LinkedList<>();
+            List<ConfidentialData> shares = new LinkedList<>();
 
             out.writeInt(mTables.size());
             for (Map.Entry<String, YCSBConfidentialTable> table : mTables.entrySet()) {
                 out.writeUTF(table.getKey());
                 out.writeInt(table.getValue().size());
-                for (Map.Entry<String, HashMap<String, VerifiableShare>> key : table.getValue().entrySet()) {
+                for (Map.Entry<String, HashMap<String, ConfidentialData>> key : table.getValue().entrySet()) {
                     out.writeUTF(key.getKey());
                     out.writeInt(key.getValue().size());
-                    for (Map.Entry<String, VerifiableShare> field : key.getValue().entrySet()) {
+                    for (Map.Entry<String, ConfidentialData> field : key.getValue().entrySet()) {
                         out.writeUTF(field.getKey());
                         shares.add(field.getValue());
                     }
@@ -184,9 +185,9 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
             }
             out.flush();
             bos.flush();
-            VerifiableShare[] allShares = new VerifiableShare[shares.size()];
+            ConfidentialData[] allShares = new ConfidentialData[shares.size()];
             int i = 0;
-            for (VerifiableShare share : shares) {
+            for (ConfidentialData share : shares) {
                 allShares[i++] = share;
             }
             return new ConfidentialSnapshot(bos.toByteArray(), allShares);
@@ -201,7 +202,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
     public void installConfidentialSnapshot(ConfidentialSnapshot snapshot) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(snapshot.getPlainData());
              ObjectInput in = new ObjectInputStream(bis)) {
-            VerifiableShare[] shares = snapshot.getShares();
+            ConfidentialData[] shares = snapshot.getShares();
             int i = 0;
             int nTables = in.readInt();
             mTables = new TreeMap<>();
@@ -212,7 +213,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
                 while (nKeys-- > 0) {
                     String key = in.readUTF();
                     int nFields = in.readInt();
-                    HashMap<String, VerifiableShare> fields = new HashMap<>(nFields);
+                    HashMap<String, ConfidentialData> fields = new HashMap<>(nFields);
                     while (nFields-- > 0) {
                         String field = in.readUTF();
                         fields.put(field, shares[i]);

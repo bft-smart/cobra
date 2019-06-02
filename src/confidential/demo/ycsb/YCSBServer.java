@@ -17,10 +17,10 @@ package confidential.demo.ycsb;
 
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
+import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.server.ConfidentialRecoverable;
 import confidential.statemanagement.ConfidentialSnapshot;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.TreeMap;
@@ -52,7 +52,7 @@ public class YCSBServer extends ConfidentialRecoverable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         if (msgCtx != null && msgCtx.getConsensusId() % 1000 == 0 && !logPrinted) {
             System.out.println("YCSBConfidentialServer executing CID: " + msgCtx.getConsensusId());
             logPrinted = true;
@@ -108,7 +108,7 @@ public class YCSBServer extends ConfidentialRecoverable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         YCSBMessage aRequest = YCSBMessage.getObject(plainData);
         YCSBMessage reply = YCSBMessage.newErrorMessage("");
         if (aRequest == null) {
