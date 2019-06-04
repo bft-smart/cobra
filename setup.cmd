@@ -22,6 +22,7 @@ IF %replica%==y (
 		xcopy %SRC%\lib\* %DST%\rep%%a\lib\
 		xcopy /e /q %SRC%\config\* %DST%\rep%%a\config\
 		xcopy %SRC%\scripts\run*.cmd %DST%\rep%%a\
+		del %DST%\rep%%a\config\currentView
 		IF %cmd%==y (
 			start "rep%%a" /d %DST%\rep%%a
 		)
@@ -40,6 +41,7 @@ IF %client%==y (
 		xcopy %SRC%\lib\* %DST%\cli%%a\lib\
 		xcopy /e /q %SRC%\config\* %DST%\cli%%a\config\
 		xcopy %SRC%\scripts\run*.cmd %DST%\cli%%a\
+		del %DST%\cli%%a\config\currentView
 		IF %cmd%==y (
 			start "cli%%a" /d %DST%\cli%%a
 		)

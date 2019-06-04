@@ -1,5 +1,7 @@
 package confidential.server;
 
+import bftsmart.reconfiguration.ReconfigureRequest;
+import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.StateManager;
 import bftsmart.tom.MessageContext;
@@ -21,7 +23,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.PrivatePublishedShares;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -45,6 +46,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     private int checkpointPeriod;
     private List<byte[]> commands;
     private List<MessageContext> msgContexts;
+    private int currentF;
 
     public ConfidentialRecoverable(int processId) {
         this.processId = processId;
@@ -56,6 +58,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     @Override
     public void setReplicaContext(ReplicaContext replicaContext) {
         logger.debug("setting replica context");
+        this.currentF = replicaContext.getSVController().getCurrentViewF();
         this.replicaContext = replicaContext;
         this.stateLock = new ReentrantLock();
         interServersCommunication = new InterServersCommunication(
@@ -187,8 +190,29 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
 
     @Override
     public void noOp(int CID, byte[][] operations, MessageContext[] msgCtx) {
-        for (int i = 0; i < msgCtx.length; i++)
-            logRequest(operations[i], msgCtx[i]);
+        logger.debug("NoOp");
+        //for (int i = 0; i < msgCtx.length; i++)
+        //    logRequest(operations[i], msgCtx[i]);
+
+        for (byte[] operation : operations) {
+            Object obj = TOMUtil.getObject(operation);
+            if (obj instanceof ReconfigureRequest) {
+                logger.info("Reconfiguration");
+                ReconfigureRequest reconfigureRequest = (ReconfigureRequest) obj;
+                for (Integer key : reconfigureRequest.getProperties().keySet()) {
+                    String value = reconfigureRequest.getProperties().get(key);
+                    if (key == ServerViewController.CHANGE_F) {
+                        int f = Integer.valueOf(value);
+                        if (currentF < f) {
+                            logger.info("Increasing f. {}->{}", currentF, f);
+                        } else if (currentF > f) {
+                            logger.info("Reducing f. {}->{}", currentF, f);
+                        }
+                        currentF = f;
+                    }
+                }
+            }
+        }
     }
 
     @Override
