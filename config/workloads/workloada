@@ -33,9 +33,9 @@ workload=com.yahoo.ycsb.workloads.CoreWorkload
 readallfields=true
 
 readproportion=0
-updateproportion=1
+updateproportion=0
 scanproportion=0
-insertproportion=0
+insertproportion=1
 
 requestdistribution=zipfian
 
@@ -46,7 +46,7 @@ smart-initkey=1000
 measurementtype=timeseries
 timeseries.granularity=1000
 
-threadcount=50
+threadcount=1
 
 #db=bftsmart.demo.ycsb.YCSBClient
 #db=confidential.demo.ycsb.YCSBClient

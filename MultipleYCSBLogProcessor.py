@@ -4,19 +4,19 @@ import sys
 
 def load_log_file(filename):
     lines = []
-    has_update = False
+    has_insert = False
     has_read = False
     with open(filename) as log_file:
         for line in log_file:
-            has_update |= "UPDATE" in line
+            has_insert |= "INSERT" in line
             has_read |= "READ" in line
-            if "ops/sec" in line and ("UPDATE" in line or "READ" in line):
+            if "ops/sec" in line and ("INSERT" in line or "READ" in line):
                 lines.append(line)
-    return lines, has_update, has_read
+    return lines, has_insert, has_read
 
 
 def extract_values(log_files):
-    has_update = False
+    has_insert = False
     has_read = False
     logs = []
     min_time = 2 << 31
@@ -26,14 +26,14 @@ def extract_values(log_files):
 
     for log_file in log_files:
         print("Reading log file ", log_file)
-        log, update, read = load_log_file(log_file)
-        has_update |= update
+        log, insert, read = load_log_file(log_file)
+        has_insert |= insert
         has_read |= has_read
         num_records = min(num_records, len(log))
         logs.append(log)
 
-    if has_update:
-        print("Log has update latency")
+    if has_insert:
+        print("Log has insert latency")
 
     if has_read:
         print("Log has read latency")
@@ -53,10 +53,10 @@ def extract_values(log_files):
             record_values.append(throughput)
 
             latency = sep_values[2].split()
-            if has_update:
-                index = latency.index("[UPDATE")
-                update = float(latency[index + 1].split("=")[1].split("]")[0].replace(",", "."))
-                record_values.append(update)
+            if has_insert:
+                index = latency.index("[INSERT")
+                insert = float(latency[index + 1].split("=")[1].split("]")[0].replace(",", "."))
+                record_values.append(insert)
             if has_read:
                 index = latency.index("[READ")
                 read = float(latency[index + 1].split("=")[1].split("]")[0].replace(",", "."))
@@ -73,34 +73,36 @@ def extract_values(log_files):
                 new_values.extend(latency[1:])
                 log_values[record] = new_values
     throughputs = []
-    update_latency = []
+    insert_latency = []
     read_latency = []
 
     for t in range(min_time, max_time + 1):
+        if t not in log_values:
+            continue
         record = log_values[t]
         throughputs.append(record[0])
-        if has_read and has_update:
+        if has_read and has_insert:
             read_latency.append(record[1])
-            update_latency.append(record[2])
+            insert_latency.append(record[2])
         elif has_read:
             read_latency.append(record[1])
-        elif has_update:
-            update_latency.append(record[1])
-    return throughputs, read_latency, update_latency
+        elif has_insert:
+            insert_latency.append(record[1])
+    return throughputs, read_latency, insert_latency
 
 
 def compute_avg(throughput, read_latency, update_latency):
     throughput_avg = sum(throughput) / len(throughput)
     read_avg = 0
-    update_avg = 0
+    insert_avg = 0
     if read_latency:
         read_avg = sum(read_latency) / len(read_latency)
     if update_latency:
-        update_avg = sum(update_latency) / len(update_latency)
+        insert_avg = sum(update_latency) / len(update_latency)
     print("Throughput avg:", throughput_avg, "ops/s")
     print("Read latency avg:", read_avg, "us")
-    print("Update latency avg:", update_avg, "us")
-    return throughput_avg, read_avg, update_avg
+    print("Insert latency avg:", insert_avg, "us")
+    return throughput_avg, read_avg, insert_avg
 
 
 if __name__ == '__main__':
@@ -110,9 +112,9 @@ if __name__ == '__main__':
 
     title = sys.argv[1]
 
-    throughput_values, read_latency, update_latency = extract_values(sys.argv[2:])
+    throughput_values, read_latency, insert_latency = extract_values(sys.argv[2:])
 
-    throughput_avg, read_avg, update_avg = compute_avg(throughput_values, read_latency, update_latency)
+    throughput_avg, read_avg, insert_avg = compute_avg(throughput_values, read_latency, insert_latency)
 
     graph_n_rows = 2
     graph_n_cols = 1
@@ -127,9 +129,9 @@ if __name__ == '__main__':
     plt.legend()
 
     plt.subplot(graph_n_rows, graph_n_cols, 2)
-    if update_latency:
-        plt.plot(update_latency, "r", label="Update (avg: " + str(round(update_avg)) + " us)")
-        plt.hlines(update_avg, 0, 300, colors="r")
+    if insert_latency:
+        plt.plot(insert_latency, "r", label="Insert (avg: " + str(round(insert_avg)) + " us)")
+        plt.hlines(insert_avg, 0, 300, colors="r")
     if read_latency:
         plt.plot(read_latency, "g", label="Read (avg: " + str(round(read_avg)) + " us)")
         plt.hlines(read_avg, 0, 300, colors="g")
