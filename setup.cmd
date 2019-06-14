@@ -12,7 +12,7 @@ IF "%1"=="open" (
 rem :PROMP
 rem set /p replica=Copy Server code?[y/n]
 
-set replica=y
+set replica=n
 
 IF %replica%==y (
 	for /d %%i in (%DST%\rep*) do rmdir /s /q %%i
@@ -21,7 +21,7 @@ IF %replica%==y (
 		xcopy %SRC%\bin\* %DST%\rep%%a\bin\
 		xcopy %SRC%\lib\* %DST%\rep%%a\lib\
 		xcopy /e /q %SRC%\config\* %DST%\rep%%a\config\
-		xcopy %SRC%\scripts\run*.cmd %DST%\rep%%a\
+		xcopy %SRC%\scripts\*.cmd %DST%\rep%%a\
 		del %DST%\rep%%a\config\currentView
 		IF %cmd%==y (
 			start "rep%%a" /d %DST%\rep%%a
@@ -40,7 +40,7 @@ IF %client%==y (
 		xcopy %SRC%\bin\* %DST%\cli%%a\bin\
 		xcopy %SRC%\lib\* %DST%\cli%%a\lib\
 		xcopy /e /q %SRC%\config\* %DST%\cli%%a\config\
-		xcopy %SRC%\scripts\run*.cmd %DST%\cli%%a\
+		xcopy %SRC%\scripts\*.cmd %DST%\cli%%a\
 		del %DST%\cli%%a\config\currentView
 		IF %cmd%==y (
 			start "cli%%a" /d %DST%\cli%%a

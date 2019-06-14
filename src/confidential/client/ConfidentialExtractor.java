@@ -12,10 +12,7 @@ import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
 
 public class ConfidentialExtractor implements Extractor {
     private final Logger logger = LoggerFactory.getLogger("confidential");
@@ -29,14 +26,12 @@ public class ConfidentialExtractor implements Extractor {
     @Override
     public TOMMessage extractResponse(TOMMessage[] tomMessages, int sameContent, int lastReceived) {
         responses.clear();
-
         ConfidentialMessage response;
 
         for (TOMMessage msg : tomMessages) {
             if (msg == null)
                 continue;
             response = ConfidentialMessage.deserialize(msg.getContent());
-
             if (response == null) {
                 logger.warn("Something went wrong while deserializing response from {}", msg.getSender());
                 continue;

@@ -63,8 +63,9 @@ public class ConfidentialServiceProxy {
         OpenPublishedShares[] openShares = extractedResponse.getOpenShares();
         byte[][] confidentialData = openShares != null ? new byte[openShares.length][] : null;
         if (openShares != null) {
-            for (int i = 0; i < openShares.length; i++)
+            for (int i = 0; i < openShares.length; i++) {
                 confidentialData[i] = confidentialityScheme.combine(openShares[i]);
+            }
         }
         return new Response(extractedResponse.getPlainData(), confidentialData);
     }

@@ -28,7 +28,7 @@ def extract_values(log_files):
         print("Reading log file ", log_file)
         log, insert, read = load_log_file(log_file)
         has_insert |= insert
-        has_read |= has_read
+        has_read |= read
         num_records = min(num_records, len(log))
         logs.append(log)
 
@@ -49,7 +49,7 @@ def extract_values(log_files):
             min_time = min(min_time, time)
             max_time = max(max_time, time)
 
-            throughput = float(sep_values[1].split()[0])
+            throughput = float(sep_values[1].split()[0].replace(",", "."))
             record_values.append(throughput)
 
             latency = sep_values[2].split()

@@ -85,8 +85,8 @@ public class YCSBConfidentialClient extends DB {
     public int read(String table, String key,
                     Set<String> fields, HashMap<String, ByteIterator> result) {
         try {
-            HashMap<String, ConfidentialData> results = new HashMap<>();
-            YCSBConfidentialMessage request = YCSBConfidentialMessage.newReadRequest(table, key, fields, results);
+            //HashMap<String, ConfidentialData> results = new HashMap<>();
+            YCSBConfidentialMessage request = YCSBConfidentialMessage.newReadRequest(table, key, fields, null);
             Response reply = proxy.invokeUnordered(request.getBytes());
             YCSBConfidentialMessage replyMsg = YCSBConfidentialMessage.getObject(reply.getPainData());
             return replyMsg.getResult();

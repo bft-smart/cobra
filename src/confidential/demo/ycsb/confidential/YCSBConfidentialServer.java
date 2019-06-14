@@ -138,7 +138,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
         if (_debug) {
             System.out.println("[INFO] Processing an unordered request");
         }
-
+        ConfidentialData[] sharesResponse = null;
         switch (aRequest.getType()) {
             case READ: { // ##### operation: read #####
                 switch (aRequest.getEntity()) {
@@ -151,7 +151,16 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
                             reply = YCSBConfidentialMessage.newErrorMessage("Record not found");
                             break;
                         } else {
-                            reply = YCSBConfidentialMessage.newReadResponse(mTables.get(aRequest.getTable()).get(aRequest.getKey()), 0);
+                            Map<String, ConfidentialData> response = mTables.get(aRequest.getTable()).get(aRequest.getKey());
+                            String[] keys = new String[response.size()];
+                            sharesResponse = new ConfidentialData[response.size()];
+                            int k = 0;
+                            for (Map.Entry<String, ConfidentialData> entry : response.entrySet()) {
+                                keys[k] = entry.getKey();
+                                sharesResponse[k] = entry.getValue();
+                                k++;
+                            }
+                            reply = YCSBConfidentialMessage.newReadResponse(keys, 0);
                             break;
                         }
                 }
@@ -160,7 +169,9 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
         if (_debug) {
             System.out.println("[INFO] Sending reply");
         }
-        return new ConfidentialMessage(reply.getBytes());
+
+        return sharesResponse == null ? new ConfidentialMessage(reply.getBytes())
+                : new ConfidentialMessage(reply.getBytes(), sharesResponse);
     }
 
     @Override
