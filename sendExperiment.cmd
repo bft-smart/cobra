@@ -12,8 +12,8 @@ rem del %TEMP_DIR%\%FOLDER_NAME%.zip
 
 xcopy %SRC%\bin\*.jar %DST%\bin\
 xcopy %SRC%\lib\BFT* %DST%\lib\
-rem xcopy /e /q %SRC%\config\* %DST%\config\
-rem xcopy %SRC%\scripts\*.sh %DST%\
+xcopy /e /q %SRC%\config\* %DST%\config\
+xcopy %SRC%\scripts\*.sh %DST%\
 
 del %DST%\config\currentView
 rmdir /s /q %DST%\config\keysECDSA

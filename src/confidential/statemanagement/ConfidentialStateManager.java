@@ -493,14 +493,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         refreshTimer.schedule(refreshTriggerTask, REFRESH_PERIOD);
     }
 
-
-
     private ApplicationState recoverState(Collection<ApplicationState> recoveryStates) {
         if (recoveryStates.size() <= SVController.getCurrentViewF()) {
             logger.debug("Not enough recovery states");
             return null;
         }
-
+        logger.debug("I have {} recovery states", recoveryStates.size());
         int counter = 1;
 
         //Recovering log and checking if all the members used the same recovery polynomial

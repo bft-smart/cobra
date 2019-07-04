@@ -12,7 +12,7 @@ IF "%1"=="open" (
 rem :PROMP
 rem set /p replica=Copy Server code?[y/n]
 
-set replica=n
+set replica=y
 
 IF %replica%==y (
 	for /d %%i in (%DST%\rep*) do rmdir /s /q %%i

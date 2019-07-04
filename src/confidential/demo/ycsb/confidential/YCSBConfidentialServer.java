@@ -37,8 +37,10 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
     private Logger logger = LoggerFactory.getLogger("demo");
     private static final boolean _debug = false;
     private TreeMap<String, YCSBConfidentialTable> mTables;
-
+    private long startTime;
+    private long numRequests;
     private boolean logPrinted = false;
+    private int id;
 
     public static void main(String[] args) {
         if (args.length == 1) {
@@ -52,17 +54,31 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
         super(id);
         this.mTables = new TreeMap<>();
         new ServiceReplica(id, this, this);
+        startTime = System.nanoTime();
+        this.id = id;
     }
 
     @Override
     public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
-        if (msgCtx != null && msgCtx.getConsensusId() % 1000 == 0 && !logPrinted) {
+        /*if (msgCtx != null && msgCtx.getConsensusId() % 1000 == 0 && !logPrinted) {
             logger.info("YCSBConfidentialServer executing CID: " + msgCtx.getConsensusId());
             logPrinted = true;
         } else {
             logPrinted = false;
-        }
+        }*/
+        if (id == 0) {
+            long currentTime = System.nanoTime();
+            double deltaTime = (currentTime - startTime) / 1_000_000_000;
 
+            if ((int) (deltaTime / 5) > 0) {
+                double throughput = numRequests / deltaTime;
+                logger.info("Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {}", numRequests, deltaTime, throughput);
+                numRequests = 0;
+                startTime = currentTime;
+            }
+
+            numRequests++;
+        }
         YCSBConfidentialMessage aRequest = YCSBConfidentialMessage.getObject(plainData);
         YCSBConfidentialMessage reply = YCSBConfidentialMessage.newErrorMessage("");
         if (aRequest == null) {
