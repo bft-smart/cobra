@@ -9,6 +9,9 @@ import vss.commitment.CommitmentScheme;
 import vss.commitment.Commitments;
 import vss.secretsharing.VerifiableShare;
 
+import java.math.BigInteger;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,6 +27,7 @@ public class StateVerifierHandlerThread extends Thread {
     private AtomicInteger validStates;
     private ExecutorService executor;
     private Thread thisThread;
+    private Set<BigInteger> shareholdersBlackList;
 
     public StateVerifierHandlerThread(VerificationCompleted listener, int f, CommitmentScheme commitmentScheme) {
         super("State Verifier Thread");
@@ -34,6 +38,7 @@ public class StateVerifierHandlerThread extends Thread {
         this.executor = Executors.newFixedThreadPool(quorum);
         this.validStates = new AtomicInteger(0);
         this.thisThread = this;
+        this.shareholdersBlackList = new HashSet<>();
     }
 
 

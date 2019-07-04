@@ -8,7 +8,6 @@ import org.slf4j.LoggerFactory;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.Commitments;
 import vss.polynomial.Polynomial;
-import vss.polynomial.Term;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
@@ -23,7 +22,6 @@ import java.util.*;
 class PolynomialCreator {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private PolynomialContext context;
-    private final int bitLength;
     private final BigInteger field;
     private final SecureRandom rndGenerator;
     private final CommitmentScheme commitmentScheme;
@@ -57,7 +55,6 @@ class PolynomialCreator {
         this.processId = processId;
         this.shareholderId = shareholderId;
         this.field = field;
-        this.bitLength = field.bitLength() - 1;
         this.polynomialPropertyShare = new Share(context.getX(), context.getY());
         this.rndGenerator = rndGenerator;
         this.commitmentScheme = commitmentScheme;
@@ -118,33 +115,19 @@ class PolynomialCreator {
     }
 
     private void generateAndSendProposal() {
-        //generating f coefficients
-        BigInteger[] coefficients = generateRandomNumbers(context.getF());
-
         //generating polynomial of degree f
-        Polynomial polynomial = new Polynomial(field);
-        for (int i = 0; i < coefficients.length; i++) {
-            BigInteger coefficient = coefficients[i];
-            BigInteger exponent = BigInteger.valueOf(i + 1);
-            polynomial.addTerm(new Term() {
-                @Override
-                public BigInteger evaluateAt(BigInteger x) {
-                    return coefficient.multiply(x.modPow(exponent, field));
-                }
-            });
-        }
+        Polynomial tempPolynomial = new Polynomial(field, context.getF(),
+                BigInteger.ZERO, rndGenerator);
+        BigInteger independentTerm = polynomialPropertyShare.getShare()
+                .subtract(tempPolynomial.evaluateAt(polynomialPropertyShare.getShareholder()));
+        BigInteger[] tempCoefficients = tempPolynomial.getCoefficients();
+        BigInteger[] coefficients = Arrays.copyOfRange(tempCoefficients,
+                tempCoefficients.length - tempPolynomial.getDegree() - 1, tempCoefficients.length - 1);
 
-        BigInteger independentTerm = polynomialPropertyShare.getShare().subtract(
-                polynomial.evaluateAt(polynomialPropertyShare.getShareholder()));
-        polynomial.addTerm(new Term() {
-            @Override
-            public BigInteger evaluateAt(BigInteger bigInteger) {
-                return independentTerm;
-            }
-        });
+        Polynomial polynomial = new Polynomial(field, independentTerm, coefficients);
 
         //Committing to polynomial
-        Commitments commitments = commitmentScheme.generateCommitments(independentTerm, coefficients);
+        Commitments commitments = commitmentScheme.generateCommitments(polynomial);
 
         //generating point for each member
         int[] members = context.getMembers();
@@ -419,24 +402,5 @@ class PolynomialCreator {
             logger.warn("Polynomial message serialization failed", e);
         }
         return null;
-    }
-
-    /**
-     * Generate random number n. n > 0 && n <= 2^bitLength
-     * @return Random number
-     */
-    private BigInteger randomNumber() {
-        BigInteger rndBig = new BigInteger(bitLength, rndGenerator);
-        if (rndBig.compareTo(BigInteger.ZERO) == 0)
-            rndBig = rndBig.add(BigInteger.ONE);
-        return rndBig;
-    }
-
-    private BigInteger[] generateRandomNumbers(int threshold) {
-        BigInteger[] numbers = new BigInteger[threshold];
-
-        for (int i = 0; i < numbers.length; i++)
-            numbers[i] = randomNumber();
-        return numbers;
     }
 }
