@@ -19,7 +19,7 @@ import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
-public class StateRecoveryHandler extends Thread {
+public class StateRecoveryHandler2 extends Thread {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private Map<Integer, RecoveryApplicationState> recoveryStates;
     private final int threshold;
@@ -58,7 +58,7 @@ public class StateRecoveryHandler extends Thread {
     private int pid;
     private BigInteger shareholderId;
 
-    public StateRecoveryHandler(int threshold, int pid, BigInteger field, CommitmentScheme commitmentScheme) {
+    public StateRecoveryHandler2(int threshold, int pid, BigInteger field, CommitmentScheme commitmentScheme) {
         super("State Recovery Handler Thread");
         this.threshold = threshold;
         this.pid = pid;
@@ -186,8 +186,11 @@ public class StateRecoveryHandler extends Thread {
 
                 removeFaultyStates();
 
-                if (corruptedServers < threshold && (recoveryStates.size() < threshold + 2
+                /*if (corruptedServers < threshold && (recoveryStates.size() < threshold + 2
                         || (hasConfidentialData && snapshots.size() < threshold + 2)))
+                    continue;*/
+
+                if (recoveryStates.size() + corruptedServers < 2 * threshold + 1)
                     continue;
 
                 recoverCommandsInfo();
@@ -205,7 +208,7 @@ public class StateRecoveryHandler extends Thread {
             }
         }
 
-        byte[] recoveredSnapshotPlainData = selectCorrectData(snapshotPlainDataSenders, snapshotPlainData);
+        byte[] recoveredSnapshotPlainData = selectCorrectSnapshotPlainData();
         byte[] recoveredState = null;
         if (recoveredSnapshotPlainData != null) {
             ConfidentialSnapshot recoveredSnapshot = hasConfidentialData ?
@@ -237,22 +240,20 @@ public class StateRecoveryHandler extends Thread {
                 VerifiableShare vs = cd.getShare();
                 int sharedDataHashCode = Arrays.hashCode(vs.getSharedData());
                 sharedData.computeIfAbsent(sharedDataHashCode, k -> vs.getSharedData());
-                int sharedDataSize = sharedDataSenders.merge(sharedDataHashCode, 1, Integer::sum);
+                sharedDataSenders.merge(sharedDataHashCode, 1, Integer::sum);
 
                 int commitmentsHashCode = vs.getCommitments().hashCode();
                 polynomialCommitments.computeIfAbsent(commitmentsHashCode, k -> vs.getCommitments());
-                int pCommitmentsSize = polynomialCommitmentsSenders.merge(commitmentsHashCode, 1, Integer::sum);
+                polynomialCommitmentsSenders.merge(commitmentsHashCode, 1, Integer::sum);
 
-                if (j < shares.length)
-                    shares[j++] = vs.getShare();
-                if (sharedDataSize > threshold && pCommitmentsSize > threshold && j >= shares.length)
+                shares[j++] = vs.getShare();
+                if (j == shares.length)
                     break;
             }
 
             try {
                 Polynomial polynomial = new Polynomial(field, shares);
                 Commitments commitments = selectCorrectPolynomialCommitments();
-                byte[] sd = selectCorrectData(sharedDataSenders, sharedData);
                 if (polynomial.getDegree() != threshold) {//found invalid share
                     Commitments transferCommitments = commitmentScheme.sumCommitments(selectCorrectPolynomialCommitments(),
                             transferPolynomialCommitments);
@@ -282,7 +283,7 @@ public class StateRecoveryHandler extends Thread {
                 }
                 BigInteger recoveredShareNumber = polynomial.evaluateAt(shareholderId);
                 recoveredSnapshotConfidentialData[recoveringSnapshotConfidentialDataIndex++] = new ConfidentialData(
-                        new VerifiableShare(new Share(shareholderId, recoveredShareNumber), commitments, sd)
+                        new VerifiableShare(new Share(shareholderId, recoveredShareNumber), commitments, null)
                 );
             } catch (SecretSharingException e) {
                 logger.error("Failed to create polynomial to restore state.", e);
@@ -346,20 +347,17 @@ public class StateRecoveryHandler extends Thread {
             }
         }
 
-        if (max <= threshold)
-            return null;
-
         return commitments;
     }
 
-    private byte[] selectCorrectData(Map<Integer, Integer> dataSenders, Map<Integer, byte[]> data) {
+    private byte[] selectCorrectSnapshotPlainData() {
         int max = 0;
         byte[] plainData = null;
 
-        for (Map.Entry<Integer, Integer> entry : dataSenders.entrySet()) {
+        for (Map.Entry<Integer, Integer> entry : snapshotPlainDataSenders.entrySet()) {
             if (entry.getValue() > max) {
                 max = entry.getValue();
-                plainData = data.get(entry.getKey());
+                plainData = snapshotPlainData.get(entry.getKey());
             }
         }
 
