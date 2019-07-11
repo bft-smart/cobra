@@ -30,6 +30,10 @@ public final class Request {
         return shares;
     }
 
+    public void setShares(ConfidentialData[] shares) {
+        this.shares = shares;
+    }
+
     public byte[] serialize() {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {

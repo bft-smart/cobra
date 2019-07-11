@@ -5,6 +5,7 @@ import bftsmart.reconfiguration.views.View;
 import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.SMMessage;
 import bftsmart.statemanagement.StateManager;
+import bftsmart.tom.MessageContext;
 import bftsmart.tom.core.DeliveryThread;
 import bftsmart.tom.core.TOMLayer;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
@@ -24,13 +25,15 @@ import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import java.lang.reflect.Array;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, VerificationCompleted {
+public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
     private static final long REFRESH_PERIOD = 120000;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
@@ -42,22 +45,20 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private ReentrantLock lockTimer;
     private AtomicInteger sequenceNumber;
     private Map<Integer, SMMessage> onGoingRecoveryRequests;
-    private BigInteger shareholder;
-    private Set<Integer> sequenceNumbers;
+    private HashMap<Integer, Integer> sequenceNumbers;
     private Timer refreshTimer;
     private TimerTask refreshTriggerTask;
-    private StateVerifierHandlerThread stateVerifierHandlerThread;
+    private StateRecoveryHandler stateRecoveryHandlerThread;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
         sequenceNumber = new AtomicInteger();
         onGoingRecoveryRequests = new HashMap<>();
-        sequenceNumbers = new HashSet<>();
+        sequenceNumbers = new HashMap<>();
         refreshTimer = new Timer("Refresh Timer");
     }
 
     public void setDistributedPolynomial(DistributedPolynomial distributedPolynomial) {
-        this.shareholder = distributedPolynomial.getShareholderId();
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
@@ -118,9 +119,15 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
         };
 
-        stateVerifierHandlerThread = new StateVerifierHandlerThread(this, SVController.getCurrentViewF(),
-                commitmentScheme);
-        stateVerifierHandlerThread.start();
+        stateRecoveryHandlerThread = new StateRecoveryHandler(
+                this,
+                SVController.getCurrentViewF(),
+                SVController.getStaticConf().getProcessId(),
+                distributedPolynomial.getField(),
+                commitmentScheme,
+                interpolationStrategy
+        );
+        stateRecoveryHandlerThread.start();
 
         stateTimer = new Timer("State Timer");
         timeout *= 2;
@@ -169,6 +176,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             RecoverySMMessage recoverySMMessage = (RecoverySMMessage)msg;
             logger.info("{} sent me state up to cid {}", msg.getSender(), msg.getCID());
             logger.debug("waitingCID: {}" , waitingCID);
+            sequenceNumbers.merge(recoverySMMessage.getSequenceNumber(), 1, Integer::sum);
             if (!SVController.getStaticConf().isStateTransferEnabled())
                 return;
 
@@ -183,49 +191,38 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 senderViews.put(msg.getSender(), msg.getView());
             }
 
-            if (stateVerifierHandlerThread.isAlive()) {
-                logger.debug("Submitting state from {} to verification", msg.getSender());
-                stateVerifierHandlerThread.addStateForVerification(recoverySMMessage);
+            if (stateRecoveryHandlerThread.isAlive()) {
+                logger.debug("Submitting state from {} to recovery", msg.getSender());
+                stateRecoveryHandlerThread.deliverRecoveryState(recoverySMMessage);
             } else {
-                onVerificationCompleted(false, recoverySMMessage);
+                logger.debug("State recovery already has finished");
+                //onReconstructionCompleted(false, recoverySMMessage);
             }
         } finally {
             lockTimer.unlock();
         }
     }
 
+    /**
+     * This method will be called after state is reconstructed, which means that this server already
+     * have received f + 1 correct recovery states
+     * @param recoveredState Recovered State
+     */
     @Override
-    public void onVerificationCompleted(boolean valid, RecoverySMMessage msg) {
+    public void onReconstructionCompleted(DefaultApplicationState recoveredState) {
         try {
             lockTimer.lock();
-            if (valid) {
-                logger.info("{} sent me valid state", msg.getSender());
-                sequenceNumbers.add(msg.getSequenceNumber());
-                senderStates.put(msg.getSender(), msg.getState());
-            } else if (!enoughReplies()) {
-                logger.info("{} sent me invalid state", msg.getSender());
-                return;
-            }
 
-            if (!enoughReplies()) {
-                logger.debug("I don't have f + 1 valid replies");
-                return;
-            }
-
-            int currentRegency = -1;
-            int currentLeader = -1;
-            View currentView = null;
+            int currentRegency;
+            int currentLeader;
+            View currentView;
 
             if (!appStateOnly) {
-                if (enoughRegencies(msg.getRegency())) {
-                    currentRegency = msg.getRegency();
-                }
-                if (enoughLeaders(msg.getLeader())) {
-                    currentLeader = msg.getLeader();
-                }
-                if (enoughViews(msg.getView())) {
-                    currentView = msg.getView();
-                }
+                Integer temp = getCurrentValue(senderRegencies);
+                currentRegency = temp == null ? -1 : temp;
+                temp = getCurrentValue(senderLeaders);
+                currentLeader = temp == null ? -1 : temp;
+                currentView = getCurrentValue(senderViews);
             } else {
                 currentLeader = tomLayer.execManager.getCurrentLeader();
                 currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
@@ -248,8 +245,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             logger.info("More than f states confirmed");
 
-            stateVerifierHandlerThread.interrupt();
-
             if (stateTimer != null)
                 stateTimer.cancel();
 
@@ -271,16 +266,17 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             //    tomLayer.requestsTimer.setTimeout(tomLayer.requestsTimer.getTimeout() * (currentRegency * 2));
 
             logger.info("Restoring state");
-            if (sequenceNumbers.size() > 1) {
+            Integer seqNumber = getCurrentValue(sequenceNumbers);
+            if (seqNumber == null) {
                 logger.error("Sequence numbers are different");
                 reset();
                 requestState();
                 return;
             }
 
-            sequenceNumber.set(msg.getSequenceNumber());
+            sequenceNumber.set(seqNumber);
 
-            state = recoverState(senderStates.values());
+            state = recoveredState;
 
             if (state == null) {
                 logger.error("Failed to reconstruct state. Retrying");
@@ -340,6 +336,25 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         } finally {
             lockTimer.unlock();
         }
+    }
+
+    private<T> T getCurrentValue(HashMap<Integer, T> senderValues) {
+        Map<T, Integer> counter = new HashMap<>();
+        for (T value : senderValues.values()) {
+            counter.merge(value, 1, Integer::sum);
+        }
+
+        int max = 0;
+        T result = null;
+        for (Map.Entry<T, Integer> entry : counter.entrySet()) {
+            if (entry.getValue() > max) {
+                max = entry.getValue();
+                result = entry.getKey();
+            }
+        }
+        if (max < SVController.getQuorum())
+            return null;
+        return result;
     }
 
     @Override
@@ -493,6 +508,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         refreshTimer.schedule(refreshTriggerTask, REFRESH_PERIOD);
     }
 
+    /*
     private ApplicationState recoverState(Collection<ApplicationState> recoveryStates) {
         if (recoveryStates.size() <= SVController.getCurrentViewF()) {
             logger.debug("Not enough recovery states");
@@ -620,7 +636,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         }
 
         return new CommandsInfo(recoveredCommands, commandsInfos[0].msgCtx);
-    }
+    }*/
 
     private void sendRecoveryState(SMMessage recoveryMessage, VerifiableShare recoveryPoint) {
         logger.debug("Creating recovery state up to CID {} for {}", recoveryMessage.getCID(),
@@ -631,23 +647,10 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             return;
         }
 
-        ConfidentialSnapshot recoverySnapshot = null;
-        if (appState.hasState())
-            recoverySnapshot = createRecoverySnapshot(ConfidentialSnapshot.deserialize(appState.getSerializedState()),
-                    recoveryPoint);
-
-        CommandsInfo[] recoveryLog = createRecoveryLog(appState.getMessageBatches(), recoveryPoint);
-        byte[] serializedState = recoverySnapshot != null ? recoverySnapshot.serialize() : null;
-
-        ApplicationState recoveryState = new RecoveryApplicationState(
-                recoveryLog,
-                appState.getLastCheckpointCID(),
-                appState.getLastCID(),
-                serializedState,
-                TOMUtil.computeHash(serializedState),
-                SVController.getStaticConf().getProcessId(),
-                recoveryPoint.getCommitments()
-        );
+        RecoveryApplicationState recoveryState = createRecoverState(appState, recoveryPoint);
+        if (recoveryState == null) {
+            return;
+        }
         logger.debug("Sending sequence number {} with the state", sequenceNumber.get());
         RecoverySMMessage response = new RecoverySMMessage(
                 SVController.getStaticConf().getProcessId(),
@@ -660,13 +663,168 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 sequenceNumber.get()
         );
 
-        logger.info("Sending recovery state up to {} to {}", recoveryState.getLastCID(),
-                recoveryMessage.getSender());
+        logger.info("Sending recovery state up to cid {} to {} of size {} bytes and {} shares", recoveryState.getLastCID(),
+                recoveryMessage.getSender(), recoveryState.getCommonState().length, recoveryState.getShares().size());
         tomLayer.getCommunication().send(new int[] {recoveryMessage.getSender()}, response);
         logger.info("Recovery state sent");
     }
 
-    private CommandsInfo[] createRecoveryLog(CommandsInfo[] log, VerifiableShare recoveryPoint) {
+    private RecoveryApplicationState createRecoverState(DefaultApplicationState state, VerifiableShare transferPoint) {
+        BigInteger field = distributedPolynomial.getField();
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream out = new ObjectOutputStream(bos)) {
+            CommandsInfo[] log = state.getMessageBatches();
+            out.writeInt(log == null ? -1 : log.length);
+            LinkedList<Share> shares = new LinkedList<>();
+            byte[] b;
+            if (log != null) {
+                for (CommandsInfo commandsInfo : log) {
+                    byte[][] commands = commandsInfo.commands;
+                    MessageContext[] msgCtx = commandsInfo.msgCtx;
+                    serializeMessageContext(out, msgCtx);
+                    out.writeInt(commands.length);
+                    for (byte[] command : commands) {
+                        Request request = Request.deserialize(command);
+                        if (request == null || request.getShares() == null) {
+                            out.writeInt(-1);
+                            out.writeInt(command.length);
+                            out.write(command);
+                        } else {
+                            out.writeInt(request.getShares().length);
+                            for (ConfidentialData share : request.getShares()) {
+                                b = share.getShare().getSharedData();
+                                out.writeInt(b == null ? -1 : b.length);
+                                if (b != null)
+                                    out.write(b);
+                                share.getShare().getCommitments().writeExternal(out);
+
+                                Share transferShare = share.getShare().getShare();
+                                transferShare.setShare(transferShare.getShare().add(transferPoint.getShare().getShare()).mod(field));
+                                shares.add(transferShare);
+
+                                out.writeInt(share.getPublicShares() == null ? -1 : share.getPublicShares().size());
+                                if (share.getPublicShares() != null) {//writing public data
+                                    for (VerifiableShare publicShare : share.getPublicShares()) {
+                                        publicShare.writeExternal(out);
+                                    }
+                                }
+                            }
+                            request.setShares(null);
+                            b = request.serialize();
+                            if (b == null) {
+                                logger.debug("Failed to serialize recovery Request");
+                                return null;
+                            }
+                            out.writeInt(b.length);
+                            out.write(b);
+                        }
+                    }
+                }
+            }
+
+            if (state.hasState()) {
+                ConfidentialSnapshot snapshot = ConfidentialSnapshot.deserialize(state.getSerializedState());
+                if (snapshot != null) {
+                    out.writeBoolean(true);
+                    out.writeInt(snapshot.getPlainData() == null ? -1 : snapshot.getPlainData().length);
+                    if (snapshot.getPlainData() != null)
+                        out.write(snapshot.getPlainData());
+                    out.writeInt(snapshot.getShares() == null ? -1 : snapshot.getShares().length);
+                    if (snapshot.getShares() != null) {
+                        for (ConfidentialData share : snapshot.getShares()) {
+                            b = share.getShare().getSharedData();
+                            out.write(b == null ? -1 : b.length);
+                            if (b != null)
+                                out.write(b);
+                            share.getShare().getCommitments().writeExternal(out);
+                            Share transferShare = share.getShare().getShare();
+                            transferShare.setShare(transferShare.getShare().add(transferPoint.getShare().getShare()).mod(field));
+                            shares.add(transferShare);
+
+                            out.writeInt(share.getPublicShares() == null ? -1 : share.getPublicShares().size());
+                            if (share.getPublicShares() != null) {//writing public data
+                                for (VerifiableShare publicShare : share.getPublicShares()) {
+                                    publicShare.writeExternal(out);
+                                }
+                            }
+                        }
+                    }
+                } else
+                    out.writeBoolean(false);
+            } else
+                out.writeBoolean(false);
+
+            out.flush();
+            bos.flush();
+
+            byte[] commonState = bos.toByteArray();
+            //logger.debug("Common State: {}", commonState);
+
+            return new RecoveryApplicationState(
+                    commonState,
+                    shares,
+                    state.getLastCheckpointCID(),
+                    state.getLastCID(),
+                    SVController.getStaticConf().getProcessId(),
+                    transferPoint.getCommitments()
+
+            );
+
+        } catch (IOException e) {
+            logger.error("Failed to create Recovery State", e);
+        }
+        return null;
+    }
+
+    private void serializeMessageContext(ObjectOutputStream out, MessageContext[] msgCtx) throws IOException {
+        out.writeInt(msgCtx == null ? -1 : msgCtx.length);
+        if (msgCtx == null)
+            return;
+        for (MessageContext ctx : msgCtx) {
+            out.writeInt(ctx.getSender());
+            out.writeInt(ctx.getViewID());
+            out.write(ctx.getType().ordinal());
+            out.writeInt(ctx.getSession());
+            out.writeInt(ctx.getSequence());
+            out.writeInt(ctx.getOperationId());
+            out.writeInt(ctx.getReplyServer());
+            out.writeInt(ctx.getSignature() == null ? -1 : ctx.getSignature().length);
+            if (ctx.getSignature() != null)
+                out.write(ctx.getSignature());
+
+            out.writeLong(ctx.getTimestamp());
+            out.writeInt(ctx.getRegency());
+            out.writeInt(ctx.getLeader());
+            out.writeInt(ctx.getConsensusId());
+            out.writeInt(ctx.getNumOfNonces());
+            out.writeLong(ctx.getSeed());
+            out.writeInt(ctx.getProof() == null ? -1 : ctx.getProof().size());
+            if (ctx.getProof() != null) {
+                for (ConsensusMessage proof : ctx.getProof()) {
+                    //out.writeInt(proof.getSender());
+                    out.writeInt(proof.getNumber());
+                    out.writeInt(proof.getEpoch());
+                    out.writeInt(proof.getType());
+
+                    out.writeInt(proof.getValue() == null ? -1 : proof.getValue().length);
+                    if (proof.getValue() != null)
+                        out.write(proof.getValue());
+                    /*logger.debug("{}", proof.getProof());*/
+                }
+            }
+            ctx.getFirstInBatch().wExternal(out);
+            out.writeBoolean(ctx.isLastInBatch());
+            out.writeBoolean(ctx.isNoOp());
+            //out.writeBoolean(ctx.readOnly);
+
+            out.writeInt(ctx.getNonces() == null ? -1 : ctx.getNonces().length);
+            if (ctx.getNonces() != null)
+                out.write(ctx.getNonces());
+        }
+
+    }
+
+    /*private CommandsInfo[] createRecoveryLog(CommandsInfo[] log, VerifiableShare recoveryPoint) {
         CommandsInfo[] recoveryLog = new CommandsInfo[log.length];
         BigInteger field = distributedPolynomial.getField();
         BigInteger y = recoveryPoint.getShare().getShare();
@@ -716,5 +874,5 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         }
 
         return new ConfidentialSnapshot(plainData, shares);
-    }
+    }*/
 }
