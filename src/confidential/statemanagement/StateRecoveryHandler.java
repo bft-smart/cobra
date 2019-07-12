@@ -141,7 +141,11 @@ public class StateRecoveryHandler extends Thread {
                     correctRecoverySharesSize = selectCorrectKey(recoverySharesSize);
 
                 if (commonDataStream != null && correctRecoverySharesSize != -1) {
+                    long startTime = System.nanoTime();
                     DefaultApplicationState recoveredState = recoverState();
+                    long endTime = System.nanoTime();
+                    double totalTime = (endTime - startTime) / 1_000_000.0;
+                    logger.info("State Reconstruction duration: {} ms", totalTime);
                     reconstructionListener.onReconstructionCompleted(recoveredState);
                     break;
                 }
@@ -163,7 +167,7 @@ public class StateRecoveryHandler extends Thread {
         for (int i = 0; i < size; i++) {
             int sender = in.readInt();
             int viewId = in.readInt();
-            TOMMessageType type = TOMMessageType.fromInt(in.read());
+            TOMMessageType type = TOMMessageType.fromInt(in.readInt());
             int session = in.readInt();
             int sequence = in.readInt();
             int operationId = in.readInt();

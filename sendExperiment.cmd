@@ -11,7 +11,7 @@ rem mkdir %DST%
 rem del %TEMP_DIR%\%FOLDER_NAME%.zip
 
 xcopy %SRC%\bin\*.jar %DST%\bin\
-xcopy %SRC%\lib\BFT* %DST%\lib\
+rem xcopy %SRC%\lib\BFT* %DST%\lib\
 xcopy /e /q %SRC%\config\* %DST%\config\
 xcopy %SRC%\scripts\*.sh %DST%\
 
