@@ -12,6 +12,7 @@ def load_log_file(filename):
             has_read |= "READ" in line
             if "ops/sec" in line and ("INSERT" in line or "READ" in line):
                 lines.append(line)
+    print(has_read)
     return lines, has_insert, has_read
 
 
@@ -48,10 +49,8 @@ def extract_values(log_files):
             time = int(sep_values[0].split()[0])
             min_time = min(min_time, time)
             max_time = max(max_time, time)
-
             throughput = float(sep_values[1].split()[0].replace(",", "."))
             record_values.append(throughput)
-
             latency = sep_values[2].split()
             if has_insert:
                 index = latency.index("[INSERT")
@@ -77,8 +76,6 @@ def extract_values(log_files):
     read_latency = []
 
     for t in range(min_time, max_time + 1):
-        if t not in log_values:
-            continue
         record = log_values[t]
         throughputs.append(record[0])
         if has_read and has_insert:

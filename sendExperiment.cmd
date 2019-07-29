@@ -11,11 +11,12 @@ rem mkdir %DST%
 rem del %TEMP_DIR%\%FOLDER_NAME%.zip
 
 xcopy %SRC%\bin\*.jar %DST%\bin\
-rem xcopy %SRC%\lib\BFT* %DST%\lib\
-xcopy /e /q %SRC%\config\* %DST%\config\
-xcopy %SRC%\scripts\*.sh %DST%\
+rem xcopy %SRC%\lib\*.jar %DST%\lib\
+rem xcopy /e /q %SRC%\config\* %DST%\config\
+rem xcopy %SRC%\scripts\*.sh %DST%\
 
 del %DST%\config\currentView
+del %DST%\config\hosts.config
 rmdir /s /q %DST%\config\keysECDSA
 rmdir /s /q %DST%\config\keysRSA
 rmdir /s /q %DST%\config\keysSSL_TLS

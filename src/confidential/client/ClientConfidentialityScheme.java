@@ -45,6 +45,9 @@ public class ClientConfidentialityScheme {
 
 
     public byte[] combine(OpenPublishedShares shares) throws SecretSharingException {
-        return vss.combine(shares);
+        byte[] b = vss.combine(shares);
+        if (b == null || b.length == 0)
+            System.out.println("Confidential data is null");
+        return b;
     }
 }
