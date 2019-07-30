@@ -66,7 +66,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
         } else {
             logPrinted = false;
         }*/
-        if (id == 0) {
+        //if (id == 0) {
             long currentTime = System.nanoTime();
             double deltaTime = (currentTime - startTime) / 1_000_000_000;
 
@@ -78,7 +78,7 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
             }
 
             numRequests++;
-        }
+        //}
         YCSBConfidentialMessage aRequest = YCSBConfidentialMessage.getObject(plainData);
         YCSBConfidentialMessage reply = YCSBConfidentialMessage.newErrorMessage("");
         if (aRequest == null) {

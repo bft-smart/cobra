@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
-    private static final long REFRESH_PERIOD = 300_000;
+    private static final long REFRESH_PERIOD = 150_000;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
@@ -50,6 +50,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private TimerTask refreshTriggerTask;
     private StateRecoveryHandler stateRecoveryHandlerThread;
     private long recoveryStartTime;
+    private long renewalStartTime;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
@@ -63,7 +64,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
-        //setRefreshTimer();
+        setRefreshTimer();
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -390,7 +391,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 logger.debug("There is no recovery request for id {}", context.getId());
         } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
             refreshTriggerTask.cancel();
+            long endTime = System.nanoTime() - renewalStartTime;
+            logger.info("Renewal polynomial duration: {} ms", (endTime / 1_000_000.0));
+            long start = System.nanoTime();
             refreshState(point, consensusId);
+            long end = System.nanoTime() - start;
+            logger.info("Renewal duration: {} ms", (end / 1_000_000.0));
         }
     }
 
@@ -409,7 +415,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 tomLayer.getSynchronizer().removeSTOPretransmissions(currentRegency - 1);
             }
 
-            logger.debug("Getting state up to {}", consensusId);
+            //logger.debug("Getting state up to {}", consensusId);
             DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
             if (appState == null) {
                 logger.debug("Something went wrong while retrieving state up to {}", consensusId);
@@ -417,8 +423,10 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
 
             ApplicationState refreshedState = refreshState(point, appState);
-            if (refreshedState != null)
+            if (refreshedState != null) {
+                logger.info("Updating state");
                 dt.update(refreshedState);
+            }
             else
                 logger.debug("State renewal ignored. Something went wrong while renewing the state");
 
@@ -438,6 +446,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         BigInteger y = point.getShare().getShare();
         Commitments refreshCommitments = point.getCommitments();
         BigInteger field = distributedPolynomial.getField();
+        long numShares = 0;
         byte[] renewedSnapshot = null;
         if (appState.hasState()) {
             ConfidentialSnapshot snapshot = ConfidentialSnapshot.deserialize(appState.getState());
@@ -451,12 +460,14 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     Commitments commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
                             refreshCommitments);
                     vs.setCommitments(commitments);
+                    numShares++;
                     if (oldShare.getPublicShares() != null)
                         for (VerifiableShare publicShare : oldShare.getPublicShares()) {
                             publicShare.getShare().setShare(y.add(publicShare.getShare().getShare()).mod(field));
                             commitments = commitmentScheme.sumCommitments(publicShare.getCommitments(),
                                     refreshCommitments);
                             publicShare.setCommitments(commitments);
+                            numShares++;
                         }
                 }
 
@@ -482,12 +493,14 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                         Commitments commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
                                 refreshCommitments);
                         vs.setCommitments(commitments);
+                        numShares++;
                         if (oldShare.getPublicShares() != null)
                             for (VerifiableShare publicShare : oldShare.getPublicShares()) {
                                 publicShare.getShare().setShare(y.add(publicShare.getShare().getShare()).mod(field));
                                 commitments = commitmentScheme.sumCommitments(publicShare.getCommitments(),
                                         refreshCommitments);
                                 publicShare.setCommitments(commitments);
+                                numShares++;
                             }
                     }
                     commands[j] = new Request(request.getType(), request.getPlainData(), secretData).serialize();
@@ -495,6 +508,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
             renewedLogs[i] = new CommandsInfo(commands, oldLog.msgCtx);
         }
+
+        logger.info("Renewed {} shares", numShares);
 
         return new DefaultApplicationState(
                 renewedLogs,
@@ -510,6 +525,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         refreshTriggerTask = new TimerTask() {
             @Override
             public void run() {
+                renewalStartTime = System.nanoTime();
                 int id = sequenceNumber.getAndIncrement();
                 PolynomialContext context = new PolynomialContext(
                         id,

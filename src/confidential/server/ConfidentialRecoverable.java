@@ -345,7 +345,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         msgContexts.add(msgCtx);
 
         if (!msgCtx.isLastInBatch()) {
-            logger.debug("Not last in the batch");
+            //logger.debug("Not last in the batch");
             return;
         }
 
