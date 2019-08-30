@@ -64,7 +64,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
-        setRefreshTimer();
+        //setRefreshTimer();
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -407,6 +407,11 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
 
+            logger.info("Stopping execution manager");
+            tomLayer.execManager.stop();
+            int lastExec = tomLayer.getLastExec();
+            int inExec = tomLayer.getInExec();
+
             dt.deliverLock();
 
             int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
@@ -426,6 +431,18 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             if (refreshedState != null) {
                 logger.info("Updating state");
                 dt.update(refreshedState);
+
+                logger.info("Restarting execution manager");
+                tomLayer.setLastExec(lastExec);
+                tomLayer.setInExec(inExec);
+                execManager.restart();
+
+                //logger.info("Modifying lastExec to {}", lastExec);
+                //tomLayer.setLastExec(lastExec);
+
+                logger.debug("Processing out of context messages");
+                tomLayer.processOutOfContext();
+                logger.debug("Finished processing out of context messages");
             }
             else
                 logger.debug("State renewal ignored. Something went wrong while renewing the state");
