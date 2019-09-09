@@ -28,7 +28,7 @@
     </target>
 
     <target name="jar" description="Compression target">
-        <jar jarfile="${dist.dir}/Confidential-BFT-SMaRt.jar">
+        <jar jarfile="${dist.dir}/COBRA.jar">
             <fileset dir="${build.dir}">
                 <include name="**/*.class" />
             </fileset>
