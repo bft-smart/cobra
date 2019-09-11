@@ -12,14 +12,12 @@ import org.slf4j.LoggerFactory;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import javax.net.ServerSocketFactory;
-import javax.net.ssl.SSLServerSocket;
-import javax.net.ssl.SSLServerSocketFactory;
-import javax.net.ssl.SSLSocket;
+import javax.net.ssl.*;
 import java.io.*;
 import java.math.BigInteger;
-import java.net.ServerSocket;
 import java.net.Socket;
+import java.security.*;
+import java.security.cert.CertificateException;
 import java.util.LinkedList;
 
 /**
@@ -27,25 +25,56 @@ import java.util.LinkedList;
  */
 public class RecoveryStateSender extends Thread {
     private Logger logger = LoggerFactory.getLogger("confidential");
-    //private SSLServerSocket serverSocket;
-    private ServerSocket serverSocket;
+    private static final String SECRET = "MySeCreT_2hMOygBwY";
+    private SSLServerSocket serverSocket;
     private int myProcessId;
     private String recoveringServerIp;
     private DefaultApplicationState state;
     private VerifiableShare recoveryPoint;
     private BigInteger field;
 
-    public RecoveryStateSender(int serverPort, int myProcessId, String recoveringServerIp, DefaultApplicationState applicationState,
-                               VerifiableShare recoveryPoint, BigInteger field) throws IOException {
+    RecoveryStateSender(int serverPort, String recoveringServerIp,
+                        DefaultApplicationState applicationState, VerifiableShare recoveryPoint,
+                        BigInteger field, ServerViewController svController) throws Exception {
         super("State Sender Thread");
         logger.debug("I am listening in port {} for state request", serverPort);
-        //this.serverSocket = (SSLServerSocket) SSLServerSocketFactory.getDefault().createServerSocket(serverPort);
-        this.serverSocket = ServerSocketFactory.getDefault().createServerSocket(serverPort);
+        this.serverSocket = createSSLServerSocket(serverPort, svController);
         this.recoveringServerIp = recoveringServerIp;
         this.state = applicationState;
         this.recoveryPoint = recoveryPoint;
-        this.myProcessId = myProcessId;
+        this.myProcessId = svController.getStaticConf().getProcessId();
         this.field = field;
+    }
+
+    private SSLServerSocket createSSLServerSocket(int serverPort, ServerViewController svController)
+            throws IOException, NoSuchAlgorithmException, KeyManagementException, KeyStoreException,
+            CertificateException, UnrecoverableKeyException {
+        KeyStore ks;
+        try (FileInputStream fis = new FileInputStream("config/keysSSL_TLS/" +
+                svController.getStaticConf().getSSLTLSKeyStore())) {
+            ks = KeyStore.getInstance(KeyStore.getDefaultType());
+            ks.load(fis, SECRET.toCharArray());
+        }
+
+        String algorithm = Security.getProperty("ssl.KeyManagerFactory.algorithm");
+        KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
+        kmf.init(ks, SECRET.toCharArray());
+
+        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(algorithm);
+        trustManagerFactory.init(ks);
+
+        SSLContext context = SSLContext.getInstance(svController.getStaticConf().getSSLTLSProtocolVersion());
+        context.init(kmf.getKeyManagers(), trustManagerFactory.getTrustManagers(), new SecureRandom());
+
+        SSLServerSocketFactory serverSocketFactory = context.getServerSocketFactory();
+        SSLServerSocket serverSocket = (SSLServerSocket) serverSocketFactory.createServerSocket(serverPort);
+        serverSocket.setEnabledCipherSuites(svController.getStaticConf().getEnabledCiphers());
+        serverSocket.setEnableSessionCreation(true);
+        serverSocket.setReuseAddress(true);
+        serverSocket.setNeedClientAuth(true);
+        serverSocket.setWantClientAuth(true);
+
+        return serverSocket;
     }
 
     @Override

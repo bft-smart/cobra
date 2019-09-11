@@ -131,7 +131,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         stateRecoveryHandlerThread = new StateRecoveryHandler(
                 this,
                 SVController.getCurrentViewF(),
-                SVController.getStaticConf().getProcessId(),
+                SVController,
                 distributedPolynomial.getField(),
                 commitmentScheme,
                 interpolationStrategy
@@ -593,13 +593,13 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             logger.debug("Starting recovery state sender server");
             new RecoveryStateSender(
                     myPort,
-                    SVController.getStaticConf().getProcessId(),
                     SVController.getCurrentView().getAddress(recoveryMessage.getSender()).getAddress().getHostAddress(),
                     appState,
                     recoveryPoint,
-                    distributedPolynomial.getField()
+                    distributedPolynomial.getField(),
+                    SVController
             ).start();
-        } catch (IOException e) {
+        } catch (Exception e) {
             e.printStackTrace();
         }
 

@@ -1,13 +1,13 @@
 package confidential.statemanagement;
 
 import bftsmart.consensus.messages.ConsensusMessage;
+import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.core.messages.TOMMessage;
 import bftsmart.tom.core.messages.TOMMessageType;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import ch.qos.logback.core.net.ssl.SSL;
 import confidential.ConfidentialData;
 import confidential.server.Request;
 import org.slf4j.Logger;
@@ -20,20 +20,21 @@ import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import javax.net.SocketFactory;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.*;
 import java.io.ByteArrayInputStream;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
-import java.net.Socket;
+import java.security.*;
+import java.security.cert.CertificateException;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 
 public class StateRecoveryHandler extends Thread {
     private Logger logger = LoggerFactory.getLogger("confidential");
+    private static final String SECRET = "MySeCreT_2hMOygBwY";
     private final int threshold;
     private final BigInteger field;
     //private BlockingQueue<RecoverySMMessage> stateQueue;
@@ -63,13 +64,17 @@ public class StateRecoveryHandler extends Thread {
     private ObjectInputStream commonDataStream;
     private ReconstructionCompleted reconstructionListener;
 
-    public StateRecoveryHandler(ReconstructionCompleted reconstructionListener, int threshold, int pid,
-                                BigInteger field, CommitmentScheme commitmentScheme,
-                                InterpolationStrategy interpolationStrategy) {
+    private SSLSocketFactory socketFactory;
+
+    private ServerViewController svController;
+
+    StateRecoveryHandler(ReconstructionCompleted reconstructionListener, int threshold,
+                         ServerViewController svController, BigInteger field, CommitmentScheme commitmentScheme,
+                         InterpolationStrategy interpolationStrategy) {
         super("State Recovery Handler Thread");
         this.reconstructionListener = reconstructionListener;
         this.threshold = threshold;
-        this.pid = pid;
+        this.pid = svController.getStaticConf().getProcessId();
         this.shareholderId = BigInteger.valueOf(pid + 1);
         this.field = field;
 
@@ -89,6 +94,31 @@ public class StateRecoveryHandler extends Thread {
         this.polynomialCommitmentsSenders = new HashMap<>(threshold + 1);
         this.lastCheckpointCIDSenders = new HashMap<>(threshold + 1);
         this.lastCIDSenders = new HashMap<>(threshold + 1);
+        this.svController = svController;
+        initSSLAttributes(svController);
+    }
+
+    private void initSSLAttributes(ServerViewController svController) {
+        String algorithm = Security.getProperty("ssl.KeyManagerFactory.algorithm");
+        try (FileInputStream fis = new FileInputStream("config/keysSSL_TLS/" +
+                svController.getStaticConf().getSSLTLSKeyStore())) {
+            KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
+            ks.load(fis, SECRET.toCharArray());
+
+            KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
+            kmf.init(ks, SECRET.toCharArray());
+
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(algorithm);
+            trustManagerFactory.init(ks);
+
+            SSLContext context = SSLContext.getInstance(svController.getStaticConf().getSSLTLSProtocolVersion());
+            context.init(kmf.getKeyManagers(), trustManagerFactory.getTrustManagers(), new SecureRandom());
+
+            this.socketFactory = context.getSocketFactory();
+        } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException
+                | UnrecoverableKeyException | KeyManagementException e) {
+            logger.error("Failed to initialize SSL attributes", e);
+        }
     }
 
     /*public void deliverRecoveryState(RecoverySMMessage state) {
@@ -99,7 +129,7 @@ public class StateRecoveryHandler extends Thread {
         }
     }*/
 
-    public void deliverRecoveryState(RecoveryStateServerSMMessage state) {
+    void deliverRecoveryState(RecoveryStateServerSMMessage state) {
         try {
             //new RecoveryStateReceiver(state, this).start();
             stateQueue.put(state);
@@ -116,10 +146,12 @@ public class StateRecoveryHandler extends Thread {
                 RecoveryStateServerSMMessage recoveryMessage = stateQueue.take();
                 logger.info("Connecting to {} to ask recovery state ({}:{})", recoveryMessage.getSender(),
                         recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
-                //SSLSocket socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket(
-                //        recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
-                Socket socket = SocketFactory.getDefault().createSocket(recoveryMessage.getServerIp(),
-                        recoveryMessage.getServerPort());
+                SSLSocket socket = (SSLSocket) socketFactory.createSocket(
+                        recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
+                socket.setKeepAlive(true);
+                socket.setTcpNoDelay(true);
+                socket.setEnabledCipherSuites(this.svController.getStaticConf().getEnabledCiphers());
+
                 RecoveryApplicationState state = new RecoveryApplicationState();
                 logger.debug("Reading recovery state from {}", recoveryMessage.getSender());
                 state.readExternal(new ObjectInputStream(socket.getInputStream()));
@@ -237,10 +269,10 @@ public class StateRecoveryHandler extends Thread {
             //boolean readOnly = in.readBoolean();
 
             len = in.readInt();
-            byte[] nonces = null;
+            byte[] nonce;
             if (len != -1) {
-                nonces = new byte[len];
-                in.readFully(nonces);
+                nonce = new byte[len];
+                in.readFully(nonce);
             }
 
             MessageContext messageContext = new MessageContext(sender, viewId, type, session, sequence, operationId,
@@ -427,6 +459,7 @@ public class StateRecoveryHandler extends Thread {
                         logger.error("Server {} sent me invalid share", entry.getKey());
                         currentShares.remove(entry.getKey());
                         recoveryShares.remove(entry.getKey());
+                        corruptedServers++;
                     }
                 }
                 shareNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
