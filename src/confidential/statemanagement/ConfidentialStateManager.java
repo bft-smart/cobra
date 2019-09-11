@@ -35,6 +35,7 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
     private static final long REFRESH_PERIOD = 150_000;
+    private static final boolean RENEWAL = false;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
@@ -64,7 +65,11 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         this.distributedPolynomial = distributedPolynomial;
-        //setRefreshTimer();
+        if (RENEWAL) {
+            setRefreshTimer();
+            logger.info("Renewal is active");
+        } else
+            logger.info("Renewal is deactivated");
     }
 
     public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
@@ -177,9 +182,10 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     public void SMReplyDeliver(SMMessage msg, boolean isBFT) {
         try {
             lockTimer.lock();
-            RecoverySMMessage recoverySMMessage = (RecoverySMMessage)msg;
-            logger.info("{} sent me state up to cid {}", msg.getSender(), msg.getCID());
-            logger.debug("waitingCID: {}" , waitingCID);
+            //RecoverySMMessage recoverySMMessage = (RecoverySMMessage)msg;
+            RecoveryStateServerSMMessage recoverySMMessage = (RecoveryStateServerSMMessage)msg;
+            //logger.info("{} sent me state up to cid {}", msg.getSender(), msg.getCID());
+            //logger.debug("waitingCID: {}" , waitingCID);
             sequenceNumbers.merge(recoverySMMessage.getSequenceNumber(), 1, Integer::sum);
             if (!SVController.getStaticConf().isStateTransferEnabled())
                 return;
@@ -196,7 +202,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
 
             if (stateRecoveryHandlerThread.isAlive()) {
-                logger.debug("Submitting state from {} to recovery", msg.getSender());
+                logger.debug("Submitting state recovery info from {} to recovery", msg.getSender());
                 stateRecoveryHandlerThread.deliverRecoveryState(recoverySMMessage);
             } else {
                 logger.debug("State recovery already has finished");
@@ -569,8 +575,39 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             logger.debug("Ignoring this state transfer request because app state is null");
             return;
         }
+        int myPort = 5000 + SVController.getStaticConf().getProcessId();
+        logger.debug("Sending sequence number {} with the state", sequenceNumber.get());
+        RecoveryStateServerSMMessage response = new RecoveryStateServerSMMessage(
+                SVController.getStaticConf().getProcessId(),
+                appState.getLastCID(),
+                TOMUtil.SM_REPLY,
+                SVController.getCurrentView(),
+                tomLayer.getSynchronizer().getLCManager().getLastReg(),
+                recoveryMessage.getLeader(),
+                sequenceNumber.get(),
+                SVController.getCurrentView().getAddress(SVController.getStaticConf().getProcessId()).getAddress().getHostAddress(),
+                myPort
+        );
 
-        RecoveryApplicationState recoveryState = createRecoverState(appState, recoveryPoint);
+        try {
+            logger.debug("Starting recovery state sender server");
+            new RecoveryStateSender(
+                    myPort,
+                    SVController.getStaticConf().getProcessId(),
+                    SVController.getCurrentView().getAddress(recoveryMessage.getSender()).getAddress().getHostAddress(),
+                    appState,
+                    recoveryPoint,
+                    distributedPolynomial.getField()
+            ).start();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+
+        logger.info("Sending recovery state sender server info to {}", recoveryMessage.getSender());
+        tomLayer.getCommunication().send(new int[]{recoveryMessage.getSender()}, response);
+        logger.info("Recovery state sender server info sent");
+
+        /*RecoveryApplicationState recoveryState = createRecoverState(appState, recoveryPoint);
         if (recoveryState == null) {
             return;
         }
@@ -589,7 +626,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.info("Sending recovery state up to cid {} to {} of size {} bytes and {} shares", recoveryState.getLastCID(),
                 recoveryMessage.getSender(), recoveryState.getCommonState().length, recoveryState.getShares().size());
         tomLayer.getCommunication().send(new int[] {recoveryMessage.getSender()}, response);
-        logger.info("Recovery state sent");
+        logger.info("Recovery state sent");*/
     }
 
     private RecoveryApplicationState createRecoverState(DefaultApplicationState state, VerifiableShare transferPoint) {

@@ -7,6 +7,7 @@ import bftsmart.tom.core.messages.TOMMessageType;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
+import ch.qos.logback.core.net.ssl.SSL;
 import confidential.ConfidentialData;
 import confidential.server.Request;
 import org.slf4j.Logger;
@@ -19,10 +20,14 @@ import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
+import java.net.Socket;
 import java.util.*;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -31,7 +36,8 @@ public class StateRecoveryHandler extends Thread {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final int threshold;
     private final BigInteger field;
-    private BlockingQueue<RecoverySMMessage> stateQueue;
+    //private BlockingQueue<RecoverySMMessage> stateQueue;
+    private BlockingQueue<RecoveryStateServerSMMessage> stateQueue;
     private int corruptedServers;
 
     private CommitmentScheme commitmentScheme;
@@ -85,11 +91,21 @@ public class StateRecoveryHandler extends Thread {
         this.lastCIDSenders = new HashMap<>(threshold + 1);
     }
 
-    public void deliverRecoveryState(RecoverySMMessage state) {
+    /*public void deliverRecoveryState(RecoverySMMessage state) {
         try {
             stateQueue.put(state);
         } catch (InterruptedException e) {
             logger.error("Failed to add recovery state", e);
+        }
+    }*/
+
+    public void deliverRecoveryState(RecoveryStateServerSMMessage state) {
+        try {
+            //new RecoveryStateReceiver(state, this).start();
+            stateQueue.put(state);
+        } catch (InterruptedException e) {
+            //logger.error("Failed to connect to recovery server of {}", state.getSender(), e);
+            logger.error("Failed to add recovery server info of {} to queue", state.getSender(), e);
         }
     }
 
@@ -97,8 +113,17 @@ public class StateRecoveryHandler extends Thread {
     public void run() {
         while (true) {
             try {
-                RecoverySMMessage recoveryMessage = stateQueue.take();
-                RecoveryApplicationState state = recoveryMessage.getRecoveryState();
+                RecoveryStateServerSMMessage recoveryMessage = stateQueue.take();
+                logger.info("Connecting to {} to ask recovery state ({}:{})", recoveryMessage.getSender(),
+                        recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
+                //SSLSocket socket = (SSLSocket) SSLSocketFactory.getDefault().createSocket(
+                //        recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
+                Socket socket = SocketFactory.getDefault().createSocket(recoveryMessage.getServerIp(),
+                        recoveryMessage.getServerPort());
+                RecoveryApplicationState state = new RecoveryApplicationState();
+                logger.debug("Reading recovery state from {}", recoveryMessage.getSender());
+                state.readExternal(new ObjectInputStream(socket.getInputStream()));
+                logger.info("Recovery state received from {}", recoveryMessage.getSender());
 
                 //to select correct recovery polynomial commitments
                 if (transferPolynomialCommitments == null) {
