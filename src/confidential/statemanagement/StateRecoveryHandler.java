@@ -48,8 +48,10 @@ public class StateRecoveryHandler extends Thread {
     private Map<Integer, Integer> polynomialCommitmentsSenders;
     private Commitments transferPolynomialCommitments;
 
-    private Map<Integer, byte[]> commonData;
+    //private Map<Integer, byte[]> commonData;
     private Map<Integer, Integer> commonDataSender;
+    private Set<Integer> commonData;
+    private byte[] selectedCommonData;
 
     private Map<Integer, LinkedList<Share>> recoveryShares;
     private Map<Integer, Integer> recoverySharesSize;
@@ -67,10 +69,11 @@ public class StateRecoveryHandler extends Thread {
     private SSLSocketFactory socketFactory;
 
     private ServerViewController svController;
+    private int stateSenderId;
 
     StateRecoveryHandler(ReconstructionCompleted reconstructionListener, int threshold,
                          ServerViewController svController, BigInteger field, CommitmentScheme commitmentScheme,
-                         InterpolationStrategy interpolationStrategy) {
+                         InterpolationStrategy interpolationStrategy, int stateSenderId) {
         super("State Recovery Handler Thread");
         this.reconstructionListener = reconstructionListener;
         this.threshold = threshold;
@@ -78,12 +81,15 @@ public class StateRecoveryHandler extends Thread {
         this.shareholderId = BigInteger.valueOf(pid + 1);
         this.field = field;
 
+        this.stateSenderId = stateSenderId;
+
         this.commitmentScheme = commitmentScheme;
         this.interpolationStrategy = interpolationStrategy;
 
         this.stateQueue = new LinkedBlockingQueue<>();
 
-        this.commonData = new HashMap<>(threshold + 1);
+        //this.commonData = new HashMap<>(threshold + 1);
+        this.commonData = new HashSet<>(threshold + 1);
         this.commonDataSender = new HashMap<>(threshold + 1);
 
         this.recoveryShares = new HashMap<>(threshold + 1);
@@ -168,9 +174,17 @@ public class StateRecoveryHandler extends Thread {
 
                 //to select correct common state
                 if (commonDataStream == null) {
-                    int commonDataHashCode = Arrays.hashCode(state.getCommonState());
-                    commonData.computeIfAbsent(commonDataHashCode, k -> state.getCommonState());
-                    commonDataSender.merge(commonDataHashCode, 1, Integer::sum);
+                    int commonDataHashCode;
+
+                    if (stateSenderId == recoveryMessage.getSender()) {
+                        commonDataHashCode = Arrays.hashCode(TOMUtil.computeHash(state.getCommonState()));
+                        selectedCommonData = state.getCommonState();
+                    } else {
+                        commonDataHashCode = Arrays.hashCode(state.getCommonState());
+                    }
+                    commonData.add(commonDataHashCode);
+                    //commonData.computeIfAbsent(commonDataHashCode, k -> state.getCommonState());
+                    //commonDataSender.merge(commonDataHashCode, 1, Integer::sum);
                 }
 
                 //to select correct recovery shares
@@ -190,9 +204,9 @@ public class StateRecoveryHandler extends Thread {
                             polynomialCommitments);
 
                 if (commonDataStream == null) {
-                    byte[] correctCommonData = selectCorrectData(commonDataSender, commonData);
-                    if (correctCommonData != null)
-                        commonDataStream = new ObjectInputStream(new ByteArrayInputStream(correctCommonData));
+                    //byte[] correctCommonData = selectCorrectData(commonDataSender, commonData);
+                    if (commonData.size() == 1 && selectedCommonData != null)
+                        commonDataStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommonData));
                 }
                 if (correctRecoverySharesSize == -1)
                     correctRecoverySharesSize = selectCorrectKey(recoverySharesSize);

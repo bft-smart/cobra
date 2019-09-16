@@ -5,6 +5,7 @@ import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
+import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.server.Request;
 import org.slf4j.Logger;
@@ -32,10 +33,11 @@ public class RecoveryStateSender extends Thread {
     private DefaultApplicationState state;
     private VerifiableShare recoveryPoint;
     private BigInteger field;
+    private boolean iAmStateSender;
 
     RecoveryStateSender(int serverPort, String recoveringServerIp,
                         DefaultApplicationState applicationState, VerifiableShare recoveryPoint,
-                        BigInteger field, ServerViewController svController) throws Exception {
+                        BigInteger field, ServerViewController svController, boolean iAmStateSender) throws Exception {
         super("State Sender Thread");
         logger.debug("I am listening in port {} for state request", serverPort);
         this.serverSocket = createSSLServerSocket(serverPort, svController);
@@ -44,6 +46,7 @@ public class RecoveryStateSender extends Thread {
         this.recoveryPoint = recoveryPoint;
         this.myProcessId = svController.getStaticConf().getProcessId();
         this.field = field;
+        this.iAmStateSender = iAmStateSender;
     }
 
     private SSLServerSocket createSSLServerSocket(int serverPort, ServerViewController svController)
@@ -200,15 +203,21 @@ public class RecoveryStateSender extends Thread {
             byte[] commonState = bos.toByteArray();
             //logger.debug("Common State: {}", commonState);
 
-            return new RecoveryApplicationState(
+            return iAmStateSender
+                    ? new RecoveryApplicationState(
                     commonState,
                     shares,
                     state.getLastCheckpointCID(),
                     state.getLastCID(),
                     myProcessId,
-                    recoveryPoint.getCommitments()
-
-            );
+                    recoveryPoint.getCommitments())
+                    : new RecoveryApplicationState(
+                    TOMUtil.computeHash(commonState),
+                    shares,
+                    state.getLastCheckpointCID(),
+                    state.getLastCID(),
+                    myProcessId,
+                    recoveryPoint.getCommitments());
 
         } catch (IOException e) {
             logger.error("Failed to create Recovery State", e);
