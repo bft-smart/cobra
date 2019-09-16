@@ -203,21 +203,14 @@ public class RecoveryStateSender extends Thread {
             byte[] commonState = bos.toByteArray();
             //logger.debug("Common State: {}", commonState);
 
-            return iAmStateSender
-                    ? new RecoveryApplicationState(
-                    commonState,
+            return new RecoveryApplicationState(
+                    iAmStateSender ? commonState : TOMUtil.computeHash(commonState),
                     shares,
                     state.getLastCheckpointCID(),
                     state.getLastCID(),
                     myProcessId,
-                    recoveryPoint.getCommitments())
-                    : new RecoveryApplicationState(
-                    TOMUtil.computeHash(commonState),
-                    shares,
-                    state.getLastCheckpointCID(),
-                    state.getLastCID(),
-                    myProcessId,
-                    recoveryPoint.getCommitments());
+                    recoveryPoint.getCommitments()
+            );
 
         } catch (IOException e) {
             logger.error("Failed to create Recovery State", e);

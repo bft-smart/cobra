@@ -101,6 +101,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         }
     }
 
+
     @Override
     protected void requestState() {
         logger.debug("requestState");
@@ -108,7 +109,9 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
         if (tomLayer.requestsTimer != null)
             tomLayer.requestsTimer.clearAll();
+
         int stateSenderReplica = getRandomReplica();
+
         DefaultSMMessage recoverySMMessage = new DefaultSMMessage(
                 SVController.getStaticConf().getProcessId(),
                 waitingCID,
@@ -175,8 +178,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     @Override
     public void SMRequestDeliver(SMMessage msg, boolean isBFT) {
-        logger.debug("Received recovery request from {}", msg.getSender());
         if (msg instanceof DefaultSMMessage) {
+            logger.debug("Received recovery request from {}", msg.getSender());
             if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null) {
                 int id = sequenceNumber.getAndIncrement();
                 onGoingRecoveryRequests.put(id, msg);
@@ -194,7 +197,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
             }
         } else
-            logger.warn("Received unknown SM message type");
+            logger.warn("Received unknown SM message type from {}", msg.getSender());
     }
 
     @Override
@@ -411,7 +414,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
                 && context.getReason() == PolynomialCreationReason.RECOVERY) {
             if (onGoingRecoveryRequests.containsKey(context.getId()))
-                sendRecoveryState((DefaultSMMessage) onGoingRecoveryRequests.remove(context.getId()), point);
+                sendRecoveryState((DefaultSMMessage)onGoingRecoveryRequests.remove(context.getId()), point);
             else
                 logger.debug("There is no recovery request for id {}", context.getId());
         } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
@@ -617,7 +620,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     recoveryPoint,
                     distributedPolynomial.getField(),
                     SVController,
-                    SVController.getStaticConf().getProcessId() == recoveryMessage.getStateSenderReplica()
+                    recoveryMessage.getStateSenderReplica() == SVController.getStaticConf().getProcessId()
             ).start();
         } catch (Exception e) {
             e.printStackTrace();
