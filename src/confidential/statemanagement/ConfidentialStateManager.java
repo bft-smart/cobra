@@ -34,7 +34,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
-    private static final long REFRESH_PERIOD = 150_000;
+    private static final long REFRESH_PERIOD = 90_000;
     private static final boolean RENEWAL = false;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;

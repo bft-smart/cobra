@@ -155,8 +155,11 @@ public class StateRecoveryHandler extends Thread {
 
                 RecoveryApplicationState state = new RecoveryApplicationState();
                 logger.debug("Reading recovery state from {}", recoveryMessage.getSender());
+                long t1 = System.nanoTime();
                 state.readExternal(new ObjectInputStream(socket.getInputStream()));
-                logger.info("Recovery state received from {}", recoveryMessage.getSender());
+                long t2 = System.nanoTime();
+                logger.info("Recovery state received from {} and took {} ms",
+                        recoveryMessage.getSender(), ((t2 - t1) / 1_000_000.0));
 
                 //to select correct recovery polynomial commitments
                 if (transferPolynomialCommitments == null) {
@@ -169,15 +172,22 @@ public class StateRecoveryHandler extends Thread {
 
                 //to select correct common state
                 if (commonDataStream == null) {
+                    t1 = System.nanoTime();
                     byte[] cryptographicHash = stateSenderReplica == recoveryMessage.getSender()
                             ? TOMUtil.computeHash(state.getCommonState())
                             : state.getCommonState();
+                    t2 = System.nanoTime();
+                    logger.info("Cryptographic hash creation: {} ms", ((t2 - t1) / 1_000_000.0));
                     int commonDataHashCode = Arrays.hashCode(cryptographicHash);
                     if (stateSenderReplica == recoveryMessage.getSender()) {
                         selectedCommonData = state.getCommonState();
+                        logger.info("Replica {} sent me state of {} bytes with {} shares",
+                                recoveryMessage.getSender(), selectedCommonData.length, state.getShares().size());
+                    } else {
+                        logger.info("Replica {} sent me hash of the state with {} shares", recoveryMessage.getSender(),
+                                state.getShares().size());
                     }
-                    logger.debug("State hash {} -> {} of replica {}", cryptographicHash, commonDataHashCode,
-                            recoveryMessage.getSender());
+
                     commonData.add(commonDataHashCode);
                 }
 

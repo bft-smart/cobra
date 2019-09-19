@@ -14,12 +14,12 @@
     </encoder>
   </appender>
 
-  <!--<appender name="FILE" class="ch.qos.logback.core.FileAppender">
+  <appender name="FILE" class="ch.qos.logback.core.FileAppender">
     <file>log.txt</file>
     <encoder>
       <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level - %msg%n</pattern>
     </encoder>
-  </appender>-->
+  </appender>
 
   <!-- https://logback.qos.ch/manual/appenders.html#AsyncAppender http://blog.takipi.com/how-to-instantly-improve-your-java-logging-with-7-logback-tweaks/ -->
   <appender name="ASYNC" class="ch.qos.logback.classic.AsyncAppender">
@@ -32,7 +32,7 @@
   </root>
 
   <logger name="confidential" level="INFO">
-    <!--<appender-ref ref="FILE"/>-->
+    <appender-ref ref="FILE"/>
     <appender-ref ref="MIN-STDOUT" />
       <!--<appender-ref ref="STDOUT" /> -->
   </logger>
@@ -50,7 +50,7 @@
 
 
   <logger name="bftsmart" level="INFO">
-    <!--<appender-ref ref="FILE"/>-->
+    <appender-ref ref="FILE"/>
     <appender-ref ref="MIN-STDOUT" />
       <!--<appender-ref ref="STDOUT" /> -->
   </logger>
