@@ -34,8 +34,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
-    private static final long REFRESH_PERIOD = 150_000;
-    private static final boolean RENEWAL = false;
+    private static final long REFRESH_PERIOD = 90_000;
+    private static final boolean RENEWAL = true;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
@@ -432,15 +432,17 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         try {
             logger.debug("Renewing my state");
 
-
-            waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
-
-            logger.info("Stopping execution manager");
+            /*logger.info("Stopping execution manager");
             tomLayer.execManager.stop();
             int lastExec = tomLayer.getLastExec();
             int inExec = tomLayer.getInExec();
+*/
+            //waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
 
+            logger.debug("Trying to acquire deliverLock");
             dt.deliverLock();
+            logger.debug("deliverLock acquired");
+            //waitingCID = -1;
 
             int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
             if (currentRegency > 0) {
@@ -458,19 +460,28 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             ApplicationState refreshedState = refreshState(point, appState);
             if (refreshedState != null) {
                 logger.info("Updating state");
-                dt.update(refreshedState);
+                //dt.update(refreshedState);
+                dt.refreshState(refreshedState);
 
-                logger.info("Restarting execution manager");
-                tomLayer.setLastExec(lastExec);
-                tomLayer.setInExec(inExec);
+                //tomLayer.setLastExec(lastExec);
+                //tomLayer.setInExec(inExec);
+
+                /*Queue<ConsensusMessage> stoppedMsgs = execManager.getStoppedMsgs();
+                for (ConsensusMessage stoppedMsg : stoppedMsgs) {
+                    logger.debug(stoppedMsg.toString());
+                    if (stoppedMsg.getNumber() > tomLayer.getLastExec())
+                        execManager.addOutOfContextMessage(stoppedMsg); //will separate proposal messages from others
+                }
+
+                logger.debug("Clear Stopped");
+                execManager.clearStopped();
+                logger.info("Restarting execution manager from lastExec {} and inExec {}", tomLayer.getLastExec(),
+                        tomLayer.getInExec());
                 execManager.restart();
 
-                //logger.info("Modifying lastExec to {}", lastExec);
-                //tomLayer.setLastExec(lastExec);
-
                 logger.debug("Processing out of context messages");
-                tomLayer.processOutOfContext();
-                logger.debug("Finished processing out of context messages");
+                tomLayer.processOutOfContext(); //will going to process proposal messages and others in correct consensus execution
+                logger.debug("Finished processing out of context messages");*/
             }
             else
                 logger.debug("State renewal ignored. Something went wrong while renewing the state");
@@ -479,9 +490,9 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 logger.debug("State renewed");
 
         } finally {
-            waitingCID = -1;
             dt.canDeliver();//signal deliverThread that state has been installed
             dt.deliverUnlock();
+
             setRefreshTimer();
         }
 
