@@ -444,11 +444,11 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             logger.debug("deliverLock acquired");
             //waitingCID = -1;
 
-            int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
+            /*int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
             if (currentRegency > 0) {
                 logger.debug("Removing STOP retransmissions up to regency {}", currentRegency);
                 tomLayer.getSynchronizer().removeSTOPretransmissions(currentRegency - 1);
-            }
+            }*/
 
             //logger.debug("Getting state up to {}", consensusId);
             DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
