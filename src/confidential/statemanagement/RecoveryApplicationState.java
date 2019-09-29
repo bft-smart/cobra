@@ -12,6 +12,7 @@ import java.util.LinkedList;
 public class RecoveryApplicationState implements Externalizable {
     private Commitments transferPolynomialCommitments;
     private byte[] commonState;
+    private byte[] commonStateHash;
     private LinkedList<Share> shares;
     private int lastCheckpointCID;
     private int lastCID;
@@ -21,6 +22,16 @@ public class RecoveryApplicationState implements Externalizable {
 
     public RecoveryApplicationState(byte[] commonState, LinkedList<Share> shares, int lastCheckpointCID, int lastCID, int pid, Commitments transferPolynomialCommitments) {
         this.commonState = commonState;
+        this.shares = shares;
+        this.lastCheckpointCID = lastCheckpointCID;
+        this.lastCID = lastCID;
+        this.pid = pid;
+        this.transferPolynomialCommitments = transferPolynomialCommitments;
+    }
+
+    public RecoveryApplicationState(byte[] commonState, byte[] commonStateHash, LinkedList<Share> shares, int lastCheckpointCID, int lastCID, int pid, Commitments transferPolynomialCommitments) {
+        this.commonState = commonState;
+        this.commonStateHash = commonStateHash;
         this.shares = shares;
         this.lastCheckpointCID = lastCheckpointCID;
         this.lastCID = lastCID;
@@ -38,6 +49,10 @@ public class RecoveryApplicationState implements Externalizable {
 
     public byte[] getCommonState() {
         return commonState;
+    }
+
+    public byte[] getCommonStateHash() {
+        return commonStateHash;
     }
 
     public int getPid() {
@@ -59,6 +74,10 @@ public class RecoveryApplicationState implements Externalizable {
         if (commonState != null)
             out.write(commonState);
 
+        out.writeInt(commonStateHash == null ? -1 : commonStateHash.length);
+        if (commonStateHash != null)
+            out.write(commonStateHash);
+
         out.writeInt(shares == null ? -1 : shares.size());
         if (shares != null) {
             for (Share share : shares) {
@@ -79,6 +98,12 @@ public class RecoveryApplicationState implements Externalizable {
         if (len != -1) {
             commonState = new byte[len];
             in.readFully(commonState);
+        }
+
+        len = in.readInt();
+        if (len != -1) {
+            commonStateHash = new byte[len];
+            in.readFully(commonStateHash);
         }
 
         len = in.readInt();

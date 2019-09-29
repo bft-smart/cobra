@@ -88,8 +88,13 @@ public class RecoveryStateSender extends Thread {
             logger.error("Failed to generate recovery application state. Exiting state sender server thread.");
             return;
         }
-        logger.debug("Recovery state generated, has {} bytes and {} shares", recoveryState.getCommonState().length,
-                recoveryState.getShares().size());
+        if (iAmStateSender) {
+            logger.debug("Recovery state generated, has {} bytes and {} shares", recoveryState.getCommonState().length,
+                    recoveryState.getShares().size());
+        } else {
+            logger.debug("Recovery state generated, has {} bytes of hash and {} shares",
+                    recoveryState.getCommonStateHash().length, recoveryState.getShares().size());
+        }
         while (true) {
             try {
                 //SSLSocket client = (SSLSocket) serverSocket.accept();
@@ -102,9 +107,32 @@ public class RecoveryStateSender extends Thread {
                 }
                 ObjectOutput out = new ObjectOutputStream(client.getOutputStream());
                 logger.debug("Transmitting recovery state to {}", clientIp);
-                recoveryState.writeExternal(out);
+
+                recoveryState.getTransferPolynomialCommitments().writeExternal(out);
+                out.writeInt(recoveryState.getLastCheckpointCID());
+                out.writeInt(recoveryState.getLastCID());
+                out.writeInt(recoveryState.getPid());
+                out.writeInt(recoveryState.getShares().size());
+                for (Share share : recoveryState.getShares()) {
+                    share.writeExternal(out);
+                }
+                byte[] commonState = recoveryState.getCommonState();
+                out.writeBoolean(commonState != null);
+                if (commonState != null) {
+                    out.writeInt(commonState.length);
+                    int i = 0;
+                    while (i < commonState.length) {
+                        int len = Math.min(1024, commonState.length - i);
+                        out.write(commonState, i, len);
+                        i += len;
+                    }
+                } else {
+                    out.writeInt(recoveryState.getCommonStateHash().length);
+                    out.write(recoveryState.getCommonStateHash());
+                }
                 out.flush();
                 logger.debug("Recovery state sent");
+                serverSocket.close();
                 break;
             } catch (IOException e) {
                 logger.error("Failed to accept recovering server request", e);
@@ -203,17 +231,45 @@ public class RecoveryStateSender extends Thread {
             byte[] commonState = bos.toByteArray();
             //logger.debug("Common State: {}", commonState);
 
-            return new RecoveryApplicationState(
-                    iAmStateSender ? commonState : TOMUtil.computeHash(commonState),
-                    shares,
-                    state.getLastCheckpointCID(),
-                    state.getLastCID(),
-                    myProcessId,
-                    recoveryPoint.getCommitments()
-            );
+            if (iAmStateSender) {
+                return new RecoveryApplicationState(
+                        commonState,
+                        shares,
+                        state.getLastCheckpointCID(),
+                        state.getLastCID(),
+                        myProcessId,
+                        recoveryPoint.getCommitments()
+                );
+            } else {
+                return new RecoveryApplicationState(
+                        null,
+                        TOMUtil.computeHash(commonState),
+                        shares,
+                        state.getLastCheckpointCID(),
+                        state.getLastCID(),
+                        myProcessId,
+                        recoveryPoint.getCommitments()
+                );
+            }
 
         } catch (IOException e) {
             logger.error("Failed to create Recovery State", e);
+        }
+        return null;
+    }
+
+    private byte[] computeHash(byte[] data) {
+        try {
+            MessageDigest digest = TOMUtil.getHashEngine();
+            int i = 0;
+            while (i < data.length) {
+                int len = Math.min(1024, data.length - i);
+                digest.update(data, i, len);
+                i += len;
+            }
+            return digest.digest();
+        } catch (NoSuchAlgorithmException e) {
+            logger.error("Failed to hash data", e);
         }
         return null;
     }
