@@ -38,7 +38,7 @@ public class StateRecoveryHandler extends Thread {
     private final int threshold;
     private final BigInteger field;
     //private BlockingQueue<RecoverySMMessage> stateQueue;
-    private BlockingQueue<RecoveryStateServerSMMessage> stateQueue;
+    private BlockingQueue<RecoveryApplicationState> stateQueue;
     private int corruptedServers;
 
     private CommitmentScheme commitmentScheme;
@@ -64,10 +64,7 @@ public class StateRecoveryHandler extends Thread {
 
     private ObjectInputStream commonDataStream;
     private ReconstructionCompleted reconstructionListener;
-
-    private SSLSocketFactory socketFactory;
-
-    private ServerViewController svController;
+    private RecoveryStateReceiver recoveryStateReceiver;
 
     StateRecoveryHandler(ReconstructionCompleted reconstructionListener, int threshold,
                          ServerViewController svController, BigInteger field, CommitmentScheme commitmentScheme,
@@ -95,48 +92,28 @@ public class StateRecoveryHandler extends Thread {
         this.polynomialCommitmentsSenders = new HashMap<>(threshold + 1);
         this.lastCheckpointCIDSenders = new HashMap<>(threshold + 1);
         this.lastCIDSenders = new HashMap<>(threshold + 1);
-        this.svController = svController;
-        initSSLAttributes(svController);
-    }
-
-    private void initSSLAttributes(ServerViewController svController) {
-        String algorithm = Security.getProperty("ssl.KeyManagerFactory.algorithm");
-        try (FileInputStream fis = new FileInputStream("config/keysSSL_TLS/" +
-                svController.getStaticConf().getSSLTLSKeyStore())) {
-            KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
-            ks.load(fis, SECRET.toCharArray());
-
-            KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
-            kmf.init(ks, SECRET.toCharArray());
-
-            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(algorithm);
-            trustManagerFactory.init(ks);
-
-            SSLContext context = SSLContext.getInstance(svController.getStaticConf().getSSLTLSProtocolVersion());
-            context.init(kmf.getKeyManagers(), trustManagerFactory.getTrustManagers(), new SecureRandom());
-
-            this.socketFactory = context.getSocketFactory();
-        } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException
-                | UnrecoverableKeyException | KeyManagementException e) {
-            logger.error("Failed to initialize SSL attributes", e);
+        try {
+            this.recoveryStateReceiver = new RecoveryStateReceiver(this, svController);
+            recoveryStateReceiver.start();
+        } catch (IOException | KeyManagementException | KeyStoreException | NoSuchAlgorithmException |
+                CertificateException | UnrecoverableKeyException e) {
+            logger.error("Failed to initialize recovery state receiver thread.", e);
         }
     }
 
-    /*public void deliverRecoveryState(RecoverySMMessage state) {
-        try {
-            stateQueue.put(state);
-        } catch (InterruptedException e) {
-            logger.error("Failed to add recovery state", e);
-        }
-    }*/
+    void deliverRecoveryStateMessage(RecoveryStateServerSMMessage state) {
+        if (recoveryStateReceiver.isAlive())
+            recoveryStateReceiver.addRecoveryStateMessage(state);
+        else
+            logger.debug("Recovery state message from {} was not added to the receiver thread.", state.getSender());
+    }
 
-    void deliverRecoveryState(RecoveryStateServerSMMessage state) {
+    void deliverRecoveryStateMessage(RecoveryApplicationState state) {
         try {
-            //new RecoveryStateReceiver(state, this).start();
             stateQueue.put(state);
         } catch (InterruptedException e) {
             //logger.error("Failed to connect to recovery server of {}", state.getSender(), e);
-            logger.error("Failed to add recovery server info of {} to queue", state.getSender(), e);
+            logger.error("Failed to add recovery state to queue", e);
         }
     }
 
@@ -144,22 +121,7 @@ public class StateRecoveryHandler extends Thread {
     public void run() {
         while (true) {
             try {
-                RecoveryStateServerSMMessage recoveryMessage = stateQueue.take();
-                logger.info("Connecting to {} to ask recovery state ({}:{})", recoveryMessage.getSender(),
-                        recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
-                SSLSocket socket = (SSLSocket) socketFactory.createSocket(
-                        recoveryMessage.getServerIp(), recoveryMessage.getServerPort());
-                socket.setKeepAlive(true);
-                socket.setTcpNoDelay(true);
-                socket.setEnabledCipherSuites(this.svController.getStaticConf().getEnabledCiphers());
-
-                RecoveryApplicationState state = new RecoveryApplicationState();
-                logger.debug("Reading recovery state from {}", recoveryMessage.getSender());
-                long t1 = System.nanoTime();
-                state.readExternal(new ObjectInputStream(socket.getInputStream()));
-                long t2 = System.nanoTime();
-                logger.info("Recovery state received from {} and took {} ms",
-                        recoveryMessage.getSender(), ((t2 - t1) / 1_000_000.0));
+                RecoveryApplicationState state = stateQueue.take();
 
                 //to select correct recovery polynomial commitments
                 if (transferPolynomialCommitments == null) {
@@ -172,19 +134,17 @@ public class StateRecoveryHandler extends Thread {
 
                 //to select correct common state
                 if (commonDataStream == null) {
-                    t1 = System.nanoTime();
-                    byte[] cryptographicHash = stateSenderReplica == recoveryMessage.getSender()
-                            ? TOMUtil.computeHash(state.getCommonState())
-                            : state.getCommonState();
-                    t2 = System.nanoTime();
-                    logger.info("Cryptographic hash creation: {} ms", ((t2 - t1) / 1_000_000.0));
+
+                    byte[] cryptographicHash = state.getCommonStateHash();
+
                     int commonDataHashCode = Arrays.hashCode(cryptographicHash);
-                    if (stateSenderReplica == recoveryMessage.getSender()) {
+                    logger.debug("State hash {} of server {}", commonDataHashCode, state.getPid());
+                    if (stateSenderReplica == state.getPid()) {
                         selectedCommonData = state.getCommonState();
                         logger.info("Replica {} sent me state of {} bytes with {} shares",
-                                recoveryMessage.getSender(), selectedCommonData.length, state.getShares().size());
+                                state.getPid(), selectedCommonData.length, state.getShares().size());
                     } else {
-                        logger.info("Replica {} sent me hash of the state with {} shares", recoveryMessage.getSender(),
+                        logger.info("Replica {} sent me hash of the state with {} shares", state.getPid(),
                                 state.getShares().size());
                     }
 
@@ -192,7 +152,7 @@ public class StateRecoveryHandler extends Thread {
                 }
 
                 //to select correct recovery shares
-                recoveryShares.put(recoveryMessage.getSender(), state.getShares());
+                recoveryShares.put(state.getPid(), state.getShares());
                 recoverySharesSize.merge(state.getShares().size(), 1, Integer::sum);
 
                 lastCheckpointCIDSenders.merge(state.getLastCheckpointCID(), 1, Integer::sum);
@@ -229,7 +189,7 @@ public class StateRecoveryHandler extends Thread {
                 logger.debug("Failed to load common data");
             }
         }
-
+        recoveryStateReceiver.interrupt();
         logger.debug("Exiting state recovery handler thread");
     }
 
