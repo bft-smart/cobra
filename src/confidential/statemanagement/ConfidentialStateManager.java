@@ -635,26 +635,5 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.info("Sending recovery state sender server info to {}", recoveryMessage.getSender());
         tomLayer.getCommunication().send(new int[]{recoveryMessage.getSender()}, response);
         logger.info("Recovery state sender server info sent");
-
-        /*RecoveryApplicationState recoveryState = createRecoverState(appState, recoveryPoint);
-        if (recoveryState == null) {
-            return;
-        }
-        logger.debug("Sending sequence number {} with the state", sequenceNumber.get());
-        RecoverySMMessage response = new RecoverySMMessage(
-                SVController.getStaticConf().getProcessId(),
-                appState.getLastCID(),
-                TOMUtil.SM_REPLY,
-                recoveryState,
-                SVController.getCurrentView(),
-                tomLayer.getSynchronizer().getLCManager().getLastReg(),
-                recoveryMessage.getLeader(),
-                sequenceNumber.get()
-        );
-
-        logger.info("Sending recovery state up to cid {} to {} of size {} bytes and {} shares", recoveryState.getLastCID(),
-                recoveryMessage.getSender(), recoveryState.getCommonState().length, recoveryState.getShares().size());
-        tomLayer.getCommunication().send(new int[] {recoveryMessage.getSender()}, response);
-        logger.info("Recovery state sent");*/
     }
 }
