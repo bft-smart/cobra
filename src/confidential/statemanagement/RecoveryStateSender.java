@@ -34,6 +34,7 @@ public class RecoveryStateSender extends Thread {
     private VerifiableShare recoveryPoint;
     private BigInteger field;
     private boolean iAmStateSender;
+    private HashThread hashThread;
 
     RecoveryStateSender(int serverPort, String recoveringServerIp,
                         DefaultApplicationState applicationState, VerifiableShare recoveryPoint,
@@ -47,6 +48,7 @@ public class RecoveryStateSender extends Thread {
         this.myProcessId = svController.getStaticConf().getProcessId();
         this.field = field;
         this.iAmStateSender = iAmStateSender;
+        this.hashThread = new HashThread();
     }
 
     private SSLServerSocket createSSLServerSocket(int serverPort, ServerViewController svController)
@@ -88,17 +90,16 @@ public class RecoveryStateSender extends Thread {
             logger.error("Failed to generate recovery application state. Exiting state sender server thread.");
             return;
         }
-        if (iAmStateSender) {
-            logger.debug("Recovery state generated, has {} bytes and {} shares", recoveryState.getCommonState().length,
-                    recoveryState.getShares().size());
-        } else {
-            logger.debug("Recovery state generated, has {} bytes of hash and {} shares",
-                    recoveryState.getCommonStateHash().length, recoveryState.getShares().size());
+        if (!iAmStateSender) {
+            hashThread.setData(recoveryState.getCommonState());
+            hashThread.start();
+            hashThread.update(0, recoveryState.getCommonState().length);
+            hashThread.update(-1, -1);
         }
         while (true) {
             try {
                 //SSLSocket client = (SSLSocket) serverSocket.accept();
-                Socket client = serverSocket.accept();
+                SSLSocket client = (SSLSocket) serverSocket.accept();
                 String clientIp = client.getInetAddress().getHostAddress();
                 if (!clientIp.equals(recoveringServerIp)) {
                     logger.info("Received unexpected server connection asking state from {}. I am ignoring it!", clientIp);
@@ -119,6 +120,8 @@ public class RecoveryStateSender extends Thread {
                 byte[] commonState = recoveryState.getCommonState();
                 out.writeBoolean(commonState != null);
                 if (commonState != null) {
+                    logger.debug("Recovery state generated, has {} bytes and {} shares", commonState.length,
+                            recoveryState.getShares().size());
                     out.writeInt(commonState.length);
                     int i = 0;
                     while (i < commonState.length) {
@@ -127,8 +130,11 @@ public class RecoveryStateSender extends Thread {
                         i += len;
                     }
                 } else {
-                    out.writeInt(recoveryState.getCommonStateHash().length);
-                    out.write(recoveryState.getCommonStateHash());
+                    byte[] commonStateHash = hashThread.getHash();
+                    logger.debug("Recovery state generated, has {} bytes of hash and {} shares",
+                            commonStateHash.length, recoveryState.getShares().size());
+                    out.writeInt(commonStateHash.length);
+                    out.write(commonStateHash);
                 }
                 out.flush();
                 logger.debug("Recovery state sent");
@@ -231,45 +237,17 @@ public class RecoveryStateSender extends Thread {
             byte[] commonState = bos.toByteArray();
             //logger.debug("Common State: {}", commonState);
 
-            if (iAmStateSender) {
-                return new RecoveryApplicationState(
-                        commonState,
-                        shares,
-                        state.getLastCheckpointCID(),
-                        state.getLastCID(),
-                        myProcessId,
-                        recoveryPoint.getCommitments()
-                );
-            } else {
-                return new RecoveryApplicationState(
-                        null,
-                        TOMUtil.computeHash(commonState),
-                        shares,
-                        state.getLastCheckpointCID(),
-                        state.getLastCID(),
-                        myProcessId,
-                        recoveryPoint.getCommitments()
-                );
-            }
+            return new RecoveryApplicationState(
+                    commonState,
+                    shares,
+                    state.getLastCheckpointCID(),
+                    state.getLastCID(),
+                    myProcessId,
+                    recoveryPoint.getCommitments()
+            );
 
         } catch (IOException e) {
             logger.error("Failed to create Recovery State", e);
-        }
-        return null;
-    }
-
-    private byte[] computeHash(byte[] data) {
-        try {
-            MessageDigest digest = TOMUtil.getHashEngine();
-            int i = 0;
-            while (i < data.length) {
-                int len = Math.min(1024, data.length - i);
-                digest.update(data, i, len);
-                i += len;
-            }
-            return digest.digest();
-        } catch (NoSuchAlgorithmException e) {
-            logger.error("Failed to hash data", e);
         }
         return null;
     }

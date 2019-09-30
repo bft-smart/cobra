@@ -1,7 +1,6 @@
 package confidential.statemanagement;
 
 import bftsmart.reconfiguration.ServerViewController;
-import bftsmart.tom.util.TOMUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitments;
@@ -11,11 +10,8 @@ import javax.net.ssl.*;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
-import java.net.SocketException;
-import java.net.UnknownHostException;
 import java.security.*;
 import java.security.cert.CertificateException;
-import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
@@ -30,17 +26,15 @@ public class RecoveryStateReceiver extends Thread {
     private StateRecoveryHandler stateRecoveryHandler;
     private BlockingQueue<RecoveryStateServerSMMessage> recoveryHelperServers;
     private ServerViewController svController;
-    private MessageDigest digest;
 
-    public RecoveryStateReceiver(StateRecoveryHandler stateRecoveryHandler,
-                                 ServerViewController svController) throws IOException, UnrecoverableKeyException,
+    RecoveryStateReceiver(StateRecoveryHandler stateRecoveryHandler,
+                          ServerViewController svController) throws IOException, UnrecoverableKeyException,
             CertificateException, NoSuchAlgorithmException, KeyStoreException, KeyManagementException {
         super("RecoveryStateReceiver");
         this.stateRecoveryHandler = stateRecoveryHandler;
         this.svController = svController;
         this.recoveryHelperServers = new LinkedBlockingDeque<>();
         this.socketFactory = getSSLSocketFactory(svController);
-        this.digest = TOMUtil.getHashEngine();
     }
 
     private SSLSocketFactory getSSLSocketFactory(ServerViewController svController) throws CertificateException,
@@ -113,22 +107,19 @@ public class RecoveryStateReceiver extends Thread {
                     int nCommonStateBytes = in.readInt();
                     commonState = new byte[nCommonStateBytes];
                     int i = 0;
+                    HashThread hashThread = new HashThread();
+                    hashThread.setData(commonState);
+                    hashThread.start();
 
                     while (i < nCommonStateBytes) {
                         int len = Math.min(1024, nCommonStateBytes - i);
                         in.readFully(commonState, i, len);
-                        digest.update(commonState, i, len);
-                        //logger.debug("{}", Arrays.toString(Arrays.copyOfRange(commonState, i, len)));
+                        hashThread.update(i, len);
                         i += len;
                     }
+                    hashThread.update(-1, -1);
+                    commonStateHash = hashThread.getHash();
 
-                    commonStateHash = digest.digest();
-
-                    if (!Arrays.equals(commonStateHash, TOMUtil.computeHash(commonState))) {
-                        logger.error("=========================================>   ERROROROROROROROR");
-                    } else  {
-                        logger.error("=========================================>   YESSSSSSSSSSSSSSS");
-                    }
                 } else {
                     commonStateHash = new byte[in.readInt()];
                     in.readFully(commonStateHash);
@@ -154,6 +145,8 @@ public class RecoveryStateReceiver extends Thread {
                 break;
             } catch (IOException e) {
                 logger.error("Failed to receive state.", e);
+            } catch (NoSuchAlgorithmException e) {
+                logger.error("Failed to initialize Hash Thread.", e);
             }
         }
         logger.debug("Exiting recovery state receiver thread");
