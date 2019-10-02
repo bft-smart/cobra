@@ -433,10 +433,11 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             int inExec = tomLayer.getInExec();
 */
             //waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
-
+            dt.iAmWaitingForDeliverLock();
             logger.debug("Trying to acquire deliverLock");
             dt.deliverLock();
             logger.debug("deliverLock acquired");
+            dt.iAmNotWaitingForDeliverLock();
             //waitingCID = -1;
 
             /*int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
