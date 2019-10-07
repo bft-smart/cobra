@@ -26,7 +26,7 @@
 fieldcount=1
 fieldlength=1024
 
-recordcount=100000
+recordcount=6000
 operationcount=0
 workload=com.yahoo.ycsb.workloads.CoreWorkload
 
@@ -46,7 +46,7 @@ smart-initkey=1000
 measurementtype=timeseries
 timeseries.granularity=1000
 
-threadcount=10
+threadcount=30
 
 #db=bftsmart.demo.ycsb.YCSBClient
 #db=confidential.demo.ycsb.YCSBClient

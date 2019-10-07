@@ -10,7 +10,7 @@
   <!-- Logging to console wih minimal output -->
   <appender name="MIN-STDOUT" class="ch.qos.logback.core.ConsoleAppender">
     <encoder>
-      <pattern> -- %msg%n</pattern>
+      <pattern> %d{HH:mm:ss.SSS} %msg%n</pattern>
     </encoder>
   </appender>
 
@@ -31,7 +31,7 @@
     <!-- To use async logging use ref="ASYNC" instead -->
   </root>
 
-  <logger name="confidential" level="DEBUG">
+  <logger name="confidential" level="INFO">
     <!--<appender-ref ref="FILE"/> -->
     <appender-ref ref="MIN-STDOUT" />
       <!--<appender-ref ref="STDOUT" /> -->

@@ -7,9 +7,7 @@ import vss.commitment.Commitments;
 import vss.secretsharing.Share;
 
 import javax.net.ssl.*;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
+import java.io.*;
 import java.security.*;
 import java.security.cert.CertificateException;
 import java.util.LinkedList;
@@ -86,23 +84,16 @@ public class RecoveryStateReceiver extends Thread {
                 ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
 
                 long t1 = System.nanoTime();
-
-                Commitments commitments = new Commitments();
-                commitments.readExternal(in);
-                int lastCheckpointCID = in.readInt();
-                int lastCID = in.readInt();
-                int pid = in.readInt();
-                LinkedList<Share> shares = new LinkedList<>();
-                int nShares = in.readInt();
-                while (nShares-- > 0) {
-                    Share share = new Share();
-                    share.readExternal(in);
-                    shares.add(share);
-                }
+                byte[] recoveryStateWithoutCommonState = new byte[in.readInt()];
+                in.readFully(recoveryStateWithoutCommonState);
+                long t2 = System.nanoTime();
+                logger.info("Took {} ms to receive recovery state without common state from {}",
+                        (t2 - t1) / 1_000_000.0, serverInfo.getSender());
 
                 byte[] commonState = null;
                 byte[] commonStateHash;
 
+                t1 = System.nanoTime();
                 if (in.readBoolean()) {
                     int nCommonStateBytes = in.readInt();
                     commonState = new byte[nCommonStateBytes];
@@ -112,10 +103,9 @@ public class RecoveryStateReceiver extends Thread {
                     hashThread.start();
 
                     while (i < nCommonStateBytes) {
-                        int len = Math.min(1024, nCommonStateBytes - i);
-                        in.readFully(commonState, i, len);
-                        hashThread.update(i, len);
-                        i += len;
+                        int received = in.read(commonState, i, nCommonStateBytes - i);
+                        hashThread.update(i, received);
+                        i += received;
                     }
                     hashThread.update(-1, -1);
                     commonStateHash = hashThread.getHash();
@@ -125,21 +115,18 @@ public class RecoveryStateReceiver extends Thread {
                     in.readFully(commonStateHash);
                 }
 
-                RecoveryApplicationState recoveryApplicationState = new RecoveryApplicationState(
-                        commonState,
-                        commonStateHash,
-                        shares,
-                        lastCheckpointCID,
-                        lastCID,
-                        pid,
-                        commitments
-                );
+                t2 = System.nanoTime();
 
-                long t2 = System.nanoTime();
-
-                logger.info("Recovery state received from {} and took {} ms",
-                        serverInfo.getSender(), ((t2 - t1) / 1_000_000.0));
+                logger.info("Took {} ms to receive common state from {}",
+                        (t2 - t1) / 1_000_000.0, serverInfo.getSender());
                 socket.close();
+
+                t1 = System.nanoTime();
+                RecoveryApplicationState recoveryApplicationState = reconstructRecoveryState(serverInfo.getSender(),
+                        recoveryStateWithoutCommonState, commonState, commonStateHash);
+                t2 = System.nanoTime();
+                logger.debug("Took {} ms to reconstruct recovery state from {}", (t2 - t1) / 1_000_000.0,
+                        serverInfo.getSender());
                 stateRecoveryHandler.deliverRecoveryStateMessage(recoveryApplicationState);
             } catch (InterruptedException e) {
                 break;
@@ -150,5 +137,37 @@ public class RecoveryStateReceiver extends Thread {
             }
         }
         logger.debug("Exiting recovery state receiver thread");
+    }
+
+    private RecoveryApplicationState reconstructRecoveryState(int from, byte[] stateWithoutCommonState,
+                                                              byte[] commonState, byte[] commonStateHash) {
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(stateWithoutCommonState);
+             ObjectInput in = new ObjectInputStream(bis)) {
+            Commitments transferPolynomialCommitments = new Commitments();
+            transferPolynomialCommitments.readExternal(in);
+            int lastCheckpointCID = in.readInt();
+            int lastCID = in.readInt();
+            int pid = in.readInt();
+            int nShares = in.readInt();
+            LinkedList<Share> shares = new LinkedList<>();
+            while (nShares-- > 0) {
+                Share share = new Share();
+                share.readExternal(in);
+                shares.add(share);
+            }
+
+            return new RecoveryApplicationState(
+                    commonState,
+                    commonStateHash,
+                    shares,
+                    lastCheckpointCID,
+                    lastCID,
+                    pid,
+                    transferPolynomialCommitments
+            );
+        } catch (IOException e) {
+            logger.debug("Failed to reconstruct recovery state from {}", from);
+            return null;
+        }
     }
 }

@@ -109,35 +109,39 @@ public class RecoveryStateSender extends Thread {
                 ObjectOutput out = new ObjectOutputStream(client.getOutputStream());
                 logger.debug("Transmitting recovery state to {}", clientIp);
 
-                recoveryState.getTransferPolynomialCommitments().writeExternal(out);
-                out.writeInt(recoveryState.getLastCheckpointCID());
-                out.writeInt(recoveryState.getLastCID());
-                out.writeInt(recoveryState.getPid());
-                out.writeInt(recoveryState.getShares().size());
-                for (Share share : recoveryState.getShares()) {
-                    share.writeExternal(out);
-                }
-                byte[] commonState = recoveryState.getCommonState();
-                out.writeBoolean(commonState != null);
-                if (commonState != null) {
-                    logger.debug("Recovery state generated, has {} bytes and {} shares", commonState.length,
+                long t1 = System.nanoTime();
+                byte[] stateWithoutCommonState = serializeStateWithoutCommonState(recoveryState);
+                if (stateWithoutCommonState == null)
+                    continue;
+                long t2 = System.nanoTime();
+                logger.debug("Took {} ms to serialize state without common state", (t2 - t1) / 1_000_000.0);
+
+                t1 = System.nanoTime();
+                out.writeInt(stateWithoutCommonState.length);
+                out.write(stateWithoutCommonState);
+                t2 = System.nanoTime();
+                logger.info("Took {} ms to send state without common state", (t2 - t1) / 1_000_000.0);
+
+                out.writeBoolean(iAmStateSender);
+                if (iAmStateSender) {
+                    byte[] commonState = recoveryState.getCommonState();
+                    logger.info("Recovery state generated, has {} bytes and {} shares", commonState.length,
                             recoveryState.getShares().size());
+                    t1 = System.nanoTime();
                     out.writeInt(commonState.length);
-                    int i = 0;
-                    while (i < commonState.length) {
-                        int len = Math.min(1024, commonState.length - i);
-                        out.write(commonState, i, len);
-                        i += len;
-                    }
+                    out.write(commonState);
                 } else {
                     byte[] commonStateHash = hashThread.getHash();
-                    logger.debug("Recovery state generated, has {} bytes of hash and {} shares",
+                    logger.info("Recovery state generated, has {} bytes of hash and {} shares",
                             commonStateHash.length, recoveryState.getShares().size());
+                    t1 = System.nanoTime();
                     out.writeInt(commonStateHash.length);
                     out.write(commonStateHash);
                 }
                 out.flush();
+                t2 = System.nanoTime();
                 logger.debug("Recovery state sent");
+                logger.info("Took {} ms to send common state", (t2 - t1) / 1_000_000.0);
                 serverSocket.close();
                 break;
             } catch (IOException e) {
@@ -145,6 +149,26 @@ public class RecoveryStateSender extends Thread {
             }
         }
         logger.debug("Exiting state sender server thread");
+    }
+
+    private byte[] serializeStateWithoutCommonState(RecoveryApplicationState recoveryState) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream out = new ObjectOutputStream(bos)) {
+            recoveryState.getTransferPolynomialCommitments().writeExternal(out);
+            out.writeInt(recoveryState.getLastCheckpointCID());
+            out.writeInt(recoveryState.getLastCID());
+            out.writeInt(recoveryState.getPid());
+            out.writeInt(recoveryState.getShares().size());
+            for (Share share : recoveryState.getShares()) {
+                share.writeExternal(out);
+            }
+            out.flush();
+            bos.flush();
+            return bos.toByteArray();
+        } catch (IOException e) {
+            logger.error("Failed to serialize Shares");
+            return null;
+        }
     }
 
     private RecoveryApplicationState createRecoverState() {
