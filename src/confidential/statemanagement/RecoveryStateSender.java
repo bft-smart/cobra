@@ -7,6 +7,7 @@ import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
+import confidential.Utils;
 import confidential.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -106,36 +107,42 @@ public class RecoveryStateSender extends Thread {
                     client.close();
                     continue;
                 }
-                ObjectOutput out = new ObjectOutputStream(client.getOutputStream());
+                //ObjectOutput out = new ObjectOutputStream(client.getOutputStream());
+                BufferedOutputStream out = new BufferedOutputStream(client.getOutputStream());
                 logger.debug("Transmitting recovery state to {}", clientIp);
 
                 long t1 = System.nanoTime();
                 byte[] stateWithoutCommonState = serializeStateWithoutCommonState(recoveryState);
-                if (stateWithoutCommonState == null)
-                    continue;
+                if (stateWithoutCommonState == null) {
+                    break;
+                }
                 long t2 = System.nanoTime();
                 logger.debug("Took {} ms to serialize state without common state", (t2 - t1) / 1_000_000.0);
 
                 t1 = System.nanoTime();
-                out.writeInt(stateWithoutCommonState.length);
+                //out.writeInt(stateWithoutCommonState.length);
+                out.write(Utils.toBytes(stateWithoutCommonState.length));
                 out.write(stateWithoutCommonState);
                 t2 = System.nanoTime();
                 logger.info("Took {} ms to send state without common state", (t2 - t1) / 1_000_000.0);
 
-                out.writeBoolean(iAmStateSender);
+                //out.writeBoolean(iAmStateSender);
+                out.write(iAmStateSender ? 1 : 0);
                 if (iAmStateSender) {
                     byte[] commonState = recoveryState.getCommonState();
                     logger.info("Recovery state generated, has {} bytes and {} shares", commonState.length,
                             recoveryState.getShares().size());
                     t1 = System.nanoTime();
-                    out.writeInt(commonState.length);
+                    //out.writeInt(commonState.length);
+                    out.write(Utils.toBytes(commonState.length));
                     out.write(commonState);
                 } else {
                     byte[] commonStateHash = hashThread.getHash();
                     logger.info("Recovery state generated, has {} bytes of hash and {} shares",
                             commonStateHash.length, recoveryState.getShares().size());
                     t1 = System.nanoTime();
-                    out.writeInt(commonStateHash.length);
+                    //out.writeInt(commonStateHash.length);
+                    out.write(Utils.toBytes(commonStateHash.length));
                     out.write(commonStateHash);
                 }
                 out.flush();
@@ -146,6 +153,7 @@ public class RecoveryStateSender extends Thread {
                 break;
             } catch (IOException e) {
                 logger.error("Failed to accept recovering server request", e);
+                break;
             }
         }
         logger.debug("Exiting state sender server thread");

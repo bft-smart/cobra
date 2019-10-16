@@ -1,6 +1,7 @@
 package confidential.statemanagement;
 
 import bftsmart.reconfiguration.ServerViewController;
+import confidential.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitments;
@@ -81,11 +82,15 @@ public class RecoveryStateReceiver extends Thread {
                 socket.setTcpNoDelay(true);
                 socket.setEnabledCipherSuites(svController.getStaticConf().getEnabledCiphers());
 
-                ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+                //ObjectInputStream in = new ObjectInputStream(socket.getInputStream());
+                BufferedInputStream in = new BufferedInputStream(socket.getInputStream());
 
                 long t1 = System.nanoTime();
-                byte[] recoveryStateWithoutCommonState = new byte[in.readInt()];
-                in.readFully(recoveryStateWithoutCommonState);
+                byte[] lenBytes = new byte[4];
+                int len = Utils.toNumber(Utils.readNBytes(4, in));
+                byte[] recoveryStateWithoutCommonState = Utils.readNBytes(len, in);
+                //byte[] recoveryStateWithoutCommonState = new byte[in.readInt()];
+                //in.readFully(recoveryStateWithoutCommonState);
                 long t2 = System.nanoTime();
                 logger.info("Took {} ms to receive recovery state without common state from {}",
                         (t2 - t1) / 1_000_000.0, serverInfo.getSender());
@@ -94,9 +99,12 @@ public class RecoveryStateReceiver extends Thread {
                 byte[] commonStateHash;
 
                 t1 = System.nanoTime();
-                if (in.readBoolean()) {
-                    int nCommonStateBytes = in.readInt();
+                //if (in.readBoolean()) {
+                if (in.read() == 1) {
+                    //int nCommonStateBytes = in.readInt();
+                    int nCommonStateBytes = Utils.toNumber(Utils.readNBytes(4, in));
                     commonState = new byte[nCommonStateBytes];
+                    //commonState = new byte[nCommonStateBytes];
                     int i = 0;
                     HashThread hashThread = new HashThread();
                     hashThread.setData(commonState);
@@ -111,8 +119,10 @@ public class RecoveryStateReceiver extends Thread {
                     commonStateHash = hashThread.getHash();
 
                 } else {
-                    commonStateHash = new byte[in.readInt()];
-                    in.readFully(commonStateHash);
+                    commonStateHash = Utils.readNBytes(Utils.toNumber(Utils.readNBytes(4, in)), in);
+
+                    //commonStateHash = new byte[in.readInt()];
+                    //in.readFully(commonStateHash);
                 }
 
                 t2 = System.nanoTime();
