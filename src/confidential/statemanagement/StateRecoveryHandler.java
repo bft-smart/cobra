@@ -20,43 +20,40 @@ import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import javax.net.ssl.*;
 import java.io.ByteArrayInputStream;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
-import java.security.*;
+import java.security.KeyManagementException;
+import java.security.KeyStoreException;
+import java.security.NoSuchAlgorithmException;
+import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.util.*;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class StateRecoveryHandler extends Thread {
     private Logger logger = LoggerFactory.getLogger("confidential");
-    private static final String SECRET = "MySeCreT_2hMOygBwY";
     private final int threshold;
     private final BigInteger field;
-    //private BlockingQueue<RecoverySMMessage> stateQueue;
-    private BlockingQueue<RecoveryApplicationState> stateQueue;
     private int corruptedServers;
 
     private CommitmentScheme commitmentScheme;
     private InterpolationStrategy interpolationStrategy;
 
-    private Map<Integer, Commitments> polynomialCommitments;
-    private Map<Integer, Integer> polynomialCommitmentsSenders;
     private Commitments transferPolynomialCommitments;
 
-    private Set<Integer> commonData;
+    private Map<Integer, Integer> commonData;
     private byte[] selectedCommonData;
+    private int selectedCommonDataHash;
+    private int nCommonDataReceived;
 
     private Map<Integer, LinkedList<Share>> recoveryShares;
     private Map<Integer, Integer> recoverySharesSize;
     private int correctRecoverySharesSize;
 
-    private Map<Integer, Integer> lastCheckpointCIDSenders;
-    private Map<Integer, Integer> lastCIDSenders;
 
     private int pid;
     private int stateSenderReplica;
@@ -64,11 +61,14 @@ public class StateRecoveryHandler extends Thread {
 
     private ObjectInputStream commonDataStream;
     private ReconstructionCompleted reconstructionListener;
-    private RecoveryStateReceiver recoveryStateReceiver;
+    private RecoveryPrivateStateReceiver recoveryPrivateStateReceiver;
+    private RecoveryPublicStateReceiver recoveryPublicStateReceiver;
+    private Lock lock = new ReentrantLock();
+    private Condition condition = lock.newCondition();
 
     StateRecoveryHandler(ReconstructionCompleted reconstructionListener, int threshold,
                          ServerViewController svController, BigInteger field, CommitmentScheme commitmentScheme,
-                         InterpolationStrategy interpolationStrategy, int stateSenderReplica) {
+                         InterpolationStrategy interpolationStrategy, int stateSenderReplica, int serverPort) {
         super("State Recovery Handler Thread");
         this.reconstructionListener = reconstructionListener;
         this.threshold = threshold;
@@ -80,95 +80,62 @@ public class StateRecoveryHandler extends Thread {
         this.commitmentScheme = commitmentScheme;
         this.interpolationStrategy = interpolationStrategy;
 
-        this.stateQueue = new LinkedBlockingQueue<>();
-
-        this.commonData = new HashSet<>(threshold + 1);
+        this.commonData = new HashMap<>(threshold + 1);
 
         this.recoveryShares = new HashMap<>(threshold + 1);
         this.recoverySharesSize = new HashMap<>(threshold + 1);
         this.correctRecoverySharesSize = -1;
 
-        this.polynomialCommitments = new HashMap<>(threshold + 1);
-        this.polynomialCommitmentsSenders = new HashMap<>(threshold + 1);
-        this.lastCheckpointCIDSenders = new HashMap<>(threshold + 1);
-        this.lastCIDSenders = new HashMap<>(threshold + 1);
         try {
-            this.recoveryStateReceiver = new RecoveryStateReceiver(this, svController);
-            recoveryStateReceiver.start();
-        } catch (IOException | KeyManagementException | KeyStoreException | NoSuchAlgorithmException |
-                CertificateException | UnrecoverableKeyException e) {
-            logger.error("Failed to initialize recovery state receiver thread.", e);
+            this.recoveryPrivateStateReceiver = new RecoveryPrivateStateReceiver(this, svController, serverPort);
+            this.recoveryPublicStateReceiver = new RecoveryPublicStateReceiver(this, svController, serverPort + 1);
+            this.recoveryPrivateStateReceiver.start();
+            this.recoveryPublicStateReceiver.start();
+        } catch (IOException | CertificateException | NoSuchAlgorithmException | UnrecoverableKeyException | KeyStoreException | KeyManagementException e) {
+            logger.error("Failed to initialize recovery state receiver threads");
         }
     }
 
-    void deliverRecoveryStateMessage(RecoveryStateServerSMMessage state) {
-        if (recoveryStateReceiver.isAlive())
-            recoveryStateReceiver.addRecoveryStateMessage(state);
-        else
-            logger.debug("Recovery state message from {} was not added to the receiver thread.", state.getSender());
+
+    void deliverPrivateState(int from, LinkedList<Share> privateState) {
+        lock.lock();
+        recoveryShares.put(from, privateState);
+        recoverySharesSize.merge(privateState.size(), 1, Integer::sum);
+        condition.signalAll();
+        lock.unlock();
     }
 
-    void deliverRecoveryStateMessage(RecoveryApplicationState state) {
-        try {
-            stateQueue.put(state);
-        } catch (InterruptedException e) {
-            //logger.error("Failed to connect to recovery server of {}", state.getSender(), e);
-            logger.error("Failed to add recovery state to queue", e);
+    void deliverPublicState(int from, byte[] publicState, byte[] publicStateHash) {
+        lock.lock();
+        if (commonDataStream == null) {
+            int commonDataHashCode = Arrays.hashCode(publicStateHash);
+            logger.debug("Public state hash {} of server {}", commonDataHashCode, from);
+            if (stateSenderReplica == from) {
+                selectedCommonData = publicState;
+                selectedCommonDataHash = commonDataHashCode;
+                logger.info("Replica {} sent me public state of {} bytes", from, selectedCommonData.length);
+            } else {
+                logger.info("Replica {} sent me hash of the public state", from);
+            }
+            commonData.merge(commonDataHashCode, 1, Integer::sum);
+            nCommonDataReceived++;
+            condition.signalAll();
         }
+        lock.unlock();
     }
 
     @Override
     public void run() {
         while (true) {
             try {
-                RecoveryApplicationState state = stateQueue.take();
+                lock.lock();
+                condition.await();
 
-                //to select correct recovery polynomial commitments
-                if (transferPolynomialCommitments == null) {
-                    int transferPolynomialCommitmentsHashCode = state.getTransferPolynomialCommitments().hashCode();
-                    polynomialCommitments.computeIfAbsent(transferPolynomialCommitmentsHashCode,
-                            k -> state.getTransferPolynomialCommitments());
-                    polynomialCommitmentsSenders.merge(transferPolynomialCommitmentsHashCode,
-                            1, Integer::sum);
-                }
-
-                //to select correct common state
-                if (commonDataStream == null) {
-
-                    byte[] cryptographicHash = state.getCommonStateHash();
-
-                    int commonDataHashCode = Arrays.hashCode(cryptographicHash);
-                    logger.debug("State hash {} of server {}", commonDataHashCode, state.getPid());
-                    if (stateSenderReplica == state.getPid()) {
-                        selectedCommonData = state.getCommonState();
-                        logger.info("Replica {} sent me state of {} bytes with {} shares",
-                                state.getPid(), selectedCommonData.length, state.getShares().size());
-                    } else {
-                        logger.info("Replica {} sent me hash of the state with {} shares", state.getPid(),
-                                state.getShares().size());
-                    }
-
-                    commonData.add(commonDataHashCode);
-                }
-
-                //to select correct recovery shares
-                recoveryShares.put(state.getPid(), state.getShares());
-                recoverySharesSize.merge(state.getShares().size(), 1, Integer::sum);
-
-                lastCheckpointCIDSenders.merge(state.getLastCheckpointCID(), 1, Integer::sum);
-                lastCIDSenders.merge(state.getLastCID(), 1, Integer::sum);
-
-                if (recoveryShares.size() < 2 * threshold + 1)
+                if (recoveryShares.size() < 2 * threshold + 1 || selectedCommonData == null || nCommonDataReceived < 2 * threshold + 1)
                     continue;
 
-                logger.debug("RecoveryStates: {}", recoveryShares.size());
-
-                if (transferPolynomialCommitments == null)
-                    transferPolynomialCommitments = selectCorrectData(polynomialCommitmentsSenders,
-                            polynomialCommitments);
-
                 if (commonDataStream == null) {
-                    if (commonData.size() == 1 && selectedCommonData != null)
+                    if (haveCorrectCommonData())
                         commonDataStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommonData));
                 }
                 if (correctRecoverySharesSize == -1)
@@ -187,10 +154,30 @@ public class StateRecoveryHandler extends Thread {
                 logger.error("Failed to poll state from queue", e);
             } catch (IOException e) {
                 logger.debug("Failed to load common data");
+            } finally {
+                lock.unlock();
             }
         }
-        recoveryStateReceiver.interrupt();
+        recoveryPrivateStateReceiver.interrupt();
+        recoveryPublicStateReceiver.interrupt();
         logger.debug("Exiting state recovery handler thread");
+    }
+
+    private boolean haveCorrectCommonData() {
+        Optional<Map.Entry<Integer, Integer>> max = commonData.entrySet().stream()
+                .max(Comparator.comparingInt(Map.Entry::getValue));
+        if (max.isEmpty()) {
+            logger.info("I don't have correct public state");
+            return false;
+        }
+
+        Map.Entry<Integer, Integer> entry = max.get();
+        if (entry.getValue() < threshold + 1) {
+            logger.info("I don't have correct public state");
+            return false;
+        }
+
+        return selectedCommonDataHash == entry.getKey();
     }
 
     private MessageContext[] deserializeMessageContext(ObjectInputStream in) throws IOException, ClassNotFoundException {
@@ -269,7 +256,10 @@ public class StateRecoveryHandler extends Thread {
             for (Map.Entry<Integer, LinkedList<Share>> entry : recoveryShares.entrySet()) {
                 currentShares.put(entry.getKey(), entry.getValue().iterator());
             }
-
+            transferPolynomialCommitments = new Commitments();
+            transferPolynomialCommitments.readExternal(commonDataStream);
+            int lastCheckpointCID = commonDataStream.readInt();
+            int lastCID = commonDataStream.readInt();
             int logSize = commonDataStream.readInt();
             CommandsInfo[] log = null;
             if (logSize != -1) {
@@ -389,8 +379,6 @@ public class StateRecoveryHandler extends Thread {
                         : new ConfidentialSnapshot(plainData, snapshotShares);
             }
 
-            int lastCheckpointCID = selectCorrectKey(lastCheckpointCIDSenders);
-            int lastCID = selectCorrectKey(lastCIDSenders);
             byte[] serializedState = snapshot == null ? null : snapshot.serialize();
             return new DefaultApplicationState(
                     log,
@@ -467,23 +455,5 @@ public class StateRecoveryHandler extends Thread {
         }
 
         return key;
-    }
-
-    private<T> T selectCorrectData(Map<Integer, Integer> dataSenders, Map<Integer, T> data) {
-        int max = 0;
-        T result = null;
-
-        for (Map.Entry<Integer, Integer> entry : dataSenders.entrySet()) {
-            if (entry.getValue() > max) {
-                max = entry.getValue();
-                result = data.get(entry.getKey());
-            }
-        }
-
-        if (max <= threshold) {
-            return null;
-        }
-
-        return result;
     }
 }

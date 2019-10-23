@@ -14,12 +14,15 @@ import org.slf4j.LoggerFactory;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
+import javax.net.SocketFactory;
 import javax.net.ssl.*;
 import java.io.*;
+import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.net.Socket;
 import java.security.*;
 import java.security.cert.CertificateException;
+import java.util.Arrays;
 import java.util.LinkedList;
 
 /**
@@ -28,7 +31,6 @@ import java.util.LinkedList;
 public class RecoveryStateSender extends Thread {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private static final String SECRET = "MySeCreT_2hMOygBwY";
-    private SSLServerSocket serverSocket;
     private int myProcessId;
     private String recoveringServerIp;
     private DefaultApplicationState state;
@@ -36,51 +38,49 @@ public class RecoveryStateSender extends Thread {
     private BigInteger field;
     private boolean iAmStateSender;
     private HashThread hashThread;
+    private SSLSocketFactory socketFactory;
+    private int secureServerPort;
+    private int unSecureServerPort;
 
     RecoveryStateSender(int serverPort, String recoveringServerIp,
                         DefaultApplicationState applicationState, VerifiableShare recoveryPoint,
                         BigInteger field, ServerViewController svController, boolean iAmStateSender) throws Exception {
         super("State Sender Thread");
-        logger.debug("I am listening in port {} for state request", serverPort);
-        this.serverSocket = createSSLServerSocket(serverPort, svController);
+        this.secureServerPort = serverPort;
+        this.unSecureServerPort = serverPort + 1;
         this.recoveringServerIp = recoveringServerIp;
         this.state = applicationState;
         this.recoveryPoint = recoveryPoint;
         this.myProcessId = svController.getStaticConf().getProcessId();
         this.field = field;
         this.iAmStateSender = iAmStateSender;
+        this.socketFactory = getSSLSocketFactory(svController);
         this.hashThread = new HashThread();
     }
 
-    private SSLServerSocket createSSLServerSocket(int serverPort, ServerViewController svController)
-            throws IOException, NoSuchAlgorithmException, KeyManagementException, KeyStoreException,
-            CertificateException, UnrecoverableKeyException {
-        KeyStore ks;
+    private SSLSocketFactory getSSLSocketFactory(ServerViewController svController) throws CertificateException,
+            UnrecoverableKeyException, NoSuchAlgorithmException, KeyStoreException, KeyManagementException, IOException {
+        String algorithm = Security.getProperty("ssl.KeyManagerFactory.algorithm");
         try (FileInputStream fis = new FileInputStream("config/keysSSL_TLS/" +
                 svController.getStaticConf().getSSLTLSKeyStore())) {
-            ks = KeyStore.getInstance(KeyStore.getDefaultType());
+            KeyStore ks = KeyStore.getInstance(KeyStore.getDefaultType());
             ks.load(fis, SECRET.toCharArray());
+
+            KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
+            kmf.init(ks, SECRET.toCharArray());
+
+            TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(algorithm);
+            trustManagerFactory.init(ks);
+
+            SSLContext context = SSLContext.getInstance(svController.getStaticConf().getSSLTLSProtocolVersion());
+            context.init(kmf.getKeyManagers(), trustManagerFactory.getTrustManagers(), new SecureRandom());
+
+            return context.getSocketFactory();
+        } catch (IOException | KeyStoreException | NoSuchAlgorithmException | CertificateException
+                | UnrecoverableKeyException | KeyManagementException e) {
+            logger.error("Failed to initialize SSL attributes", e);
+            throw e;
         }
-
-        String algorithm = Security.getProperty("ssl.KeyManagerFactory.algorithm");
-        KeyManagerFactory kmf = KeyManagerFactory.getInstance(algorithm);
-        kmf.init(ks, SECRET.toCharArray());
-
-        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance(algorithm);
-        trustManagerFactory.init(ks);
-
-        SSLContext context = SSLContext.getInstance(svController.getStaticConf().getSSLTLSProtocolVersion());
-        context.init(kmf.getKeyManagers(), trustManagerFactory.getTrustManagers(), new SecureRandom());
-
-        SSLServerSocketFactory serverSocketFactory = context.getServerSocketFactory();
-        SSLServerSocket serverSocket = (SSLServerSocket) serverSocketFactory.createServerSocket(serverPort);
-        serverSocket.setEnabledCipherSuites(svController.getStaticConf().getEnabledCiphers());
-        serverSocket.setEnableSessionCreation(true);
-        serverSocket.setReuseAddress(true);
-        serverSocket.setNeedClientAuth(true);
-        serverSocket.setWantClientAuth(true);
-
-        return serverSocket;
     }
 
     @Override
@@ -97,77 +97,73 @@ public class RecoveryStateSender extends Thread {
             hashThread.update(0, recoveryState.getCommonState().length);
             hashThread.update(-1, -1);
         }
-        while (true) {
-            try {
-                //SSLSocket client = (SSLSocket) serverSocket.accept();
-                SSLSocket client = (SSLSocket) serverSocket.accept();
-                String clientIp = client.getInetAddress().getHostAddress();
-                if (!clientIp.equals(recoveringServerIp)) {
-                    logger.info("Received unexpected server connection asking state from {}. I am ignoring it!", clientIp);
-                    client.close();
-                    continue;
-                }
-                //ObjectOutput out = new ObjectOutputStream(client.getOutputStream());
-                BufferedOutputStream out = new BufferedOutputStream(client.getOutputStream());
-                logger.debug("Transmitting recovery state to {}", clientIp);
+        logger.debug("Transmitting recovery state to {}", recoveringServerIp);
+        sendPublicState(recoveryState.getCommonState());
+        sendPrivateState(recoveryState.getShares());
+        logger.debug("Recovery state sent");
 
-                long t1 = System.nanoTime();
-                byte[] stateWithoutCommonState = serializeStateWithoutCommonState(recoveryState);
-                if (stateWithoutCommonState == null) {
-                    break;
-                }
-                long t2 = System.nanoTime();
-                logger.debug("Took {} ms to serialize state without common state", (t2 - t1) / 1_000_000.0);
-
-                t1 = System.nanoTime();
-                //out.writeInt(stateWithoutCommonState.length);
-                out.write(Utils.toBytes(stateWithoutCommonState.length));
-                out.write(stateWithoutCommonState);
-                t2 = System.nanoTime();
-                logger.info("Took {} ms to send state without common state", (t2 - t1) / 1_000_000.0);
-
-                //out.writeBoolean(iAmStateSender);
-                out.write(iAmStateSender ? 1 : 0);
-                if (iAmStateSender) {
-                    byte[] commonState = recoveryState.getCommonState();
-                    logger.info("Recovery state generated, has {} bytes and {} shares", commonState.length,
-                            recoveryState.getShares().size());
-                    t1 = System.nanoTime();
-                    //out.writeInt(commonState.length);
-                    out.write(Utils.toBytes(commonState.length));
-                    out.write(commonState);
-                } else {
-                    byte[] commonStateHash = hashThread.getHash();
-                    logger.info("Recovery state generated, has {} bytes of hash and {} shares",
-                            commonStateHash.length, recoveryState.getShares().size());
-                    t1 = System.nanoTime();
-                    //out.writeInt(commonStateHash.length);
-                    out.write(Utils.toBytes(commonStateHash.length));
-                    out.write(commonStateHash);
-                }
-                out.flush();
-                t2 = System.nanoTime();
-                logger.debug("Recovery state sent");
-                logger.info("Took {} ms to send common state", (t2 - t1) / 1_000_000.0);
-                serverSocket.close();
-                break;
-            } catch (IOException e) {
-                logger.error("Failed to accept recovering server request", e);
-                break;
-            }
-        }
         logger.debug("Exiting state sender server thread");
     }
 
-    private byte[] serializeStateWithoutCommonState(RecoveryApplicationState recoveryState) {
+    private void sendPublicState(byte[] publicState) {
+        logger.debug("Connecting un-securely to {}:{}", recoveringServerIp, unSecureServerPort);
+        try (Socket unSecureConnection = SocketFactory.getDefault().createSocket(recoveringServerIp, unSecureServerPort);
+             BufferedOutputStream out = new BufferedOutputStream(unSecureConnection.getOutputStream())) {
+            long t1, t2;
+            out.write(Utils.toBytes(myProcessId));
+            out.write(iAmStateSender ? 1 : 0);
+
+            if (iAmStateSender) {
+                logger.info("Public state has {} bytes", publicState.length);
+                t1 = System.nanoTime();
+                out.write(Utils.toBytes(publicState.length));
+                out.write(publicState);
+            } else {
+                byte[] publicStateHash = hashThread.getHash();
+                logger.debug("Public state hash {}", publicStateHash);
+                t1 = System.nanoTime();
+                out.write(Utils.toBytes(publicStateHash.length));
+                out.write(publicStateHash);
+            }
+            out.flush();
+            t2 = System.nanoTime();
+            logger.info("Took {} ms to send public state", (t2 - t1) / 1_000_000.0);
+        } catch (IOException e) {
+            logger.error("Failed to send public state");
+        }
+    }
+
+    private void sendPrivateState(LinkedList<Share> privateState) {
+        logger.debug("Connecting securely to {}:{}", recoveringServerIp, secureServerPort);
+        try (SSLSocket secureConnection = (SSLSocket) socketFactory.createSocket(recoveringServerIp, secureServerPort);
+             BufferedOutputStream out = new BufferedOutputStream(secureConnection.getOutputStream())) {
+            long t1 = System.nanoTime();
+            byte[] serializePrivateState = serializePrivateState(privateState);
+            if (serializePrivateState == null) {
+                throw new IllegalStateException("Private serialized state is null");
+            }
+            long t2 = System.nanoTime();
+            logger.debug("Took {} ms to serialize private state", (t2 - t1) / 1_000_000.0);
+
+            t1 = System.nanoTime();
+            out.write(Utils.toBytes(myProcessId));
+            out.write(Utils.toBytes(serializePrivateState.length));
+            out.write(serializePrivateState);
+            out.flush();
+            t2 = System.nanoTime();
+            logger.info("Took {} ms to send private state with {} shares", (t2 - t1) / 1_000_000.0,
+                    privateState.size());
+
+        } catch (IOException e) {
+            logger.error("Failed to send private state");
+        }
+    }
+
+    private byte[] serializePrivateState(LinkedList<Share> privateState) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutputStream out = new ObjectOutputStream(bos)) {
-            recoveryState.getTransferPolynomialCommitments().writeExternal(out);
-            out.writeInt(recoveryState.getLastCheckpointCID());
-            out.writeInt(recoveryState.getLastCID());
-            out.writeInt(recoveryState.getPid());
-            out.writeInt(recoveryState.getShares().size());
-            for (Share share : recoveryState.getShares()) {
+            out.writeInt(privateState.size());
+            for (Share share : privateState) {
                 share.writeExternal(out);
             }
             out.flush();
@@ -183,6 +179,10 @@ public class RecoveryStateSender extends Thread {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutputStream out = new ObjectOutputStream(bos)) {
             CommandsInfo[] log = state.getMessageBatches();
+            recoveryPoint.getCommitments().writeExternal(out);
+            out.writeInt(state.getLastCheckpointCID());
+            out.writeInt(state.getLastCID());
+
             out.writeInt(log == null ? -1 : log.length);
             LinkedList<Share> shares = new LinkedList<>();
             byte[] b;
@@ -267,7 +267,6 @@ public class RecoveryStateSender extends Thread {
             bos.flush();
 
             byte[] commonState = bos.toByteArray();
-            //logger.debug("Common State: {}", commonState);
 
             return new RecoveryApplicationState(
                     commonState,
