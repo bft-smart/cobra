@@ -45,7 +45,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private HashMap<Integer, Integer> sequenceNumbers;
     private Timer refreshTimer;
     private TimerTask refreshTriggerTask;
-    private StateRecoveryHandler stateRecoveryHandlerThread;
     private long recoveryStartTime;
     private long renewalStartTime;
     private Set<Integer> usedReplicas;
@@ -146,7 +145,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
         };
 
-        stateRecoveryHandlerThread = new StateRecoveryHandler(
+        new StateRecoveryHandler(
                 this,
                 SVController.getCurrentViewF(),
                 SVController,
@@ -155,8 +154,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 interpolationStrategy,
                 stateSenderReplica,
                 SERVER_STATE_LISTENING_PORT
-        );
-        stateRecoveryHandlerThread.start();
+        ).start();
 
         stateTimer = new Timer("State Timer");
         timeout *= 2;
@@ -203,10 +201,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     public void SMReplyDeliver(SMMessage msg, boolean isBFT) {
         try {
             lockTimer.lock();
-            //RecoverySMMessage recoverySMMessage = (RecoverySMMessage)msg;
             RecoveryStateServerSMMessage recoverySMMessage = (RecoveryStateServerSMMessage)msg;
-            //logger.info("{} sent me state up to cid {}", msg.getSender(), msg.getCID());
-            //logger.debug("waitingCID: {}" , waitingCID);
+
             sequenceNumbers.merge(recoverySMMessage.getSequenceNumber(), 1, Integer::sum);
             if (!SVController.getStaticConf().isStateTransferEnabled())
                 return;
@@ -285,8 +281,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 logger.debug("Removing STOP retransmissions up to regency {}", currentRegency);
                 tomLayer.getSynchronizer().removeSTOPretransmissions(currentRegency - 1);
             }
-            //if (currentRegency > 0)
-            //    tomLayer.requestsTimer.setTimeout(tomLayer.requestsTimer.getTimeout() * (currentRegency * 2));
 
             logger.info("Restoring state");
             int seqNumber = getCorrectValue(sequenceNumbers);
@@ -423,26 +417,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         try {
             logger.debug("Renewing my state");
 
-            /*logger.info("Stopping execution manager");
-            tomLayer.execManager.stop();
-            int lastExec = tomLayer.getLastExec();
-            int inExec = tomLayer.getInExec();
-*/
-            //waitingCID = consensusId;// will make DeliveryThread to stop waiting for state
             dt.iAmWaitingForDeliverLock();
             logger.debug("Trying to acquire deliverLock");
             dt.deliverLock();
             logger.debug("deliverLock acquired");
             dt.iAmNotWaitingForDeliverLock();
-            //waitingCID = -1;
 
-            /*int currentRegency = tomLayer.getSynchronizer().getLCManager().getLastReg();
-            if (currentRegency > 0) {
-                logger.debug("Removing STOP retransmissions up to regency {}", currentRegency);
-                tomLayer.getSynchronizer().removeSTOPretransmissions(currentRegency - 1);
-            }*/
-
-            //logger.debug("Getting state up to {}", consensusId);
             DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
             if (appState == null) {
                 logger.debug("Something went wrong while retrieving state up to {}", consensusId);
@@ -452,28 +432,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             ApplicationState refreshedState = refreshState(point, appState);
             if (refreshedState != null) {
                 logger.info("Updating state");
-                //dt.update(refreshedState);
                 dt.refreshState(refreshedState);
-
-                //tomLayer.setLastExec(lastExec);
-                //tomLayer.setInExec(inExec);
-
-                /*Queue<ConsensusMessage> stoppedMsgs = execManager.getStoppedMsgs();
-                for (ConsensusMessage stoppedMsg : stoppedMsgs) {
-                    logger.debug(stoppedMsg.toString());
-                    if (stoppedMsg.getNumber() > tomLayer.getLastExec())
-                        execManager.addOutOfContextMessage(stoppedMsg); //will separate proposal messages from others
-                }
-
-                logger.debug("Clear Stopped");
-                execManager.clearStopped();
-                logger.info("Restarting execution manager from lastExec {} and inExec {}", tomLayer.getLastExec(),
-                        tomLayer.getInExec());
-                execManager.restart();
-
-                logger.debug("Processing out of context messages");
-                tomLayer.processOutOfContext(); //will going to process proposal messages and others in correct consensus execution
-                logger.debug("Finished processing out of context messages");*/
             }
             else
                 logger.debug("State renewal ignored. Something went wrong while renewing the state");
