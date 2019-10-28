@@ -86,7 +86,7 @@ public class ConfidentialExtractor implements Extractor {
                         secrets[i] = new OpenPublishedShares(shares, commitments, shareData);
                     }
                 }
-                ExtractedResponse extractedResponse = new ExtractedResponse(plainData, secrets);
+                ExtractedResponse extractedResponse = new ExtractedResponse(plainData, null);
                 TOMMessage lastMsg = tomMessages[lastReceived];
                 return new TOMMessage(lastMsg.getSender(),
                         lastMsg.getSession(), lastMsg.getSequence(),
