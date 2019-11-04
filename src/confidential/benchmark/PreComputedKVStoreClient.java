@@ -42,12 +42,7 @@ public class PreComputedKVStoreClient {
         for (Client client : clients) {
             tasks.add(executorService.submit(client));
         }
-        Runtime.getRuntime().addShutdownHook(new Thread() {
-            @Override
-            public void run() {
-                executorService.shutdownNow();
-            }
-        });
+        Runtime.getRuntime().addShutdownHook(new Thread(executorService::shutdownNow));
 
         for (Future<?> task : tasks) {
             try {
@@ -64,18 +59,18 @@ public class PreComputedKVStoreClient {
 
     private static class Client extends Thread {
         private int id;
-        private boolean precomputed;
         private int numOperations;
         private boolean write;
         private PreComputedProxy proxy;
+        private boolean preComputed;
 
         Client(int id, boolean precomputed, int numOperations, int requestSize, boolean write) throws SecretSharingException {
             super("Client " + id);
             this.id = id;
-            this.precomputed = precomputed;
             this.numOperations = numOperations;
             this.write = write;
-            this.proxy = new PreComputedProxy(id, requestSize);
+            this.preComputed = precomputed;
+            this.proxy = new PreComputedProxy(id, requestSize, precomputed);
         }
 
         @Override
@@ -86,14 +81,14 @@ public class PreComputedKVStoreClient {
             byte[] plainReadData = proxy.plainReadData;
             byte[] data = proxy.data;
             try {
-                proxy.invokeOrdered(precomputed, plainWriteData, data);
+                proxy.invokeOrdered(plainWriteData, data);
                 Response response;
                 for (int i = 0; i < 100; i++) {
                     if (write)
-                        proxy.invokeOrdered(precomputed, plainWriteData, data);
+                        proxy.invokeOrdered(plainWriteData, data);
                     else {
-                        response = proxy.invokeUnordered(precomputed, plainReadData);
-                        if (!Arrays.equals(response.getConfidentialData()[0], data))
+                        response = proxy.invokeUnordered(plainReadData);
+                        if (!preComputed && !Arrays.equals(response.getConfidentialData()[0], data))
                             throw new RuntimeException("Wrong response");
                     }
                 }
@@ -105,13 +100,15 @@ public class PreComputedKVStoreClient {
                     long t1 = System.nanoTime();
                     long t2;
                     if (write) {
-                        proxy.invokeOrdered(precomputed, plainWriteData, data);
+                        proxy.invokeOrdered(plainWriteData, data);
                         t2 = System.nanoTime();
                     } else {
-                        response = proxy.invokeUnordered(precomputed, plainReadData);
+                        response = proxy.invokeUnordered(plainReadData);
                         t2 = System.nanoTime();
-                        if (!Arrays.equals(response.getConfidentialData()[0], data))
+                        if (!preComputed && !Arrays.equals(response.getConfidentialData()[0], data)) {
+                            System.out.println("Checking");
                             throw new RuntimeException("Wrong response");
+                        }
                     }
                     long latency = t2 - t1;
                     st.store(latency);

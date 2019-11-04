@@ -35,8 +35,10 @@ public class PreComputedProxy {
     public byte[] plainReadData;
     public byte[] plainWriteData;
     public byte[] data;
+    private boolean preComputed;
 
-    public PreComputedProxy(int clientId, int requestSize) throws SecretSharingException {
+    public PreComputedProxy(int clientId, int requestSize, boolean preComputed) throws SecretSharingException {
+        this.preComputed = preComputed;
         Extractor extractor = new ConfidentialExtractor();
         Comparator<byte[]> comparator = new ConfidentialComparator();
 
@@ -71,24 +73,24 @@ public class PreComputedProxy {
         }
     }
 
-    public Response invokeOrdered(boolean precomputed, byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-        byte[] request = precomputed ? orderedRequest : composeRequest(plainData, confidentialData);
+    public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        byte[] request = preComputed ? orderedRequest : composeRequest(plainData, confidentialData);
         if (request == null)
             return null;
 
         byte[] response = service.invokeOrdered(request);
 
-        return composeResponse(response);
+        return preComputed ? null : composeResponse(response);
     }
 
-    public Response invokeUnordered(boolean precomputed, byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-        byte[] request = precomputed ? unorderedRequest : composeRequest(plainData, confidentialData);
+    public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        byte[] request = preComputed ? unorderedRequest : composeRequest(plainData, confidentialData);
         if (request == null)
             return null;
 
         byte[] response = service.invokeUnordered(request);
 
-        return composeResponse(response);
+        return preComputed ? null : composeResponse(response);
     }
 
     public void close() {
