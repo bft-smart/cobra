@@ -63,6 +63,7 @@ public class PreComputedKVStoreClient {
         private boolean write;
         private PreComputedProxy proxy;
         private boolean preComputed;
+        private int rampup = 1000;
 
         Client(int id, boolean precomputed, int numOperations, int requestSize, boolean write) throws SecretSharingException {
             super("Client " + id);
@@ -112,6 +113,14 @@ public class PreComputedKVStoreClient {
                     }
                     long latency = t2 - t1;
                     st.store(latency);
+                    try {
+                        if (rampup > 0) {
+                            Thread.sleep(rampup);
+                            rampup -= 100;
+                        }
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
                 }
 
                 if (id == initialId) {

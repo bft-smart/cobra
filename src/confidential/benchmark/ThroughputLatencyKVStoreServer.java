@@ -22,6 +22,7 @@ public class ThroughputLatencyKVStoreServer extends ConfidentialRecoverable {
     private long startTime;
     private long numRequests;
     private Set<Integer> senders;
+    private double maxThroughput;
 
     public static void main(String[] args) throws NumberFormatException {
         new ThroughputLatencyKVStoreServer(Integer.parseInt(args[0]));
@@ -36,18 +37,6 @@ public class ThroughputLatencyKVStoreServer extends ConfidentialRecoverable {
 
     @Override
     public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
-        long currentTime = System.nanoTime();
-        double deltaTime = (currentTime - startTime) / 1_000_000_000.0;
-
-        if ((int) (deltaTime / 5) > 0) {
-            double throughput = numRequests / deltaTime;
-            logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {}",
-                    senders.size(), numRequests, deltaTime, throughput);
-            numRequests = 0;
-            startTime = currentTime;
-            senders.clear();
-        }
-
         numRequests++;
         senders.add(msgCtx.getSender());
 
@@ -87,24 +76,29 @@ public class ThroughputLatencyKVStoreServer extends ConfidentialRecoverable {
             }
         } catch (IOException e) {
             logger.error("Failed to attend ordered request from {}", msgCtx.getSender(), e);
+        } finally {
+            printMeasurement();
         }
         return null;
     }
 
-    @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    private void printMeasurement() {
         long currentTime = System.nanoTime();
         double deltaTime = (currentTime - startTime) / 1_000_000_000.0;
-
         if ((int) (deltaTime / 5) > 0) {
             double throughput = numRequests / deltaTime;
-            logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {}",
-                    senders.size(), numRequests, deltaTime, throughput);
+            if (throughput > maxThroughput)
+                maxThroughput = throughput;
+            logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {} (max: {})",
+                    senders.size(), numRequests, deltaTime, throughput, maxThroughput);
             numRequests = 0;
             startTime = currentTime;
             senders.clear();
         }
+    }
 
+    @Override
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
         numRequests++;
         senders.add(msgCtx.getSender());
 
@@ -130,6 +124,8 @@ public class ThroughputLatencyKVStoreServer extends ConfidentialRecoverable {
             }
         } catch (IOException e) {
             logger.error("Failed to attend unordered request from {}", msgCtx.getSender(), e);
+        } finally {
+            printMeasurement();
         }
         return null;
     }
