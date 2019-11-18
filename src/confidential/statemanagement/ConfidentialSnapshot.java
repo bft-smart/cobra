@@ -1,7 +1,6 @@
 package confidential.statemanagement;
 
 import confidential.ConfidentialData;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 
@@ -44,7 +43,7 @@ public class ConfidentialSnapshot {
                 }
             }
             return new ConfidentialSnapshot(plainData, shares);
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
         }
         return null;

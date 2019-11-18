@@ -62,7 +62,7 @@ public class ExtractedResponse {
                 }
             }
             return new ExtractedResponse(plainData, openShares);
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }

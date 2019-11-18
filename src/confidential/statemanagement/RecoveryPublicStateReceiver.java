@@ -2,6 +2,7 @@ package confidential.statemanagement;
 
 import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.reconfiguration.views.View;
+import bftsmart.tom.util.TOMUtil;
 import confidential.Utils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -71,11 +72,13 @@ public class RecoveryPublicStateReceiver extends Thread {
 
                     while (i < nCommonStateBytes) {
                         int received = in.read(publicState, i, nCommonStateBytes - i);
+                        logger.info("REceived number: {}", received);
                         hashThread.update(i, received);
                         i += received;
                     }
                     hashThread.update(-1, -1);
                     publicStateHash = hashThread.getHash();
+                    //publicStateHash = TOMUtil.computeHash(publicState);
                 } else {
                     publicStateHash = Utils.readNBytes(Utils.toNumber(Utils.readNBytes(4, in)), in);
                 }

@@ -7,12 +7,15 @@ import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.commitment.Commitments;
+import vss.commitment.Commitment;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedList;
+import java.util.Map;
 
 public class ConfidentialExtractor implements Extractor {
     private final Logger logger = LoggerFactory.getLogger("confidential");
@@ -71,7 +74,7 @@ public class ConfidentialExtractor implements Extractor {
                         }
                     }
 
-                    Commitments commitments;
+                    Commitment commitments;
                     byte[] shareData;
                     Share[] shares;
                     for (int i = 0; i < numSecrets; i++) {

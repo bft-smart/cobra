@@ -31,8 +31,8 @@ public class ThroughputLatencyKVStoreServer extends ConfidentialRecoverable {
     ThroughputLatencyKVStoreServer(int processId) {
         super(processId);
         map = new TreeMap<>();
-        new ServiceReplica(processId, this, this);
         senders = new HashSet<>(1000);
+        new ServiceReplica(processId, this, this);
     }
 
     @Override

@@ -1,9 +1,7 @@
 package confidential.server;
 
 import confidential.ConfidentialData;
-import confidential.ConfidentialMessage;
 import confidential.MessageType;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 
@@ -75,7 +73,7 @@ public final class Request {
                 }
             }
             return new Request(type, plainData, shares);
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }

@@ -1,7 +1,5 @@
 package confidential;
 
-import vss.secretsharing.VerifiableShare;
-
 import java.io.*;
 import java.util.Arrays;
 
@@ -66,7 +64,7 @@ public class ConfidentialMessage {
                 }
             }
             return new ConfidentialMessage(plainData, shares);
-        } catch (IOException e) {
+        } catch (IOException | ClassNotFoundException e) {
             e.printStackTrace();
             return null;
         }

@@ -8,7 +8,6 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.Arrays;
 import java.util.LinkedList;
-import java.util.List;
 
 public class ConfidentialData implements Externalizable {
     private VerifiableShare share;
@@ -51,7 +50,7 @@ public class ConfidentialData implements Externalizable {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         share = new VerifiableShare();
         share.readExternal(in);
         int len = in.readInt();

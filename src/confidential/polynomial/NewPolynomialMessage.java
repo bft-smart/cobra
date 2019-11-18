@@ -3,7 +3,6 @@ package confidential.polynomial;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.math.BigInteger;
 
 public class NewPolynomialMessage extends PolynomialMessage {
     private PolynomialContext context;
@@ -26,7 +25,7 @@ public class NewPolynomialMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
         context = new PolynomialContext();
         context.readExternal(in);

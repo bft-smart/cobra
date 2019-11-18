@@ -1,6 +1,7 @@
 package confidential.polynomial;
 
-import vss.commitment.Commitments;
+import confidential.Utils;
+import vss.commitment.Commitment;
 
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -9,12 +10,12 @@ import java.math.BigInteger;
 
 public class ProposalMessage extends PolynomialMessage {
     private BigInteger point;
-    private Commitments commitments;
+    private Commitment commitments;
     private byte[] cryptographicHash;
 
     public ProposalMessage() {}
 
-    public ProposalMessage(int id, int sender, BigInteger point, Commitments commitments) {
+    public ProposalMessage(int id, int sender, BigInteger point, Commitment commitments) {
         super(id, sender);
         this.point = point;
         this.commitments = commitments;
@@ -24,7 +25,7 @@ public class ProposalMessage extends PolynomialMessage {
         return point;
     }
 
-    public Commitments getCommitments() {
+    public Commitment getCommitments() {
         return commitments;
     }
 
@@ -43,17 +44,16 @@ public class ProposalMessage extends PolynomialMessage {
         out.writeInt(b.length);
         out.write(b);
 
-        commitments.writeExternal(out);
+        Utils.writeCommitment(commitments, out);
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
         byte[] b = new byte[in.readInt()];
         in.readFully(b);
         point = new BigInteger(b);
 
-        commitments = new Commitments();
-        commitments.readExternal(in);
+        commitments = Utils.readCommitment(in);
     }
 }

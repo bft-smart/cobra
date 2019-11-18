@@ -25,7 +25,7 @@ public class MissingProposalsMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
         missingProposal = new ProposalMessage();
         missingProposal.readExternal(in);

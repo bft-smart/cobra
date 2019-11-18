@@ -5,8 +5,8 @@ import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.Commitments;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
@@ -127,7 +127,7 @@ class PolynomialCreator {
         Polynomial polynomial = new Polynomial(field, independentTerm, coefficients);
 
         //Committing to polynomial
-        Commitments commitments = commitmentScheme.generateCommitments(polynomial);
+        Commitment commitments = commitmentScheme.generateCommitments(polynomial);
 
         //generating point for each member
         int[] members = context.getMembers();
@@ -368,14 +368,14 @@ class PolynomialCreator {
         finalProposalSet.values().forEach(p -> logger.debug("Proposal from {}", p.getSender()));
 
         BigInteger finalPoint = BigInteger.ZERO;
-        Commitments[] allCommitments = new Commitments[finalProposalSet.size()];
+        Commitment[] allCommitments = new Commitment[finalProposalSet.size()];
         int i = 0;
         for (Map.Entry<Integer, BigInteger> e : decryptedPoints.entrySet()) {
             finalPoint = finalPoint.add(e.getValue());
             allCommitments[i++] = finalProposalSet.get(e.getKey()).getCommitments();
         }
         Share share = new Share(shareholderId, finalPoint);
-        Commitments commitments = commitmentScheme.sumCommitments(allCommitments);
+        Commitment commitments = commitmentScheme.sumCommitments(allCommitments);
         VerifiableShare point =  new VerifiableShare(share, commitments, null);
 
         creationListener.onPolynomialCreation(context, point, consensusId);
@@ -385,10 +385,13 @@ class PolynomialCreator {
         logger.debug("TODO:The leader {} is faulty. Changing view", context.getLeader());
     }
 
-    private boolean isInvalidPoint(BigInteger point, Commitments commitments) {
+    private boolean isInvalidPoint(BigInteger point, Commitment commitments) {
         Share share = new Share(shareholderId, point);
-        return !commitmentScheme.checkValidity(share, commitments) ||
+        commitmentScheme.startVerification(commitments);
+        boolean isValid = !commitmentScheme.checkValidity(share, commitments) ||
                 !commitmentScheme.checkValidity(polynomialPropertyShare, commitments); //does polynomial has the point and required property?
+        commitmentScheme.endVerification();
+        return isValid;
     }
 
     private byte[] serialize(PolynomialMessage message) {

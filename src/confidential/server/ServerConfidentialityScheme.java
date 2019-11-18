@@ -1,6 +1,7 @@
 package confidential.server;
 
 import bftsmart.reconfiguration.views.View;
+import vss.Constants;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
@@ -11,6 +12,7 @@ import vss.secretsharing.VerifiableShare;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
 import java.security.Key;
+import java.util.Properties;
 
 import static confidential.Configuration.*;
 
@@ -27,7 +29,17 @@ public class ServerConfidentialityScheme {
         for (int i = 0; i < currentViewProcesses.length; i++) {
             shareholder[i] = BigInteger.valueOf(currentViewProcesses[i] + 1);
         }
-        vss = new VSSFacade(p, generator, field, shareholder, dataEncryptionAlgorithm, dataEncryptionKeySize, shareEncryptionAlgorithm);
+
+        Properties properties = new Properties();
+        properties.put(Constants.TAG_THRESHOLD, String.valueOf(view.getF()));
+        properties.put(Constants.TAG_PRIME_FIELD, str_p);
+        properties.put(Constants.TAG_SUB_FIELD, str_field);
+        properties.put(Constants.TAG_GENERATOR, str_generator);
+        properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, dataEncryptionAlgorithm);
+        properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, shareEncryptionAlgorithm);
+        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
+
+        vss = new VSSFacade(properties, shareholder);
     }
 
     public VerifiableShare extractShare(PrivatePublishedShares privateShares) throws SecretSharingException {
@@ -43,6 +55,6 @@ public class ServerConfidentialityScheme {
     }
 
     public BigInteger getField() {
-        return field;
+        return vss.getField();
     }
 }

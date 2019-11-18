@@ -32,7 +32,7 @@ public class PolynomialMessage implements Externalizable {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         id = in.readInt();
         sender = in.readInt();
     }

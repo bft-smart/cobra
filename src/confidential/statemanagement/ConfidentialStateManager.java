@@ -18,8 +18,8 @@ import confidential.polynomial.PolynomialCreationReason;
 import confidential.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.Commitments;
 import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.VerifiableShare;
 
@@ -451,7 +451,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     private DefaultApplicationState refreshState(VerifiableShare point, DefaultApplicationState appState) {
         BigInteger y = point.getShare().getShare();
-        Commitments refreshCommitments = point.getCommitments();
+        Commitment refreshCommitments = point.getCommitments();
         BigInteger field = distributedPolynomial.getField();
         long numShares = 0;
         byte[] renewedSnapshot = null;
@@ -464,7 +464,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 for (ConfidentialData oldShare : secretData) {
                     VerifiableShare vs = oldShare.getShare();
                     vs.getShare().setShare(y.add(vs.getShare().getShare()).mod(field));
-                    Commitments commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
+                    Commitment commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
                             refreshCommitments);
                     vs.setCommitments(commitments);
                     numShares++;
@@ -497,7 +497,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     for (ConfidentialData oldShare : secretData) {
                         VerifiableShare vs = oldShare.getShare();
                         vs.getShare().setShare(y.add(vs.getShare().getShare()).mod(field));
-                        Commitments commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
+                        Commitment commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
                                 refreshCommitments);
                         vs.setCommitments(commitments);
                         numShares++;

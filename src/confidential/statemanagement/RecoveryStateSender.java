@@ -1,5 +1,6 @@
 package confidential.statemanagement;
 
+import bftsmart.communication.SystemMessage;
 import bftsmart.consensus.messages.ConsensusMessage;
 import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
@@ -17,13 +18,11 @@ import vss.secretsharing.VerifiableShare;
 import javax.net.SocketFactory;
 import javax.net.ssl.*;
 import java.io.*;
-import java.lang.reflect.Array;
 import java.math.BigInteger;
 import java.net.Socket;
 import java.security.*;
 import java.security.cert.CertificateException;
-import java.util.Arrays;
-import java.util.LinkedList;
+import java.util.*;
 
 /**
  * @author Robin
@@ -118,9 +117,11 @@ public class RecoveryStateSender extends Thread {
                 t1 = System.nanoTime();
                 out.write(Utils.toBytes(publicState.length));
                 out.write(publicState);
+                logger.info("delete->>>>RecStSender>>>Public state hash {}",
+                        TOMUtil.computeHash(publicState));
             } else {
                 byte[] publicStateHash = hashThread.getHash();
-                logger.debug("Public state hash {}", publicStateHash);
+                logger.info("Public state hash {}", publicStateHash);
                 t1 = System.nanoTime();
                 out.write(Utils.toBytes(publicStateHash.length));
                 out.write(publicStateHash);
@@ -179,7 +180,7 @@ public class RecoveryStateSender extends Thread {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutputStream out = new ObjectOutputStream(bos)) {
             CommandsInfo[] log = state.getMessageBatches();
-            recoveryPoint.getCommitments().writeExternal(out);
+            Utils.writeCommitment(recoveryPoint.getCommitments(), out);
             out.writeInt(state.getLastCheckpointCID());
             out.writeInt(state.getLastCID());
 
@@ -205,8 +206,7 @@ public class RecoveryStateSender extends Thread {
                                 out.writeInt(b == null ? -1 : b.length);
                                 if (b != null)
                                     out.write(b);
-                                share.getShare().getCommitments().writeExternal(out);
-
+                                Utils.writeCommitment(share.getShare().getCommitments(), out);
                                 Share transferShare = share.getShare().getShare();
                                 transferShare.setShare(transferShare.getShare().add(recoveryPoint.getShare().getShare()).mod(field));
                                 shares.add(transferShare);
@@ -245,7 +245,7 @@ public class RecoveryStateSender extends Thread {
                             out.writeInt(b == null ? -1 : b.length);
                             if (b != null)
                                 out.write(b);
-                            share.getShare().getCommitments().writeExternal(out);
+                            Utils.writeCommitment(share.getShare().getCommitments(), out);
                             Share transferShare = share.getShare().getShare();
                             transferShare.setShare(transferShare.getShare().add(recoveryPoint.getShare().getShare()).mod(field));
                             shares.add(transferShare);
@@ -307,7 +307,11 @@ public class RecoveryStateSender extends Thread {
             out.writeLong(ctx.getSeed());
             out.writeInt(ctx.getProof() == null ? -1 : ctx.getProof().size());
             if (ctx.getProof() != null) {
-                for (ConsensusMessage proof : ctx.getProof()) {
+                List<ConsensusMessage> orderedProf = new ArrayList<>(ctx.getProof());
+                orderedProf.sort(Comparator.comparingInt(SystemMessage::getSender));
+                for (ConsensusMessage proof : orderedProf) {
+                    logger.info("{} {} {} {} {}", proof.getSender(), proof.getNumber(),
+                            proof.getEpoch(), proof.getType(), proof.getValue());
                     //out.writeInt(proof.getSender());
                     out.writeInt(proof.getNumber());
                     out.writeInt(proof.getEpoch());

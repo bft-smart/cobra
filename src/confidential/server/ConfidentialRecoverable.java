@@ -202,7 +202,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
                 for (Integer key : reconfigureRequest.getProperties().keySet()) {
                     String value = reconfigureRequest.getProperties().get(key);
                     if (key == ServerViewController.CHANGE_F) {
-                        int f = Integer.valueOf(value);
+                        int f = Integer.parseInt(value);
                         if (currentF < f) {
                             logger.info("Increasing f. {}->{}", currentF, f);
                         } else if (currentF > f) {
@@ -294,7 +294,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
                     break;
             }
             return result;
-        } catch (IOException | SecretSharingException e) {
+        } catch (IOException | SecretSharingException | ClassNotFoundException e) {
             logger.warn("Failed to decompose request from {}", msgCtx.getSender(), e);
             return null;
         }

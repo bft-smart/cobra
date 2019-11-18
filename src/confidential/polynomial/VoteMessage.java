@@ -30,7 +30,7 @@ public class VoteMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
         int len = in.readInt();
         invalidProposals = new byte[len][];

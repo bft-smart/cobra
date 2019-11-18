@@ -1,11 +1,13 @@
 package confidential.statemanagement;
 
+import bftsmart.reconfiguration.util.Configuration;
 import bftsmart.tom.util.TOMUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.security.Security;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingDeque;
 import java.util.concurrent.locks.Lock;
@@ -23,7 +25,10 @@ public class HashThread extends Thread {
 
     HashThread() throws NoSuchAlgorithmException {
         super("Hash Thread");
-        this.digest = TOMUtil.getHashEngine();
+        //this.digest = TOMUtil.getHashEngine();
+        //this.digest = MessageDigest.getInstance(Configuration.DEFAULT_HASH,
+            //Security.getProvider(Configuration.DEFAULT_HASH_PROVIDER));
+        this.digest = MessageDigest.getInstance("SHA-256");
         this.lock = new ReentrantLock();
         this.offsets = new LinkedBlockingDeque<>();
     }

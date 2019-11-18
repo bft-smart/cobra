@@ -165,7 +165,7 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
                             processVotes(processedVotesMessage, message.getMessageContext().getConsensusId());
                             break;
                     }
-                } catch (IOException e) {
+                } catch (IOException | ClassNotFoundException e) {
                     logger.error("Failed to deserialize polynomial message of type {}", message.getType(), e);
                 }
             } catch (InterruptedException e) {

@@ -9,11 +9,12 @@ import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
+import confidential.Utils;
 import confidential.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.Commitments;
 import vss.facade.SecretSharingException;
 import vss.interpolation.InterpolationStrategy;
 import vss.polynomial.Polynomial;
@@ -43,7 +44,7 @@ public class StateRecoveryHandler extends Thread {
     private CommitmentScheme commitmentScheme;
     private InterpolationStrategy interpolationStrategy;
 
-    private Commitments transferPolynomialCommitments;
+    private Commitment transferPolynomialCommitments;
 
     private Map<Integer, Integer> commonData;
     private byte[] selectedCommonData;
@@ -109,7 +110,7 @@ public class StateRecoveryHandler extends Thread {
         lock.lock();
         if (commonDataStream == null) {
             int commonDataHashCode = Arrays.hashCode(publicStateHash);
-            logger.debug("Public state hash {} of server {}", commonDataHashCode, from);
+            logger.info("Public state hash {} of server {}", commonDataHashCode, from);
             if (stateSenderReplica == from) {
                 selectedCommonData = publicState;
                 selectedCommonDataHash = commonDataHashCode;
@@ -133,15 +134,18 @@ public class StateRecoveryHandler extends Thread {
 
                 if (recoveryShares.size() < 2 * threshold + 1 || selectedCommonData == null || nCommonDataReceived < 2 * threshold + 1)
                     continue;
-
+                logger.info("I have received 2t+1 recovery states");
                 if (commonDataStream == null) {
                     if (haveCorrectCommonData())
                         commonDataStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommonData));
+                    else
+                        logger.info("I don't have enough same states");
                 }
                 if (correctRecoverySharesSize == -1)
                     correctRecoverySharesSize = selectCorrectKey(recoverySharesSize);
 
                 if (commonDataStream != null && correctRecoverySharesSize != -1) {
+                    logger.info("Reconstructing state");
                     long startTime = System.nanoTime();
                     DefaultApplicationState recoveredState = recoverState();
                     long endTime = System.nanoTime();
@@ -164,9 +168,11 @@ public class StateRecoveryHandler extends Thread {
     }
 
     private boolean haveCorrectCommonData() {
+        if (selectedCommonData == null) //I did not received yet public state
+            return false;
         Optional<Map.Entry<Integer, Integer>> max = commonData.entrySet().stream()
                 .max(Comparator.comparingInt(Map.Entry::getValue));
-        if (max.isEmpty()) {
+        if (!max.isPresent()) {
             logger.info("I don't have correct public state");
             return false;
         }
@@ -176,7 +182,7 @@ public class StateRecoveryHandler extends Thread {
             logger.info("I don't have correct public state");
             return false;
         }
-
+        logger.info("key: {}", entry.getKey());
         return selectedCommonDataHash == entry.getKey();
     }
 
@@ -256,13 +262,13 @@ public class StateRecoveryHandler extends Thread {
             for (Map.Entry<Integer, LinkedList<Share>> entry : recoveryShares.entrySet()) {
                 currentShares.put(entry.getKey(), entry.getValue().iterator());
             }
-            transferPolynomialCommitments = new Commitments();
-            transferPolynomialCommitments.readExternal(commonDataStream);
+            transferPolynomialCommitments = Utils.readCommitment(commonDataStream);
             int lastCheckpointCID = commonDataStream.readInt();
             int lastCID = commonDataStream.readInt();
             int logSize = commonDataStream.readInt();
             CommandsInfo[] log = null;
             if (logSize != -1) {
+                logger.info("Reconstructing log");
                 log = new CommandsInfo[logSize];
                 for (int i = 0; i < logSize; i++) {
                     MessageContext[] msgCtx = deserializeMessageContext(commonDataStream);
@@ -284,8 +290,7 @@ public class StateRecoveryHandler extends Thread {
                                     sharedData = new byte[shareDataSize];
                                     commonDataStream.readFully(sharedData);
                                 }
-                                Commitments commitments = new Commitments();
-                                commitments.readExternal(commonDataStream);
+                                Commitment commitments = Utils.readCommitment(commonDataStream);
 
                                 Share share = recoverShare(currentShares, commitments);
 
@@ -330,6 +335,7 @@ public class StateRecoveryHandler extends Thread {
             boolean hasState = commonDataStream.readBoolean();
             ConfidentialSnapshot snapshot = null;
             if (hasState) {
+                logger.info("Reconstructing snapshot");
                 int plainDataSize = commonDataStream.readInt();
                 byte[] plainData = null;
                 if (plainDataSize != -1) {
@@ -347,8 +353,7 @@ public class StateRecoveryHandler extends Thread {
                             sharedData = new byte[shareDataSize];
                             commonDataStream.readFully(sharedData);
                         }
-                        Commitments commitments = new Commitments();
-                        commitments.readExternal(commonDataStream);
+                        Commitment commitments = Utils.readCommitment(commonDataStream);
 
                         Share share = recoverShare(currentShares, commitments);
 
@@ -395,7 +400,7 @@ public class StateRecoveryHandler extends Thread {
         return null;
     }
 
-    private Share recoverShare(Map<Integer, Iterator<Share>> currentShares, Commitments commitments) {
+    private Share recoverShare(Map<Integer, Iterator<Share>> currentShares, Commitment commitments) {
         try {
             Share[] recoveringShares = new Share[threshold + (corruptedServers < threshold ? 2 : 1)];
             int j = 0;
@@ -411,15 +416,17 @@ public class StateRecoveryHandler extends Thread {
 
             Polynomial polynomial = new Polynomial(field, recoveringShares);
             BigInteger shareNumber;
+
             if (polynomial.getDegree() != threshold) {
                 recoveringShares = new Share[threshold + 1];
-                Commitments verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
+                Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         commitments);
+                commitmentScheme.startVerification(verificationCommitments);
                 for (Map.Entry<Integer, Share> entry : allRecoveringShares.entrySet()) {
                     if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
                         recoveringShares[j++] = entry.getValue();
-                        if (j == recoveringShares.length)
-                            break;
+                        //if (j == recoveringShares.length)
+                            //break;
                     } else {
                         logger.error("Server {} sent me invalid share", entry.getKey());
                         currentShares.remove(entry.getKey());
@@ -427,6 +434,7 @@ public class StateRecoveryHandler extends Thread {
                         corruptedServers++;
                     }
                 }
+                commitmentScheme.endVerification();
                 shareNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
             } else {
                 shareNumber = polynomial.evaluateAt(shareholderId);

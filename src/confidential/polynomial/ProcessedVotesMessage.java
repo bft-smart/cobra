@@ -29,7 +29,7 @@ public class ProcessedVotesMessage extends PolynomialMessage {
     }
 
     @Override
-    public void readExternal(ObjectInput in) throws IOException {
+    public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
         int size = in.readInt();
         votes = new ArrayList<>(size);
