@@ -70,7 +70,7 @@ public class ConfidentialData implements Externalizable {
         if (o == null || getClass() != o.getClass()) return false;
         ConfidentialData that = (ConfidentialData) o;
         if (!Arrays.equals(share.getSharedData(), that.share.getSharedData())
-                || !share.getCommitments().equals(that.share.getCommitments()))
+                || !share.getCommitments().isOfSameSecret(that.share.getCommitments()))
             return false;
         if (publicShares == null && that.publicShares == null)
             return true;
@@ -78,7 +78,7 @@ public class ConfidentialData implements Externalizable {
             return false;
         for (int i = 0; i < publicShares.size(); i++) {
             if (!Arrays.equals(publicShares.get(i).getSharedData(), that.publicShares.get(i).getSharedData())
-                    || !publicShares.get(i).getCommitments().equals(that.publicShares.get(i).getCommitments()))
+                    || !publicShares.get(i).getCommitments().isOfSameSecret(that.publicShares.get(i).getCommitments()))
                 return false;
         }
         return true;
@@ -87,11 +87,11 @@ public class ConfidentialData implements Externalizable {
     @Override
     public int hashCode() {
         int result = Arrays.hashCode(share.getSharedData());
-        result = 31 * result + share.getCommitments().hashCode();
+        result = 31 * result + share.getCommitments().consistentHash();
         if (publicShares != null) {
             for (VerifiableShare share : publicShares) {
                 result = 31 * result + Arrays.hashCode(share.getSharedData());
-                result = 31 * result + share.getCommitments().hashCode();
+                result = 31 * result + share.getCommitments().consistentHash();
             }
         }
         return result;

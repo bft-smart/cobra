@@ -1,6 +1,6 @@
 package confidential.polynomial;
 
-import confidential.Utils;
+import vss.Utils;
 import vss.commitment.Commitment;
 
 import java.io.IOException;

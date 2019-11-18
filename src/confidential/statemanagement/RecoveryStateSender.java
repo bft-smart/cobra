@@ -6,7 +6,6 @@ import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
-import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.Utils;
 import confidential.server.Request;
@@ -22,7 +21,10 @@ import java.math.BigInteger;
 import java.net.Socket;
 import java.security.*;
 import java.security.cert.CertificateException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedList;
+import java.util.List;
 
 /**
  * @author Robin
@@ -180,7 +182,7 @@ public class RecoveryStateSender extends Thread {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutputStream out = new ObjectOutputStream(bos)) {
             CommandsInfo[] log = state.getMessageBatches();
-            Utils.writeCommitment(recoveryPoint.getCommitments(), out);
+            vss.Utils.writeCommitment(recoveryPoint.getCommitments(), out);
             out.writeInt(state.getLastCheckpointCID());
             out.writeInt(state.getLastCID());
 
@@ -206,7 +208,7 @@ public class RecoveryStateSender extends Thread {
                                 out.writeInt(b == null ? -1 : b.length);
                                 if (b != null)
                                     out.write(b);
-                                Utils.writeCommitment(share.getShare().getCommitments(), out);
+                                vss.Utils.writeCommitment(share.getShare().getCommitments(), out);
                                 Share transferShare = share.getShare().getShare();
                                 transferShare.setShare(transferShare.getShare().add(recoveryPoint.getShare().getShare()).mod(field));
                                 shares.add(transferShare);
@@ -245,7 +247,8 @@ public class RecoveryStateSender extends Thread {
                             out.writeInt(b == null ? -1 : b.length);
                             if (b != null)
                                 out.write(b);
-                            Utils.writeCommitment(share.getShare().getCommitments(), out);
+                            vss.Utils.writeCommitment(share.getShare().getCommitments(),
+                                    out);
                             Share transferShare = share.getShare().getShare();
                             transferShare.setShare(transferShare.getShare().add(recoveryPoint.getShare().getShare()).mod(field));
                             shares.add(transferShare);

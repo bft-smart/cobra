@@ -2,6 +2,8 @@ package confidential.client;
 
 import bftsmart.reconfiguration.views.View;
 import vss.Constants;
+import vss.commitment.Commitment;
+import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.secretsharing.OpenPublishedShares;
@@ -39,8 +41,13 @@ public class ClientConfidentialityScheme {
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, dataEncryptionAlgorithm);
         properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, shareEncryptionAlgorithm);
         properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
+        //properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
 
         vss = new VSSFacade(properties, shareholders);
+    }
+
+    public CommitmentScheme getCommitmentScheme() {
+        return vss.getCommitmentScheme();
     }
 
     public void updateParameters(View view) throws SecretSharingException {

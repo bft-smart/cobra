@@ -1,6 +1,6 @@
 package confidential.statemanagement;
 
-import confidential.Utils;
+import vss.Utils;
 import vss.commitment.Commitment;
 import vss.secretsharing.Share;
 

@@ -9,7 +9,8 @@ import confidential.ExtractedResponse;
 import confidential.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.commitment.Commitments;
+import vss.commitment.Commitment;
+import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.PrivatePublishedShares;
@@ -29,12 +30,14 @@ public class ConfidentialServiceProxy implements Comparator<byte[]>, Extractor {
     private final ClientConfidentialityScheme confidentialityScheme;
     private final Map<byte[], ConfidentialMessage> responses;
     private final Map<ConfidentialMessage, Integer> responseHashes;
+    private CommitmentScheme commitmentScheme;
 
     public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
         this.service = new ServiceProxy(clientId, null, this, this, null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         this.responses = new HashMap<>();
         this.responseHashes = new HashMap<>();
+        this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
     }
 
     private void reset() {
@@ -164,22 +167,25 @@ public class ConfidentialServiceProxy implements Comparator<byte[]>, Extractor {
                         }
                     }
 
-                    Commitments commitments;
                     byte[] shareData;
                     Share[] shares;
                     for (int i = 0; i < numSecrets; i++) {
                         LinkedList<VerifiableShare> secretI = verifiableShares.get(i);
                         shares = new Share[secretI.size()];
-                        commitments = secretI.getFirst().getCommitments();
+                        VerifiableShare[] secretIArray =
+                                new VerifiableShare[secretI.size()];
                         shareData = secretI.getFirst().getSharedData();
                         int k = 0;
                         for (VerifiableShare verifiableShare : secretI) {
-                            shares[k++] = verifiableShare.getShare();
+                            shares[k] = verifiableShare.getShare();
+                            secretIArray[k] = verifiableShare;
+                            k++;
                         }
-                        OpenPublishedShares secret = new OpenPublishedShares(shares, commitments, shareData);
+                        Commitment commitment =
+                                commitmentScheme.combineCommitments(secretIArray);
+                        OpenPublishedShares secret = new OpenPublishedShares(shares, commitment, shareData);
                         try {
                             confidentialData[i] = confidentialityScheme.combine(secret);
-                            System.out.println("SECRET!!!");
                         } catch (SecretSharingException e) {
                             ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData, e);
                             TOMMessage lastMsg = replies[lastReceived];

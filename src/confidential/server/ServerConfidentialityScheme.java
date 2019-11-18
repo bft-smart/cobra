@@ -38,7 +38,7 @@ public class ServerConfidentialityScheme {
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, dataEncryptionAlgorithm);
         properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, shareEncryptionAlgorithm);
         properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
-
+        //properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
         vss = new VSSFacade(properties, shareholder);
     }
 

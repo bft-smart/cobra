@@ -103,12 +103,6 @@ public class ConfidentialMessage {
 
     @Override
     public String toString() {
-        StringBuilder sb = new StringBuilder();
-        sb.append("[plainData: ");
-        sb.append(Arrays.toString(plainData));
-        sb.append(" - shares: ");
-        sb.append(Arrays.toString(shares));
-        sb.append(']');
-        return sb.toString();
+        return String.format("[plainData: %s - shares: %s]", Arrays.toString(plainData), Arrays.toString(shares));
     }
 }

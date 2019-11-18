@@ -1,7 +1,10 @@
 package confidential.benchmark;
 
 import bftsmart.tom.ServiceProxy;
+import bftsmart.tom.core.messages.TOMMessage;
 import bftsmart.tom.util.Extractor;
+import confidential.ConfidentialData;
+import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import confidential.MessageType;
 import confidential.client.ClientConfidentialityScheme;
@@ -11,40 +14,52 @@ import confidential.client.Response;
 import confidential.demo.map.client.Operation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.commitment.Commitment;
+import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.PrivatePublishedShares;
+import vss.secretsharing.Share;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
-import java.util.Comparator;
-import java.util.Random;
+import java.util.*;
 
 /**
  * @author Robin
  */
-public class PreComputedProxy {
+public class PreComputedProxy implements Comparator<byte[]>, Extractor {
     private final Logger logger = LoggerFactory.getLogger("confidential");
 
     private final ServiceProxy service;
     private final ClientConfidentialityScheme confidentialityScheme;
     private byte[] orderedRequest;
     private byte[] unorderedRequest;
-    public byte[] plainReadData;
-    public byte[] plainWriteData;
+    byte[] plainReadData;
+    byte[] plainWriteData;
     public byte[] data;
     private boolean preComputed;
+    private final Map<byte[], ConfidentialMessage> responses;
+    private final Map<ConfidentialMessage, Integer> responseHashes;
+    private CommitmentScheme commitmentScheme;
 
-    public PreComputedProxy(int clientId, int requestSize, boolean preComputed) throws SecretSharingException {
+    PreComputedProxy(int clientId, int requestSize, boolean preComputed) throws SecretSharingException {
         this.preComputed = preComputed;
-        Extractor extractor = new ConfidentialExtractor();
-        Comparator<byte[]> comparator = new ConfidentialComparator();
-
-        this.service = new ServiceProxy(clientId, null, comparator, extractor, null);
+        this.service = new ServiceProxy(clientId, null, this, this,
+                null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
+        this.responses = new HashMap<>();
+        this.responseHashes = new HashMap<>();
+        this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
         preComputeRequests(clientId, requestSize);
+    }
+
+    private void reset() {
+        this.responses.clear();
+        this.responseHashes.clear();
     }
 
     private void preComputeRequests(int clientId, int requestSize) throws SecretSharingException {
@@ -56,6 +71,11 @@ public class PreComputedProxy {
         plainReadData = serialize(Operation.GET, key);
         orderedRequest = composeRequest(plainWriteData, data);
         unorderedRequest = composeRequest(plainReadData);
+
+        logger.info("plain write data size: {}", plainWriteData.length);
+        logger.info("plain read data size: {}", plainReadData.length);
+        logger.info("ordered request size: {} bytes", orderedRequest.length);
+        logger.info("unordered request size: {} bytes", unorderedRequest.length);
     }
 
     private byte[] serialize(Operation op, String str) {
@@ -73,7 +93,8 @@ public class PreComputedProxy {
         }
     }
 
-    public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+    Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        reset();
         byte[] request = preComputed ? orderedRequest : composeRequest(plainData, confidentialData);
         if (request == null)
             return null;
@@ -83,7 +104,8 @@ public class PreComputedProxy {
         return preComputed ? null : composeResponse(response);
     }
 
-    public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+    Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        reset();
         byte[] request = preComputed ? unorderedRequest : composeRequest(plainData, confidentialData);
         if (request == null)
             return null;
@@ -103,14 +125,9 @@ public class PreComputedProxy {
         ExtractedResponse extractedResponse = ExtractedResponse.deserialize(response);
         if (extractedResponse == null)
             return null;
-        OpenPublishedShares[] openShares = extractedResponse.getOpenShares();
-        byte[][] confidentialData = openShares != null ? new byte[openShares.length][] : null;
-        if (openShares != null) {
-            for (int i = 0; i < openShares.length; i++) {
-                confidentialData[i] = confidentialityScheme.combine(openShares[i]);
-            }
-        }
-        return new Response(extractedResponse.getPlainData(), confidentialData);
+        if (extractedResponse.getThrowable() != null)
+            throw extractedResponse.getThrowable();
+        return new Response(extractedResponse.getPlainData(), extractedResponse.getConfidentialData());
     }
 
     private byte[] composeRequest(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
@@ -139,5 +156,108 @@ public class PreComputedProxy {
             logger.error("Occurred while composing request", e);
             return null;
         }
+    }
+
+    @Override
+    public int compare(byte[] o1, byte[] o2) {
+        ConfidentialMessage response1 = responses.computeIfAbsent(o1, ConfidentialMessage::deserialize);
+        ConfidentialMessage response2 = responses.computeIfAbsent(o2, ConfidentialMessage::deserialize);
+        if (response1 == null && response2 == null)
+            return 0;
+        if (response1 == null)
+            return 1;
+        if (response2 == null)
+            return -1;
+        int hash1 = responseHashes.computeIfAbsent(response1, ConfidentialMessage::hashCode);
+        int hash2 = responseHashes.computeIfAbsent(response2, ConfidentialMessage::hashCode);
+        return hash1 - hash2;
+    }
+
+    @Override
+    public TOMMessage extractResponse(TOMMessage[] replies, int sameContent, int lastReceived) {
+        if (preComputed)
+            return replies[lastReceived];
+        ConfidentialMessage response;
+        Map<Integer, LinkedList<ConfidentialMessage>> msgs = new HashMap<>();
+        for (TOMMessage msg : replies) {
+            if (msg == null)
+                continue;
+            response = responses.get(msg.getContent());
+            if (response == null) {
+                logger.warn("Something went wrong while getting deserialized response from {}", msg.getSender());
+                continue;
+            }
+            int responseHash = responseHashes.get(response);
+
+            LinkedList<ConfidentialMessage> msgList = msgs.computeIfAbsent(responseHash, k -> new LinkedList<>());
+            msgList.add(response);
+        }
+
+        for (LinkedList<ConfidentialMessage> msgList : msgs.values()) {
+            if (msgList.size() == sameContent) {
+                ConfidentialMessage firstMsg = msgList.getFirst();
+                byte[] plainData = firstMsg.getPlainData();
+                byte[][] confidentialData = null;
+
+                if (firstMsg.getShares() != null) { // this response has secret data
+                    int numSecrets = firstMsg.getShares().length;
+                    ArrayList<LinkedList<VerifiableShare>> verifiableShares = new ArrayList<>(numSecrets);
+                    for (int i = 0; i < numSecrets; i++) {
+                        verifiableShares.add(new LinkedList<>());
+                    }
+                    confidentialData = new byte[numSecrets][];
+
+                    for (ConfidentialMessage confidentialMessage : msgList) {
+                        ConfidentialData[] sharesI = confidentialMessage.getShares();
+                        for (int i = 0; i < numSecrets; i++) {
+                            verifiableShares.get(i).add(sharesI[i].getShare());
+                            if (sharesI[i].getPublicShares() != null) {
+                                verifiableShares.get(i).addAll(sharesI[i].getPublicShares());
+                            }
+                        }
+                    }
+
+                    byte[] shareData;
+                    Share[] shares;
+                    for (int i = 0; i < numSecrets; i++) {
+                        LinkedList<VerifiableShare> secretI = verifiableShares.get(i);
+                        shares = new Share[secretI.size()];
+                        VerifiableShare[] secretIArray =
+                                new VerifiableShare[secretI.size()];
+                        shareData = secretI.getFirst().getSharedData();
+                        int k = 0;
+                        for (VerifiableShare verifiableShare : secretI) {
+                            shares[k] = verifiableShare.getShare();
+                            secretIArray[k] = verifiableShare;
+                            k++;
+                        }
+
+
+                        Commitment commitment =
+                                commitmentScheme.combineCommitments(secretIArray);
+                        OpenPublishedShares secret = new OpenPublishedShares(shares, commitment, shareData);
+                        try {
+                            confidentialData[i] = confidentialityScheme.combine(secret);
+                        } catch (SecretSharingException e) {
+                            ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData, e);
+                            TOMMessage lastMsg = replies[lastReceived];
+                            return new TOMMessage(lastMsg.getSender(),
+                                    lastMsg.getSession(), lastMsg.getSequence(),
+                                    lastMsg.getOperationId(), extractedResponse.serialize(),
+                                    lastMsg.getViewID(), lastMsg.getReqType());
+                        }
+                    }
+                }
+                ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData);
+                TOMMessage lastMsg = replies[lastReceived];
+                return new TOMMessage(lastMsg.getSender(),
+                        lastMsg.getSession(), lastMsg.getSequence(),
+                        lastMsg.getOperationId(), extractedResponse.serialize(),
+                        lastMsg.getViewID(), lastMsg.getReqType());
+
+            }
+        }
+        logger.error("This should not happen.");
+        return null;
     }
 }
