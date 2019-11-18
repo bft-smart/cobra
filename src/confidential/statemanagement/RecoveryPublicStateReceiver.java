@@ -72,7 +72,7 @@ public class RecoveryPublicStateReceiver extends Thread {
 
                     while (i < nCommonStateBytes) {
                         int received = in.read(publicState, i, nCommonStateBytes - i);
-                        logger.info("REceived number: {}", received);
+                        //logger.info("REceived number: {}", received);
                         hashThread.update(i, received);
                         i += received;
                     }

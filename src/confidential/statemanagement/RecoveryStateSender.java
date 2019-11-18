@@ -117,8 +117,8 @@ public class RecoveryStateSender extends Thread {
                 t1 = System.nanoTime();
                 out.write(Utils.toBytes(publicState.length));
                 out.write(publicState);
-                logger.info("delete->>>>RecStSender>>>Public state hash {}",
-                        TOMUtil.computeHash(publicState));
+                //logger.info("delete->>>>RecStSender>>>Public state hash {}",
+                //        TOMUtil.computeHash(publicState));
             } else {
                 byte[] publicStateHash = hashThread.getHash();
                 logger.info("Public state hash {}", publicStateHash);
