@@ -26,6 +26,7 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
+import java.math.BigInteger;
 import java.util.*;
 
 /**
@@ -222,19 +223,21 @@ public class PreComputedProxy implements Comparator<byte[]>, Extractor {
                     for (int i = 0; i < numSecrets; i++) {
                         LinkedList<VerifiableShare> secretI = verifiableShares.get(i);
                         shares = new Share[secretI.size()];
-                        VerifiableShare[] secretIArray =
-                                new VerifiableShare[secretI.size()];
                         shareData = secretI.getFirst().getSharedData();
                         int k = 0;
+                        Map<BigInteger, Commitment> commitmentsToCombine =
+                                new HashMap<>(secretI.size());
                         for (VerifiableShare verifiableShare : secretI) {
                             shares[k] = verifiableShare.getShare();
-                            secretIArray[k] = verifiableShare;
+                            commitmentsToCombine.put(
+                                    verifiableShare.getShare().getShareholder(),
+                                    verifiableShare.getCommitments());
                             k++;
                         }
 
 
                         Commitment commitment =
-                                commitmentScheme.combineCommitments(secretIArray);
+                                commitmentScheme.combineCommitments(commitmentsToCombine);
                         OpenPublishedShares secret = new OpenPublishedShares(shares, commitment, shareData);
                         try {
                             confidentialData[i] = confidentialityScheme.combine(secret);

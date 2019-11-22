@@ -21,13 +21,17 @@ import confidential.statemanagement.ConfidentialStateLog;
 import confidential.statemanagement.ConfidentialStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.commitment.Commitment;
+import vss.commitment.constant.ShareCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.PrivatePublishedShares;
+import vss.secretsharing.Share;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -66,12 +70,12 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         checkpointPeriod = replicaContext.getStaticConfiguration().getCheckpointPeriod();
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
+
             DistributedPolynomial distributedPolynomial = new DistributedPolynomial(processId, interServersCommunication,
-                    confidentialityScheme.getCommitmentScheme(), confidentialityScheme.getField());
+                    confidentialityScheme);
             new Thread(distributedPolynomial, "Distributed polynomial").start();
             stateManager.setDistributedPolynomial(distributedPolynomial);
-            stateManager.setInterpolationStrategy(confidentialityScheme.getInterpolationStrategy());
-            stateManager.setCommitmentScheme(confidentialityScheme.getCommitmentScheme());
+            stateManager.setConfidentialityScheme(confidentialityScheme);
             log = getLog();
             stateManager.askCurrentConsensusId();
         } catch (SecretSharingException e) {

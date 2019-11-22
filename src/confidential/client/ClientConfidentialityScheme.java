@@ -1,11 +1,8 @@
 package confidential.client;
 
 import bftsmart.reconfiguration.views.View;
-import vss.Constants;
-import vss.commitment.Commitment;
-import vss.commitment.CommitmentScheme;
+import confidential.CobraConfidentialityScheme;
 import vss.facade.SecretSharingException;
-import vss.facade.VSSFacade;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.PrivatePublishedShares;
 
@@ -14,53 +11,27 @@ import java.math.BigInteger;
 import java.security.Key;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 
-import static confidential.Configuration.*;
+import static confidential.Configuration.defaultKeys;
+import static confidential.Configuration.shareEncryptionAlgorithm;
 
-public class ClientConfidentialityScheme {
+public class ClientConfidentialityScheme extends CobraConfidentialityScheme {
     private final Map<BigInteger, Key> keys;
-    private final VSSFacade vss;
-    private int threshold;
 
     public ClientConfidentialityScheme(View view) throws SecretSharingException {
+        super(view);
         int[] currentViewProcesses = view.getProcesses();
         keys = new HashMap<>(currentViewProcesses.length);
-        BigInteger[] shareholders = new BigInteger[currentViewProcesses.length];
+
         for (int i = 0; i < currentViewProcesses.length; i++) {
-            shareholders[i] = BigInteger.valueOf(currentViewProcesses[i] + 1);
-            keys.put(shareholders[i], new SecretKeySpec(defaultKeys[i].toByteArray(), shareEncryptionAlgorithm));
-        }
-        threshold = view.getF();
-
-        Properties properties = new Properties();
-        properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
-        properties.put(Constants.TAG_PRIME_FIELD, str_p);
-        properties.put(Constants.TAG_SUB_FIELD, str_field);
-        properties.put(Constants.TAG_GENERATOR, str_generator);
-        properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, dataEncryptionAlgorithm);
-        properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, shareEncryptionAlgorithm);
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
-        //properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
-
-        vss = new VSSFacade(properties, shareholders);
-    }
-
-    public CommitmentScheme getCommitmentScheme() {
-        return vss.getCommitmentScheme();
-    }
-
-    public void updateParameters(View view) throws SecretSharingException {
-        threshold = view.getF();
-        for (int process : view.getProcesses()) {
-            vss.addShareholder(BigInteger.valueOf(process));
+            BigInteger shareholder = getShareholder(currentViewProcesses[i]);
+            keys.put(shareholder, new SecretKeySpec(defaultKeys[i].toByteArray(), shareEncryptionAlgorithm));
         }
     }
 
     public PrivatePublishedShares share(byte[] secret) throws SecretSharingException {
         return vss.share(secret, keys);
     }
-
 
     public byte[] combine(OpenPublishedShares shares) throws SecretSharingException {
         byte[] b = vss.combine(shares);

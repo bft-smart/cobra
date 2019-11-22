@@ -60,6 +60,12 @@ public class RecoveryPublicStateReceiver extends Thread {
                 long t1, t2;
                 byte[] publicState = null;
                 byte[] publicStateHash;
+                t1 = System.nanoTime();
+                int commitmentBytes = Utils.toNumber(Utils.readNBytes(4, in));
+                byte[] commitments = Utils.readNBytes(commitmentBytes, in);
+                t2 = System.nanoTime();
+                logger.info("Took {} ms to commitments of size {} from {}",
+                        (t2 - t1) / 1_000_000.0, commitmentBytes, pid);
 
                 t1 = System.nanoTime();
                 if (in.read() == 1) {
@@ -72,13 +78,18 @@ public class RecoveryPublicStateReceiver extends Thread {
 
                     while (i < nCommonStateBytes) {
                         int received = in.read(publicState, i, nCommonStateBytes - i);
-                        //logger.info("REceived number: {}", received);
+                        if (received < 1)
+                            logger.info("-->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Received " +
+                                    "number: {}", received);
                         hashThread.update(i, received);
                         i += received;
                     }
                     hashThread.update(-1, -1);
                     publicStateHash = hashThread.getHash();
-                    //publicStateHash = TOMUtil.computeHash(publicState);
+                    byte[] tpublicStateHash = TOMUtil.computeHash(publicState);
+                    logger.info("delete->>>>RecPSReceiver>>>>Test hash: {}",
+                            tpublicStateHash);
+                    publicStateHash = tpublicStateHash;
                 } else {
                     publicStateHash = Utils.readNBytes(Utils.toNumber(Utils.readNBytes(4, in)), in);
                 }
@@ -88,7 +99,8 @@ public class RecoveryPublicStateReceiver extends Thread {
                         Arrays.toString(publicStateHash));
                 in.close();
 
-                stateRecoveryHandler.deliverPublicState(pid, publicState, publicStateHash);
+                stateRecoveryHandler.deliverPublicState(pid, publicState,
+                        publicStateHash, commitments);
             } catch (IOException e) {
                 break;
             } catch (NoSuchAlgorithmException e) {

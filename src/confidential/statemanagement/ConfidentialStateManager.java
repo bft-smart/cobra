@@ -16,11 +16,11 @@ import confidential.polynomial.PolynomialContext;
 import confidential.polynomial.PolynomialCreationListener;
 import confidential.polynomial.PolynomialCreationReason;
 import confidential.server.Request;
+import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.VerifiableShare;
 
 import java.math.BigInteger;
@@ -29,14 +29,13 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
-    private static final long REFRESH_PERIOD = 90_000;
+    private static final long REFRESH_PERIOD = 30000;
     private static final boolean RENEWAL = false;
     private static final int SERVER_STATE_LISTENING_PORT = 5000;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
-    private CommitmentScheme commitmentScheme;
-    private InterpolationStrategy interpolationStrategy;
+    private ServerConfidentialityScheme confidentialityScheme;
     private Timer stateTimer;
     private long timeout = INIT_TIMEOUT;
     private ReentrantLock lockTimer;
@@ -69,12 +68,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             logger.info("Renewal is deactivated");
     }
 
-    public void setInterpolationStrategy(InterpolationStrategy interpolationStrategy) {
-        this.interpolationStrategy = interpolationStrategy;
-    }
-
-    public void setCommitmentScheme(CommitmentScheme commitmentScheme) {
-        this.commitmentScheme = commitmentScheme;
+    public void setConfidentialityScheme(ServerConfidentialityScheme confidentialityScheme) {
+        this.confidentialityScheme = confidentialityScheme;
     }
 
     @Override
@@ -150,8 +145,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 SVController.getCurrentViewF(),
                 SVController,
                 distributedPolynomial.getField(),
-                commitmentScheme,
-                interpolationStrategy,
+                confidentialityScheme,
                 stateSenderReplica,
                 SERVER_STATE_LISTENING_PORT
         ).start();
@@ -453,6 +447,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         BigInteger y = point.getShare().getShare();
         Commitment refreshCommitments = point.getCommitments();
         BigInteger field = distributedPolynomial.getField();
+        CommitmentScheme commitmentScheme = confidentialityScheme.getCommitmentScheme();
         long numShares = 0;
         byte[] renewedSnapshot = null;
         if (appState.hasState()) {

@@ -4,9 +4,9 @@ import confidential.interServersCommunication.InterServerMessageHolder;
 import confidential.interServersCommunication.InterServerMessageListener;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
+import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.commitment.CommitmentScheme;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
@@ -27,25 +27,23 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
 
     private InterServersCommunication serversCommunication;
     private SecureRandom rndGenerator;
-    private CommitmentScheme commitmentScheme;
     private BigInteger field;
+    private ServerConfidentialityScheme confidentialityScheme;
     private Map<Integer, PolynomialCreator> polynomialCreators;//TODO should I change to concurrentMap?
     private Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
     private int processId;
-    private BigInteger shareholderId;
     private int lastPolynomialCreationProcessed;
     private BlockingQueue<InterServerMessageHolder> pendingMessages;
     private Lock entryLock;
 
     public DistributedPolynomial(int processId, InterServersCommunication serversCommunication,
-                                 CommitmentScheme commitmentScheme, BigInteger field) {
+                                 ServerConfidentialityScheme confidentialityScheme) {
         this.serversCommunication = serversCommunication;
-        this.commitmentScheme = commitmentScheme;
-        this.field = field;
+        this.field = confidentialityScheme.getField();
+        this.confidentialityScheme = confidentialityScheme;
         this.rndGenerator = new SecureRandom(SEED);
         this.polynomialCreators = new HashMap<>();
         this.processId = processId;
-        this.shareholderId = BigInteger.valueOf(processId + 1);
         this.listeners = new HashMap<>();
         this.lastPolynomialCreationProcessed = -1;
         this.pendingMessages = new LinkedBlockingQueue<>();
@@ -59,10 +57,6 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
                 InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS,
                 InterServersMessageType.POLYNOMIAL_PROCESSED_VOTES
         );
-    }
-
-    public BigInteger getShareholderId() {
-        return shareholderId;
     }
 
     public void registerCreationListener(PolynomialCreationListener listener, PolynomialCreationReason reason) {
@@ -100,10 +94,8 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
         PolynomialCreator polynomialCreator = new PolynomialCreator(
                 context,
                 processId,
-                shareholderId,
-                field,
                 rndGenerator,
-                commitmentScheme,
+                confidentialityScheme,
                 serversCommunication,
                 listeners.get(context.getReason())
         );

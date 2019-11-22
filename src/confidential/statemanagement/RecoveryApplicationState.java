@@ -1,7 +1,5 @@
 package confidential.statemanagement;
 
-import vss.Utils;
-import vss.commitment.Commitment;
 import vss.secretsharing.Share;
 
 import java.io.Externalizable;
@@ -11,8 +9,8 @@ import java.io.ObjectOutput;
 import java.util.LinkedList;
 
 public class RecoveryApplicationState implements Externalizable {
-    private Commitment transferPolynomialCommitments;
     private byte[] commonState;
+    private byte[] commitments;
     private byte[] commonStateHash;
     private LinkedList<Share> shares;
     private int lastCheckpointCID;
@@ -21,25 +19,16 @@ public class RecoveryApplicationState implements Externalizable {
 
     public RecoveryApplicationState() {}
 
-    public RecoveryApplicationState(byte[] commonState, LinkedList<Share> shares, int lastCheckpointCID, int lastCID,
-                                    int pid, Commitment transferPolynomialCommitments) {
+    public RecoveryApplicationState(byte[] commonState, LinkedList<Share> shares,
+                                    byte[] commitments, int lastCheckpointCID,
+                                    int lastCID,
+                                    int pid) {
         this.commonState = commonState;
         this.shares = shares;
+        this.commitments = commitments;
         this.lastCheckpointCID = lastCheckpointCID;
         this.lastCID = lastCID;
         this.pid = pid;
-        this.transferPolynomialCommitments = transferPolynomialCommitments;
-    }
-
-    public RecoveryApplicationState(byte[] commonState, byte[] commonStateHash, LinkedList<Share> shares,
-                                    int lastCheckpointCID, int lastCID, int pid, Commitment transferPolynomialCommitments) {
-        this.commonState = commonState;
-        this.commonStateHash = commonStateHash;
-        this.shares = shares;
-        this.lastCheckpointCID = lastCheckpointCID;
-        this.lastCID = lastCID;
-        this.pid = pid;
-        this.transferPolynomialCommitments = transferPolynomialCommitments;
     }
 
     public int getLastCID() {
@@ -66,13 +55,15 @@ public class RecoveryApplicationState implements Externalizable {
         return shares;
     }
 
-    public Commitment getTransferPolynomialCommitments() {
-        return transferPolynomialCommitments;
+    public byte[] getCommitments() {
+        return commitments;
     }
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
-        Utils.writeCommitment(transferPolynomialCommitments, out);
+        out.write(commitments == null ? -1 : commitments.length);
+        if (commitments != null)
+            out.write(commitments);
         out.writeInt(commonState == null ? -1 : commonState.length);
         if (commonState != null)
             out.write(commonState);
@@ -95,8 +86,12 @@ public class RecoveryApplicationState implements Externalizable {
 
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        transferPolynomialCommitments = Utils.readCommitment(in);
         int len = in.readInt();
+        if (len != -1) {
+            commitments = new byte[len];
+            in.readFully(commitments);
+        }
+        len = in.readInt();
         if (len != -1) {
             commonState = new byte[len];
             in.readFully(commonState);

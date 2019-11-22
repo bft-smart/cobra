@@ -1,6 +1,7 @@
 package confidential.server;
 
 import bftsmart.reconfiguration.views.View;
+import confidential.CobraConfidentialityScheme;
 import vss.Constants;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
@@ -16,34 +17,18 @@ import java.util.Properties;
 
 import static confidential.Configuration.*;
 
-public class ServerConfidentialityScheme {
+public class ServerConfidentialityScheme extends CobraConfidentialityScheme {
     private final Key decipheringKey;
-    private final BigInteger shareholder;
-    private final VSSFacade vss;
+    private final BigInteger me;
 
     public ServerConfidentialityScheme(int processId, View view) throws SecretSharingException {
+        super(view);
         decipheringKey = new SecretKeySpec(defaultKeys[processId].toByteArray(), shareEncryptionAlgorithm);
-        shareholder = BigInteger.valueOf(processId + 1);
-        int[] currentViewProcesses = view.getProcesses();
-        BigInteger[] shareholder = new BigInteger[currentViewProcesses.length];
-        for (int i = 0; i < currentViewProcesses.length; i++) {
-            shareholder[i] = BigInteger.valueOf(currentViewProcesses[i] + 1);
-        }
-
-        Properties properties = new Properties();
-        properties.put(Constants.TAG_THRESHOLD, String.valueOf(view.getF()));
-        properties.put(Constants.TAG_PRIME_FIELD, str_p);
-        properties.put(Constants.TAG_SUB_FIELD, str_field);
-        properties.put(Constants.TAG_GENERATOR, str_generator);
-        properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, dataEncryptionAlgorithm);
-        properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, shareEncryptionAlgorithm);
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
-        //properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
-        vss = new VSSFacade(properties, shareholder);
+        me = getShareholder(processId);
     }
 
     public VerifiableShare extractShare(PrivatePublishedShares privateShares) throws SecretSharingException {
-        return vss.extractShare(privateShares, shareholder, decipheringKey);
+        return vss.extractShare(privateShares, me, decipheringKey);
     }
 
     public CommitmentScheme getCommitmentScheme() {
@@ -56,5 +41,9 @@ public class ServerConfidentialityScheme {
 
     public BigInteger getField() {
         return vss.getField();
+    }
+
+    public BigInteger getMyShareholderId() {
+        return me;
     }
 }

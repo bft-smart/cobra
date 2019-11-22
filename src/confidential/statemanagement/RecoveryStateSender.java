@@ -6,6 +6,7 @@ import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
+import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.Utils;
 import confidential.server.Request;
@@ -99,28 +100,32 @@ public class RecoveryStateSender extends Thread {
             hashThread.update(-1, -1);
         }
         logger.debug("Transmitting recovery state to {}", recoveringServerIp);
-        sendPublicState(recoveryState.getCommonState());
+        sendPublicState(recoveryState);
         sendPrivateState(recoveryState.getShares());
         logger.debug("Recovery state sent");
 
         logger.debug("Exiting state sender server thread");
     }
 
-    private void sendPublicState(byte[] publicState) {
+    private void sendPublicState(RecoveryApplicationState state) {
         logger.debug("Connecting un-securely to {}:{}", recoveringServerIp, unSecureServerPort);
         try (Socket unSecureConnection = SocketFactory.getDefault().createSocket(recoveringServerIp, unSecureServerPort);
              BufferedOutputStream out = new BufferedOutputStream(unSecureConnection.getOutputStream())) {
             long t1, t2;
+            byte[] commitments = state.getCommitments();
             out.write(Utils.toBytes(myProcessId));
+            out.write(Utils.toBytes(commitments.length));
+            out.write(commitments);
+            logger.info("Commitments has {} bytes", commitments.length);
             out.write(iAmStateSender ? 1 : 0);
-
+            byte[] publicState = state.getCommonState();
             if (iAmStateSender) {
                 logger.info("Public state has {} bytes", publicState.length);
                 t1 = System.nanoTime();
                 out.write(Utils.toBytes(publicState.length));
                 out.write(publicState);
-                //logger.info("delete->>>>RecStSender>>>Public state hash {}",
-                //        TOMUtil.computeHash(publicState));
+                logger.info("delete->>>>RecStSender>>>Public state hash {}",
+                        TOMUtil.computeHash(publicState));
             } else {
                 byte[] publicStateHash = hashThread.getHash();
                 logger.info("Public state hash {}", publicStateHash);
@@ -180,9 +185,11 @@ public class RecoveryStateSender extends Thread {
 
     private RecoveryApplicationState createRecoverState() {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutputStream out = new ObjectOutputStream(bos)) {
+             ObjectOutputStream out = new ObjectOutputStream(bos);
+             ByteArrayOutputStream bosCommitments = new ByteArrayOutputStream();
+             ObjectOutputStream outCommitments = new ObjectOutputStream(bosCommitments)) {
             CommandsInfo[] log = state.getMessageBatches();
-            vss.Utils.writeCommitment(recoveryPoint.getCommitments(), out);
+            vss.Utils.writeCommitment(recoveryPoint.getCommitments(), outCommitments);
             out.writeInt(state.getLastCheckpointCID());
             out.writeInt(state.getLastCID());
 
@@ -208,7 +215,7 @@ public class RecoveryStateSender extends Thread {
                                 out.writeInt(b == null ? -1 : b.length);
                                 if (b != null)
                                     out.write(b);
-                                vss.Utils.writeCommitment(share.getShare().getCommitments(), out);
+                                vss.Utils.writeCommitment(share.getShare().getCommitments(), outCommitments);
                                 Share transferShare = share.getShare().getShare();
                                 transferShare.setShare(transferShare.getShare().add(recoveryPoint.getShare().getShare()).mod(field));
                                 shares.add(transferShare);
@@ -248,7 +255,7 @@ public class RecoveryStateSender extends Thread {
                             if (b != null)
                                 out.write(b);
                             vss.Utils.writeCommitment(share.getShare().getCommitments(),
-                                    out);
+                                    outCommitments);
                             Share transferShare = share.getShare().getShare();
                             transferShare.setShare(transferShare.getShare().add(recoveryPoint.getShare().getShare()).mod(field));
                             shares.add(transferShare);
@@ -268,16 +275,19 @@ public class RecoveryStateSender extends Thread {
 
             out.flush();
             bos.flush();
+            outCommitments.flush();
+            bosCommitments.flush();
 
             byte[] commonState = bos.toByteArray();
+            byte[] commitmentsBytes = bosCommitments.toByteArray();
 
             return new RecoveryApplicationState(
                     commonState,
                     shares,
+                    commitmentsBytes,
                     state.getLastCheckpointCID(),
                     state.getLastCID(),
-                    myProcessId,
-                    recoveryPoint.getCommitments()
+                    myProcessId
             );
 
         } catch (IOException e) {
@@ -313,8 +323,8 @@ public class RecoveryStateSender extends Thread {
                 List<ConsensusMessage> orderedProf = new ArrayList<>(ctx.getProof());
                 orderedProf.sort(Comparator.comparingInt(SystemMessage::getSender));
                 for (ConsensusMessage proof : orderedProf) {
-                    logger.info("{} {} {} {} {}", proof.getSender(), proof.getNumber(),
-                            proof.getEpoch(), proof.getType(), proof.getValue());
+                    //logger.info("{} {} {} {} {}", proof.getSender(), proof.getNumber(),
+                    //        proof.getEpoch(), proof.getType(), proof.getValue());
                     //out.writeInt(proof.getSender());
                     out.writeInt(proof.getNumber());
                     out.writeInt(proof.getEpoch());

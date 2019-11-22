@@ -26,7 +26,7 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_getOrderBytes
 /*
  * Class:     vss_commitment_constant_Pairing
  * Method:    commit
- * Signature: ([[B)[B
+ * Signature: ([Ljava/lang/String;)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_commit
   (JNIEnv *, jobject, jobjectArray);
@@ -34,7 +34,7 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_commit
 /*
  * Class:     vss_commitment_constant_Pairing
  * Method:    createWitness
- * Signature: ([[B)[B
+ * Signature: ([Ljava/lang/String;)[B
  */
 JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_createWitness
   (JNIEnv *, jobject, jobjectArray);
@@ -70,6 +70,14 @@ JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_startVerification
  */
 JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_multiplyValues
   (JNIEnv *, jobject, jobjectArray);
+
+/*
+ * Class:     vss_commitment_constant_Pairing
+ * Method:    interpolateAndEvaluateAt
+ * Signature: ([B[[[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_interpolateAndEvaluateAt
+  (JNIEnv *, jobject, jbyteArray, jobjectArray);
 
 /*
  * Class:     vss_commitment_constant_Pairing

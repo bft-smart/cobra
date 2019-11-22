@@ -7,6 +7,7 @@
 int t;
 ep_t *pk;
 bn_t order;
+bn_t fermat_exp;
 ep_t g1;
 ep2_t g2;
 ep2_t gAlpha;
@@ -36,6 +37,17 @@ void initialize(int threshold) {
 	bn_null(order);
 	bn_new(order);
 	ep_curve_get_ord(order);
+
+	bn_t TWO;
+    bn_null(TWO);
+    bn_new(TWO);
+    bn_read_str(TWO, "2", 1, 10);
+
+    bn_null(fermat_exp);
+    bn_new(fermat_exp);
+    bn_sub(fermat_exp, order, TWO);
+
+    bn_free(TWO);
 
 	bn_t j;
 	bn_null(j);
@@ -77,6 +89,7 @@ void initialize(int threshold) {
 
 void clear() {
 	bn_free(order);
+	bn_free(fermat_exp);
 	ep_free(g1);
 	ep2_free(g2);
 	ep2_free(gAlpha);
@@ -96,6 +109,17 @@ bn_t *read_number(JNIEnv *env, jbyteArray bytes) {
 	bn_read_bin(*result, bin, bin_size);
 
 	free(bin);
+	return result;
+}
+
+bn_t *read_number_str(JNIEnv *env, jstring stringData) {
+	const char *str = (*env)->GetStringUTFChars(env, stringData, 0);
+	int size = (*env)->GetStringUTFLength(env, stringData);
+	bn_t *result = malloc(sizeof(bn_t));
+	bn_null(*result);
+	bn_new(*result);
+	bn_read_str(*result, str, size, 16);
+	(*env)->ReleaseStringUTFChars(env, stringData, str);
 	return result;
 }
 
@@ -119,8 +143,8 @@ ep_t *compute_commitment_witness(int t, JNIEnv *env, jobjectArray coefficientsBy
 
 	for (int i = 0; i <= t; i++) {
 		int gIndex = t - i;
-		jbyteArray arr = (*env)->GetObjectArrayElement(env, coefficientsBytes, i);
-		bn_t *coef = read_number(env, arr);
+		jstring arr = (*env)->GetObjectArrayElement(env, coefficientsBytes, i);
+		bn_t *coef = read_number_str(env, arr);
 
 		ep_t temp;
 		ep_null(temp);
@@ -143,6 +167,22 @@ jbyteArray convert_point_to_bytes(JNIEnv *env, ep_t *value) {
 	jbyteArray result = (*env)->NewByteArray(env, bin_size);
 	(*env)->SetByteArrayRegion(env, result, 0, bin_size, bin);
 	free(bin);
+	return result;
+}
+
+bn_t *bn_custom_div(bn_t dividend, bn_t divisor) {
+	bn_t *result = malloc(sizeof(bn_t));
+	bn_null(*result);
+	bn_new(*result);
+	bn_t d;
+	bn_null(d);
+	bn_new(d);
+
+	bn_mxp_slide(d, divisor, fermat_exp, order);
+
+	bn_mul(*result, dividend, d);
+	bn_mod_basic(*result, *result, order);
+
 	return result;
 }
 
@@ -259,6 +299,74 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_multiplyValues
 	jbyteArray result = convert_point_to_bytes(env, sum);
 	free(sum);
 	return result;
+}
+
+JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_interpolateAndEvaluateAt
+(JNIEnv *env, jobject obj, jbyteArray xBytes, jobjectArray valuesBytes) {
+    jsize nValues = (*env)->GetArrayLength(env, valuesBytes);
+
+	bn_t *x = read_number(env, xBytes);
+
+	bn_t *xs[nValues];
+	ep_t *ys[nValues];
+
+
+	for(int i = 0; i < nValues; i++) {
+		jobjectArray valueBytes = (*env)->GetObjectArrayElement(env, valuesBytes, i);
+		jbyteArray xValueBytes = (*env)->GetObjectArrayElement(env, valueBytes, 0);
+		jbyteArray yValueBytes = (*env)->GetObjectArrayElement(env, valueBytes, 1);
+
+		bn_t *xValue = read_number(env, xValueBytes);
+		ep_t *yValue = read_point(env, yValueBytes);
+		ys[i] = yValue;
+		xs[i] = xValue;
+	}
+	ep_t y;
+	ep_null(y);
+	ep_new(y);
+	ep_set_infty(y);
+	bn_t d, n;
+	bn_null(d);
+	bn_null(n);
+	bn_new(d);
+	bn_new(n);
+	bn_t temp;
+	bn_null(temp);
+	bn_new(temp);
+	ep_t ls;
+	ep_null(ls);
+	ep_new(ls);
+
+	for (int i = 0; i < nValues; i++) {
+		bn_read_str(n, "1", 1, 10);
+		bn_read_str(d, "1", 1, 10);
+
+		for (int j = 0; j < nValues; j++) {
+			if (i == j)
+				continue;
+
+			bn_sub(temp, *x, *xs[j]);
+			bn_mul(n, n, temp);
+			bn_sub(temp, *xs[i], *xs[j]);
+			bn_mul(d, d, temp);
+		}
+
+		bn_t *l = bn_custom_div(n, d);
+
+		ep_mul_slide(ls, *ys[i], *l);
+
+		bn_free(*l);
+		free(l);
+
+		ep_add_basic(y, y, ls);
+	}
+
+	for (int i = 0; i < nValues; i++) {
+		free(ys[i]);
+		free(xs[i]);
+	}
+
+	return convert_point_to_bytes(env, &y);
 }
 
 JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_close(JNIEnv *env, jobject obj) {

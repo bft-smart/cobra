@@ -3,6 +3,7 @@ package confidential.polynomial;
 import bftsmart.tom.util.TOMUtil;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
+import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
@@ -34,6 +35,7 @@ class PolynomialCreator {
     private final Map<Integer, BigInteger> decryptedPoints;
     private Map<Integer, byte[]> missingProposals;
     private final Share polynomialPropertyShare;
+    private ServerConfidentialityScheme confidentialityScheme;
     private int d;
     private final Set<Integer> conflictList;
     private final Set<Integer> acceptList;
@@ -45,19 +47,18 @@ class PolynomialCreator {
 
     PolynomialCreator(PolynomialContext context,
                       int processId,
-                      BigInteger shareholderId,
-                      BigInteger field,
                       SecureRandom rndGenerator,
-                      CommitmentScheme commitmentScheme,
+                      ServerConfidentialityScheme confidentialityScheme,
                       InterServersCommunication serversCommunication,
                       PolynomialCreationListener creationListener) {
         this.context = context;
         this.processId = processId;
-        this.shareholderId = shareholderId;
-        this.field = field;
+        this.shareholderId = confidentialityScheme.getMyShareholderId();
+        this.field = confidentialityScheme.getField();
         this.polynomialPropertyShare = new Share(context.getX(), context.getY());
+        this.confidentialityScheme = confidentialityScheme;
         this.rndGenerator = rndGenerator;
-        this.commitmentScheme = commitmentScheme;
+        this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
         this.serversCommunication = serversCommunication;
         this.creationListener = creationListener;
 
@@ -127,20 +128,26 @@ class PolynomialCreator {
         Polynomial polynomial = new Polynomial(field, independentTerm, coefficients);
 
         //Committing to polynomial
-        Commitment commitments = commitmentScheme.generateCommitments(polynomial);
-
+        Commitment commitments;
+        if (containsShareholder(context.getMembers(), context.getX()))
+            commitments = commitmentScheme.generateCommitments(polynomial);
+        else //this is for allow verification of property P(0)=0 of the renewal polynomial
+            commitments = commitmentScheme.generateCommitments(polynomial,
+                    context.getX());
         //generating point for each member
         int[] members = context.getMembers();
         BigInteger[] points = new BigInteger[members.length];
         for (int i = 0; i < members.length; i++) {
-            points[i] = polynomial.evaluateAt(BigInteger.valueOf(members[i] + 1));
+            points[i] =
+                    polynomial.evaluateAt(confidentialityScheme.getShareholder(members[i]));
         }
         for (int i = 0; i < points.length; i++) {
             ProposalMessage proposalMessage = new ProposalMessage(
                     context.getId(),
                     processId,
                     points[i],
-                    commitments
+                    commitments//commitmentScheme.extractCommitment
+                    // (confidentialityScheme.getShareholder(members[i]), commitments)
             );
             myProposals.put(members[i], proposalMessage);
             logger.debug("Sending ProposalMessage to {} with id {}", members[i], context.getId());
@@ -148,6 +155,15 @@ class PolynomialCreator {
                     members[i]);
         }
 
+    }
+
+    private boolean containsShareholder(int[] processes, BigInteger shareholder) {
+        for (int process : processes) {
+            if (confidentialityScheme.getShareholder(process).equals(shareholder))
+                return true;
+        }
+
+        return false;
     }
 
     void processProposal(ProposalMessage message) {
@@ -218,7 +234,6 @@ class PolynomialCreator {
                 missingProposals.put(receivedNodes[i], receivedProposals[i]);
                 continue;
             }
-
 
             BigInteger point = proposal.getPoint();
             finalProposalSet.put(proposalHash, proposal);
@@ -336,8 +351,7 @@ class PolynomialCreator {
         }
         if (!hasAccusation)
             acceptList.add(message.getSender());
-
-        return acceptList.size() >= 2 * context.getF() + 1 - d;
+        return acceptList.size() >= 2 * context.getF() + 1 - d && acceptList.contains(context.getLeader());
     }
 
     void sendProcessedVotes() {
@@ -362,7 +376,6 @@ class PolynomialCreator {
         return terminated;
     }
 
-
     void deliverResult(int consensusId) {
         logger.debug("I have selected {} proposals", finalProposalSet.size());
         finalProposalSet.values().forEach(p -> logger.debug("Proposal from {}", p.getSender()));
@@ -376,22 +389,27 @@ class PolynomialCreator {
         }
         Share share = new Share(shareholderId, finalPoint);
         Commitment commitments = commitmentScheme.sumCommitments(allCommitments);
-        VerifiableShare point =  new VerifiableShare(share, commitments, null);
+        VerifiableShare point =  new VerifiableShare(share,
+                commitmentScheme.extractCommitment(shareholderId, commitments), null);
 
         creationListener.onPolynomialCreation(context, point, consensusId);
     }
 
     void startViewChange() {
         logger.debug("TODO:The leader {} is faulty. Changing view", context.getLeader());
+        throw new UnsupportedOperationException("TODO: Implement view change in " +
+                "polynomial creation");
     }
 
-    private boolean isInvalidPoint(BigInteger point, Commitment commitments) {
+    private boolean isInvalidPoint(BigInteger point, Commitment commitment) {
         Share share = new Share(shareholderId, point);
-        commitmentScheme.startVerification(commitments);
-        boolean isValid = !commitmentScheme.checkValidity(share, commitments) ||
-                !commitmentScheme.checkValidity(polynomialPropertyShare, commitments); //does polynomial has the point and required property?
+        commitmentScheme.startVerification(commitment);
+        //does polynomial has the point and required property?
+        boolean isInvalid = !commitmentScheme.checkValidity(share, commitment)
+                | !commitmentScheme.checkValidity(polynomialPropertyShare,
+            commitment);
         commitmentScheme.endVerification();
-        return isValid;
+        return isInvalid;
     }
 
     private byte[] serialize(PolynomialMessage message) {
