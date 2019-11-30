@@ -86,10 +86,10 @@ public class RecoveryPublicStateReceiver extends Thread {
                     }
                     hashThread.update(-1, -1);
                     publicStateHash = hashThread.getHash();
-                    byte[] tpublicStateHash = TOMUtil.computeHash(publicState);
-                    logger.info("delete->>>>RecPSReceiver>>>>Test hash: {}",
-                            tpublicStateHash);
-                    publicStateHash = tpublicStateHash;
+                    //byte[] tpublicStateHash = TOMUtil.computeHash(publicState);
+                    //logger.info("delete->>>>RecPSReceiver>>>>Test hash: {}",
+                    //        tpublicStateHash);
+                    //publicStateHash = tpublicStateHash;
                 } else {
                     publicStateHash = Utils.readNBytes(Utils.toNumber(Utils.readNBytes(4, in)), in);
                 }
