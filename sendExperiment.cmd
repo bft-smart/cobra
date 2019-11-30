@@ -11,6 +11,10 @@ rem mkdir %DST%
 rem del %TEMP_DIR%\%FOLDER_NAME%.zip
 
 xcopy %SRC%\bin\*.jar %DST%\bin\
+xcopy %SRC%\pairing\headers\* %DST%\pairing\headers\
+xcopy %SRC%\pairing\relic\*.zip %DST%\pairing\relic\
+xcopy %SRC%\pairing\src\* %DST%\pairing\src\
+xcopy %SRC%\pairing\*.sh %DST%\pairing\
 rem xcopy %SRC%\lib\*.jar %DST%\lib\
 rem xcopy /e /q %SRC%\config\* %DST%\config\
 rem xcopy %SRC%\scripts\*.sh %DST%\
