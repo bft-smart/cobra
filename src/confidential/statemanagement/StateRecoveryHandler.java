@@ -438,10 +438,8 @@ public class StateRecoveryHandler extends Thread {
 
                 Commitment combinedCommitment =
                         commitmentScheme.combineCommitments(commitments);
-                logger.info("delete>>>>>>>>StRecHandler>>>>>> 5 {}", combinedCommitment);
                 Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         combinedCommitment);
-                logger.info("delete>>>>>>>>StRecHandler>>>>>> 6");
                 commitmentScheme.startVerification(verificationCommitments);
                 j = 0;
                 for (Map.Entry<Integer, Share> entry : allRecoveringShares.entrySet()) {
