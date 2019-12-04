@@ -3,10 +3,11 @@ package confidential.client;
 import bftsmart.tom.ServiceProxy;
 import bftsmart.tom.core.messages.TOMMessage;
 import bftsmart.tom.util.Extractor;
-import confidential.ConfidentialData;
-import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import confidential.MessageType;
+import confidential.encrypted.EncryptedConfidentialData;
+import confidential.encrypted.EncryptedConfidentialMessage;
+import confidential.encrypted.EncryptedVerifiableShare;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
@@ -15,7 +16,6 @@ import vss.facade.SecretSharingException;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.Share;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -28,13 +28,15 @@ public class ConfidentialServiceProxy implements Comparator<byte[]>, Extractor {
     private final Logger logger = LoggerFactory.getLogger("confidential");
 
     private final ServiceProxy service;
+    private int clientId;
     private final ClientConfidentialityScheme confidentialityScheme;
-    private final Map<byte[], ConfidentialMessage> responses;
-    private final Map<ConfidentialMessage, Integer> responseHashes;
+    private final Map<byte[], EncryptedConfidentialMessage> responses;
+    private final Map<EncryptedConfidentialMessage, Integer> responseHashes;
     private CommitmentScheme commitmentScheme;
 
     public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
         this.service = new ServiceProxy(clientId, null, this, this, null);
+        this.clientId = clientId;
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         this.responses = new HashMap<>();
         this.responseHashes = new HashMap<>();
@@ -113,23 +115,24 @@ public class ConfidentialServiceProxy implements Comparator<byte[]>, Extractor {
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
-        ConfidentialMessage response1 = responses.computeIfAbsent(o1, ConfidentialMessage::deserialize);
-        ConfidentialMessage response2 = responses.computeIfAbsent(o2, ConfidentialMessage::deserialize);
+        EncryptedConfidentialMessage response1 = responses.computeIfAbsent(o1,
+                EncryptedConfidentialMessage::deserialize);
+        EncryptedConfidentialMessage response2 = responses.computeIfAbsent(o2, EncryptedConfidentialMessage::deserialize);
         if (response1 == null && response2 == null)
             return 0;
         if (response1 == null)
             return 1;
         if (response2 == null)
             return -1;
-        int hash1 = responseHashes.computeIfAbsent(response1, ConfidentialMessage::hashCode);
-        int hash2 = responseHashes.computeIfAbsent(response2, ConfidentialMessage::hashCode);
+        int hash1 = responseHashes.computeIfAbsent(response1, EncryptedConfidentialMessage::hashCode);
+        int hash2 = responseHashes.computeIfAbsent(response2, EncryptedConfidentialMessage::hashCode);
         return hash1 - hash2;
     }
 
     @Override
     public TOMMessage extractResponse(TOMMessage[] replies, int sameContent, int lastReceived) {
-        ConfidentialMessage response;
-        Map<Integer, LinkedList<ConfidentialMessage>> msgs = new HashMap<>();
+        EncryptedConfidentialMessage response;
+        Map<Integer, LinkedList<EncryptedConfidentialMessage>> msgs = new HashMap<>();
         for (TOMMessage msg : replies) {
             if (msg == null)
                 continue;
@@ -140,26 +143,28 @@ public class ConfidentialServiceProxy implements Comparator<byte[]>, Extractor {
             }
             int responseHash = responseHashes.get(response);
 
-            LinkedList<ConfidentialMessage> msgList = msgs.computeIfAbsent(responseHash, k -> new LinkedList<>());
+            LinkedList<EncryptedConfidentialMessage> msgList = msgs.computeIfAbsent(responseHash, k -> new LinkedList<>());
             msgList.add(response);
         }
 
-        for (LinkedList<ConfidentialMessage> msgList : msgs.values()) {
+        for (LinkedList<EncryptedConfidentialMessage> msgList : msgs.values()) {
             if (msgList.size() == sameContent) {
-                ConfidentialMessage firstMsg = msgList.getFirst();
+                EncryptedConfidentialMessage firstMsg = msgList.getFirst();
                 byte[] plainData = firstMsg.getPlainData();
                 byte[][] confidentialData = null;
 
                 if (firstMsg.getShares() != null) { // this response has secret data
                     int numSecrets = firstMsg.getShares().length;
-                    ArrayList<LinkedList<VerifiableShare>> verifiableShares = new ArrayList<>(numSecrets);
+                    ArrayList<LinkedList<EncryptedVerifiableShare>> verifiableShares =
+                            new ArrayList<>(numSecrets);
                     for (int i = 0; i < numSecrets; i++) {
                         verifiableShares.add(new LinkedList<>());
                     }
                     confidentialData = new byte[numSecrets][];
 
-                    for (ConfidentialMessage confidentialMessage : msgList) {
-                        ConfidentialData[] sharesI = confidentialMessage.getShares();
+                    for (EncryptedConfidentialMessage confidentialMessage : msgList) {
+                        EncryptedConfidentialData[] sharesI =
+                                confidentialMessage.getShares();
                         for (int i = 0; i < numSecrets; i++) {
                             verifiableShares.get(i).add(sharesI[i].getShare());
                             if (sharesI[i].getPublicShares() != null) {
@@ -171,14 +176,21 @@ public class ConfidentialServiceProxy implements Comparator<byte[]>, Extractor {
                     byte[] shareData;
                     Share[] shares;
                     for (int i = 0; i < numSecrets; i++) {
-                        LinkedList<VerifiableShare> secretI = verifiableShares.get(i);
+                        LinkedList<EncryptedVerifiableShare> secretI = verifiableShares.get(i);
                         shares = new Share[secretI.size()];
                         Map<BigInteger, Commitment> commitmentsToCombine =
                                 new HashMap<>(secretI.size());
                         shareData = secretI.getFirst().getSharedData();
                         int k = 0;
-                        for (VerifiableShare verifiableShare : secretI) {
-                            shares[k] = verifiableShare.getShare();
+                        for (EncryptedVerifiableShare verifiableShare : secretI) {
+                            try {
+                                shares[k] =
+                                        confidentialityScheme.decryptShare(clientId,
+                                                verifiableShare.getShare());
+                            } catch (SecretSharingException e) {
+                                logger.error("Failed to decrypt share of {}",
+                                        verifiableShare.getShare().getShareholder(), e);
+                            }
                             commitmentsToCombine.put(
                                     verifiableShare.getShare().getShareholder(),
                                     verifiableShare.getCommitments());

@@ -5,8 +5,17 @@ import vss.Constants;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
+import vss.secretsharing.EncryptedShare;
+import vss.secretsharing.Share;
 
+import javax.crypto.BadPaddingException;
+import javax.crypto.Cipher;
+import javax.crypto.IllegalBlockSizeException;
+import javax.crypto.NoSuchPaddingException;
 import java.math.BigInteger;
+import java.security.InvalidKeyException;
+import java.security.Key;
+import java.security.NoSuchAlgorithmException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -20,6 +29,8 @@ public abstract class CobraConfidentialityScheme {
     protected final VSSFacade vss;
     private final Map<Integer, BigInteger> serverToShareholder;
     private final Map<BigInteger, Integer> shareholderToServer;
+    private Cipher cipher;
+    private KeysManager keysManager;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
         int[] processes = view.getProcesses();
@@ -43,10 +54,15 @@ public abstract class CobraConfidentialityScheme {
         properties.put(Constants.TAG_GENERATOR, str_generator);
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, dataEncryptionAlgorithm);
         properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, shareEncryptionAlgorithm);
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
-        //properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
-
+        //properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
+        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
+        try {
+            cipher = Cipher.getInstance(shareEncryptionAlgorithm);
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+            throw new SecretSharingException("Failed to initialize the cipher");
+        }
         vss = new VSSFacade(properties, shareholders);
+        keysManager = new KeysManager();
     }
 
     public CommitmentScheme getCommitmentScheme() {
@@ -63,5 +79,38 @@ public abstract class CobraConfidentialityScheme {
 
     public void updateParameters(View view) {
         throw new UnsupportedOperationException("Not implemented");
+    }
+
+    public EncryptedShare encryptShareFor(int id, Share clearShare) throws SecretSharingException {
+        Key encryptionKey = keysManager.getEncryptionKeyFor(id);
+
+        try {
+            return new EncryptedShare(clearShare.getShareholder(),
+                    encrypt(clearShare.getShare().toByteArray(), encryptionKey));
+        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+            throw new SecretSharingException("Failed to encrypt share", e);
+        }
+    }
+
+    public Share decryptShare(int id, EncryptedShare encryptedShare) throws SecretSharingException {
+        Key decryptionKey = keysManager.getDecryptionKeyFor(id);
+        try {
+            return new Share(encryptedShare.getShareholder(),
+                    new BigInteger(decrypt(encryptedShare.getEncryptedShare(), decryptionKey)));
+        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+            throw new SecretSharingException("Failed to decrypt share", e);
+        }
+    }
+
+    private byte[] encrypt(byte[] data, Key encryptionKey) throws InvalidKeyException,
+            BadPaddingException, IllegalBlockSizeException {
+        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
+        return cipher.doFinal(data);
+    }
+
+    private byte[] decrypt(byte[] data, Key decryptionKey) throws InvalidKeyException,
+            BadPaddingException, IllegalBlockSizeException {
+        cipher.init(Cipher.DECRYPT_MODE, decryptionKey);
+        return cipher.doFinal(data);
     }
 }

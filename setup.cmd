@@ -21,7 +21,7 @@ IF %replica%==y (
 		xcopy /d /y %SRC%\bin\* %DST%\rep%%a\bin\
 		xcopy /d /y %SRC%\lib\* %DST%\rep%%a\lib\
 		xcopy /s /y /D %SRC%\pairing\* %DST%\rep%%a\pairing\
-		xcopy /d /y %SRC%\execute_pairing_vss_* %DST%\rep%%a
+		xcopy /d /y %SRC%\pairing*.sh %DST%\rep%%a
 		xcopy /e /y /q /d %SRC%\config\* %DST%\rep%%a\config\
 		xcopy /d /y %SRC%\scripts\* %DST%\rep%%a\
 		del %DST%\rep%%a\config\currentView
@@ -42,7 +42,7 @@ IF %client%==y (
 		xcopy /D /Y %SRC%\bin\* %DST%\cli%%a\bin\
 		xcopy /D /Y %SRC%\lib\* %DST%\cli%%a\lib\
 		xcopy /S /Y /D %SRC%\pairing\* %DST%\cli%%a\pairing\
-        xcopy /D /Y %SRC%\execute_pairing_vss_* %DST%\rep%%a
+        xcopy /D /Y %SRC%\pairing*.sh %DST%\rep%%a
 		xcopy /E /Y /Q /D %SRC%\config\* %DST%\cli%%a\config\
 		xcopy /D /Y %SRC%\scripts\* %DST%\cli%%a\
 		del %DST%\cli%%a\config\currentView

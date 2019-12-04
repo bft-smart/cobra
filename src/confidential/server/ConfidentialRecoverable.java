@@ -11,9 +11,10 @@ import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import confidential.ConfidentialData;
-import confidential.ConfidentialMessage;
-import confidential.MessageType;
+import confidential.*;
+import confidential.encrypted.EncryptedConfidentialData;
+import confidential.encrypted.EncryptedConfidentialMessage;
+import confidential.encrypted.EncryptedVerifiableShare;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
 import confidential.statemanagement.ConfidentialSnapshot;
@@ -21,19 +22,18 @@ import confidential.statemanagement.ConfidentialStateLog;
 import confidential.statemanagement.ConfidentialStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.commitment.Commitment;
-import vss.commitment.constant.ShareCommitment;
 import vss.facade.SecretSharingException;
+import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
-import vss.secretsharing.Share;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
-import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -233,7 +233,8 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             response = new byte[0];
         } else {
             stateLock.lock();
-            response = appExecuteOrdered(request.getPlainData(), request.getShares(), msgCtx).serialize();
+            response = encryptResponse(appExecuteOrdered(request.getPlainData(), request.getShares(),
+                    msgCtx), msgCtx).serialize();
             stateLock.unlock();
         }
         logRequest(preprocessedCommand, msgCtx);
@@ -252,7 +253,46 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             return new byte[0];
         }
 
-        return appExecuteUnordered(request.getPlainData(), request.getShares(), msgCtx).serialize();
+        return encryptResponse(appExecuteUnordered(request.getPlainData(), request.getShares(),
+                msgCtx), msgCtx).serialize();
+    }
+
+    private EncryptedConfidentialMessage encryptResponse(ConfidentialMessage clearResponse, MessageContext msgCtx) {
+        ConfidentialData[] clearShares = clearResponse.getShares();
+        if (clearShares == null)
+            return new EncryptedConfidentialMessage(clearResponse.getPlainData());
+
+        EncryptedConfidentialData[] shares = new EncryptedConfidentialData[clearShares.length];
+
+        for (int i = 0; i < clearShares.length; i++) {
+            ConfidentialData clearCD = clearShares[i];
+            EncryptedVerifiableShare encryptedVS =
+                    encryptShare(msgCtx.getSender(), clearCD.getShare());
+            LinkedList<EncryptedVerifiableShare> publicVS =
+                    clearCD.getPublicShares() == null ? null : new LinkedList<>();
+
+            if (publicVS != null) {
+                for (VerifiableShare vs : clearCD.getPublicShares()) {
+                    publicVS.add(encryptShare(msgCtx.getSender(), vs));
+                }
+            }
+
+            shares[i] = new EncryptedConfidentialData(encryptedVS, publicVS);
+        }
+
+        return new EncryptedConfidentialMessage(clearResponse.getPlainData(), shares);
+    }
+
+    private EncryptedVerifiableShare encryptShare(int id, VerifiableShare clearShare) {
+        try {
+            EncryptedShare encryptedShare = confidentialityScheme.encryptShareFor(id,
+                    clearShare.getShare());
+            return new EncryptedVerifiableShare(encryptedShare,
+                            clearShare.getCommitments(), clearShare.getSharedData());
+        } catch (SecretSharingException e) {
+            logger.error("Failed to encrypt share for client {}", id, e);
+            return null;
+        }
     }
 
     public abstract ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
