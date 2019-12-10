@@ -2,6 +2,7 @@ package confidential.client;
 
 import bftsmart.reconfiguration.views.View;
 import confidential.CobraConfidentialityScheme;
+import confidential.Configuration;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.PrivatePublishedShares;
@@ -13,7 +14,6 @@ import java.util.HashMap;
 import java.util.Map;
 
 import static confidential.Configuration.defaultKeys;
-import static confidential.Configuration.shareEncryptionAlgorithm;
 
 public class ClientConfidentialityScheme extends CobraConfidentialityScheme {
     private final Map<BigInteger, Key> keys;
@@ -25,7 +25,8 @@ public class ClientConfidentialityScheme extends CobraConfidentialityScheme {
 
         for (int i = 0; i < currentViewProcesses.length; i++) {
             BigInteger shareholder = getShareholder(currentViewProcesses[i]);
-            keys.put(shareholder, new SecretKeySpec(defaultKeys[i].toByteArray(), shareEncryptionAlgorithm));
+            keys.put(shareholder, new SecretKeySpec(defaultKeys[i].toByteArray(),
+                    Configuration.getInstance().getShareEncryptionAlgorithm()));
         }
     }
 

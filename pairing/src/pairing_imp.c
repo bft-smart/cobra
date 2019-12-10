@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <jni.h>
 #include "relic.h"
 #include "vss_commitment_constant_Pairing.h"
@@ -112,6 +113,12 @@ bn_t *read_number(JNIEnv *env, jbyteArray bytes) {
 	return result;
 }
 
+void throw_illegal_state_exception(JNIEnv *env, char *message) {
+	char *className = "java/lang/IllegalStateException";
+	jclass exClass = (*env)->FindClass(env, className);
+	(*env)->ThrowNew(env, exClass, message);
+}
+
 bn_t *read_number_str(JNIEnv *env, jstring stringData) {
 	const char *str = (*env)->GetStringUTFChars(env, stringData, 0);
 	int size = (*env)->GetStringUTFLength(env, stringData);
@@ -124,13 +131,19 @@ bn_t *read_number_str(JNIEnv *env, jstring stringData) {
 }
 
 ep_t *read_point(JNIEnv *env, jbyteArray bytes) {
+	err_t e;
 	jsize bin_size = (*env)->GetArrayLength(env, bytes);
 	jbyte *bin = malloc(sizeof(jbyte) * bin_size);
 	(*env)->GetByteArrayRegion(env, bytes, 0, bin_size, bin);
 	ep_t *result = malloc(sizeof(ep_t));
 	ep_null(*result);
 	ep_new(*result);
-	ep_read_bin(*result, bin, bin_size);
+	TRY {
+		ep_read_bin(*result, bin, bin_size);
+	} CATCH(e) {
+		printf("ERROR!!!!\n");
+		return NULL;
+	}
 	free(bin);
 	return result;
 }
@@ -186,6 +199,14 @@ bn_t *bn_custom_div(bn_t dividend, bn_t divisor) {
 	return result;
 }
 
+bn_t *bn_custom_invert(bn_t number) {
+	bn_t *result = malloc(sizeof(bn_t));
+	bn_null(*result);
+	bn_new(*result);
+	bn_mxp_slide(*result, number, fermat_exp, order);
+	return result;
+}
+
 JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_initialize(JNIEnv *env, jobject obj, jint t) {
 	initialize(t);
 }
@@ -222,6 +243,10 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_createWitness(
 JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verify(JNIEnv *env, jobject obj, 
 	jbyteArray xBytes, jbyteArray yBytes, jbyteArray witnessBytes) {
 	ep_t *witness = read_point(env, witnessBytes);
+	if (witness == NULL) {
+		throw_illegal_state_exception(env, "Witness is incorrect");
+		return false;
+	}
 	bn_t *i = read_number(env, xBytes);
 	bn_t *share = read_number(env, yBytes);
 
@@ -270,6 +295,10 @@ JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_endVerification(JNIE
 JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_startVerification(JNIEnv *env, jobject obj, 
 	jbyteArray commitmentBytes) {
 	ep_t *commitment = read_point(env, commitmentBytes);
+	if (commitment == NULL) {
+		throw_illegal_state_exception(env, "Commitment is incorrect");
+		return;
+	}
 	commitmentPairing = malloc(sizeof(fp12_t));
 	fp12_null(*commitmentPairing);
 	fp12_new(*commitmentPairing);
@@ -292,6 +321,11 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_multiplyValues
 		jbyteArray valueBytes = (*env)->GetObjectArrayElement(env, valuesBytes, i);
 		ep_t *value = read_point(env, valueBytes);
 
+		if (value == NULL) {
+			throw_illegal_state_exception(env, "Value is incorrect");
+			return NULL;
+		}
+
 		ep_add_basic(*sum, *sum, *value);
 		free(value);
 	}
@@ -299,6 +333,132 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_multiplyValues
 	jbyteArray result = convert_point_to_bytes(env, sum);
 	free(sum);
 	return result;
+}
+
+
+bn_t *multiply_polynomials(bn_t *values_1, bn_t *values_2, int n_values_1, int n_values_2) {
+	int len = n_values_1 + n_values_2 - 1;
+	bn_t *result = malloc(sizeof(bn_t) * len);
+	for(int i = 0; i < len; i++) {
+		bn_new(result[i]);
+		bn_null(result[i]);
+		bn_zero(result[i]);
+	}
+
+	bn_t temp;
+	bn_null(temp);
+	bn_new(temp);
+
+	for (int i = 0; i < n_values_1; i++) {
+		for (int j = 0; j < n_values_2; j++) {
+			bn_mul_karat(temp, values_1[i], values_2[j]);
+			bn_add(result[i + j], result[i + j], temp);
+			bn_mod_basic(result[i + j], result[i + j], order);
+		}
+	}
+
+	return result;
+}
+
+/*
+* len_1 >= len_2
+*/
+void add_polynomials(ep_t *polynomial_1, ep_t *polynomial_2, int len_1, int len_2) {
+	for (int i = len_1 - 1, j = len_2 - 1; j >= 0; i--, j--) {
+		ep_add_basic(polynomial_1[i], polynomial_1[i], polynomial_2[j]);
+	}
+}
+
+ep_t *evaluate_polynomial_at(bn_t x, ep_t *polynomial, int degree) {
+	ep_t *result = malloc(sizeof(ep_t));
+	ep_null(*result);
+	ep_new(*result);
+	ep_copy(*result, polynomial[0]);
+	
+	for (int i = 1; i < degree; i++) {
+		ep_mul_slide(*result, *result, x);
+		ep_add_basic(*result, polynomial[i], *result);
+	}
+
+	return result;
+}
+
+int compute_polynomial_degree(ep_t *polynomial, int len) {
+	int degree = len - 1;
+	for (int i = 0; i < len; i++)
+	{
+		if (ep_is_infty(polynomial[i]) == 0)
+			return degree;
+		degree--;
+	}
+
+	return degree;
+}
+
+ep_t *compute_polynomial(bn_t *x, bn_t *xs[], ep_t *ys[], int n_points) {
+	if (n_points == 1)
+		return ys[0];
+	bn_t denominator, temp;
+	bn_null(denominator);
+	bn_null(temp);
+	bn_new(denominator);
+	bn_new(temp);
+
+
+	ep_t *polynomial = NULL;
+	for (int i = 0; i < n_points; i++) {
+		bn_read_str(denominator, "1", 1, 2);
+		bn_t *numerator = NULL;
+		int numerator_size = 1;
+		for (int m = 0; m < n_points; m++) {
+			if (i == m)
+				continue;
+			bn_t *current_numerator = malloc(sizeof(bn_t) * 2);
+			bn_null(current_numerator[0]);
+			bn_null(current_numerator[1]);
+			bn_new(current_numerator[0]);
+			bn_new(current_numerator[1]);
+			bn_read_str(current_numerator[0], "1", 1, 2);
+			bn_copy(current_numerator[1], *xs[m]);
+			bn_neg(current_numerator[1], current_numerator[1]);
+			if (numerator == NULL) {
+				numerator = current_numerator;
+				numerator_size = 2;
+			} else {
+				numerator = multiply_polynomials(numerator, current_numerator, numerator_size, 2);
+				numerator_size = numerator_size + 1;
+				free(current_numerator);
+			}
+
+
+			bn_sub(temp, *xs[i], *xs[m]);
+			bn_mul_karat(denominator, denominator, temp);
+			bn_mod_basic(denominator, denominator, order);
+		}
+
+		bn_t *d_inverted = bn_custom_invert(denominator);
+		numerator = multiply_polynomials(numerator, d_inverted, numerator_size, 1);
+		ep_t *li = malloc(sizeof(ep_t) * n_points);
+		for (int j = 0; j < n_points; j++) {
+			ep_mul_slide(li[j], *ys[i], numerator[j]);
+		}
+
+		free(numerator);
+
+		if (polynomial == NULL) {
+			polynomial = li;
+		} else {
+			add_polynomials(polynomial, li, n_points, n_points);
+		}
+	}
+
+	ep_t *w1 = evaluate_polynomial_at(*x, polynomial, n_points);
+
+	int degree = compute_polynomial_degree(polynomial, n_points);
+	if (degree != t - 1) {
+		return NULL;
+	}
+	return w1;
 }
 
 JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_interpolateAndEvaluateAt
@@ -318,10 +478,22 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_interpolateAnd
 
 		bn_t *xValue = read_number(env, xValueBytes);
 		ep_t *yValue = read_point(env, yValueBytes);
+		if (yValue == NULL) {
+			throw_illegal_state_exception(env, "Witness is incorrect");
+			return NULL;
+		}
 		ys[i] = yValue;
 		xs[i] = xValue;
 	}
-	ep_t y;
+	
+	ep_t *recovered_witness = compute_polynomial(x, xs, ys, nValues);
+
+	if (recovered_witness == NULL) {
+		throw_illegal_state_exception(env, "Witness recovery polynomial degree is incorrect");
+		return NULL;
+	}
+
+	/*ep_t y;
 	ep_null(y);
 	ep_new(y);
 	ep_set_infty(y);
@@ -364,9 +536,8 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_interpolateAnd
 	for (int i = 0; i < nValues; i++) {
 		free(ys[i]);
 		free(xs[i]);
-	}
-
-	return convert_point_to_bytes(env, &y);
+	}*/
+	return convert_point_to_bytes(env, recovered_witness);
 }
 
 JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_close(JNIEnv *env, jobject obj) {

@@ -1,24 +1,24 @@
 package confidential;
 
-import vss.Constants;
-
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.IOException;
 import java.math.BigInteger;
-import java.util.Properties;
+import java.util.Arrays;
 
 public final class Configuration {
-	//public static final int n = 4;
-	//public static final int f = 1;
-	public static final String dataEncryptionAlgorithm = "AES";
-	public static final int dataEncryptionKeySize = 256;
-	public static final String shareEncryptionAlgorithm = "AES";
-	public static final String str_field = "8CF83642A709A097B447997640129DA299B1A47D1EB3750BA308B0FE64F5FBD3";
-	public static final String str_p = "87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00DF8F1D61957D4FAF7DF4561B2AA3016C3D91134096FAA3BF4296D830E9A7C209E0C6497517ABD5A8A9D306BCF67ED91F9E6725B4758C022E0B1EF4275BF7B6C5BFC11D45F9088B941F54EB1E59BB8BC39A0BF12307F5C4FDB70C581B23F76B63ACAE1CAA6B7902D52526735488A0EF13C6D9A51BFA4AB3AD8347796524D8EF6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597";
-	public static final String str_generator = "3FB32C9B73134D0B2E77506660EDBD484CA7B18F21EF205407F4793A1A0BA12510DBC15077BE463FFF4FED4AAC0BB555BE3A6C1B0C6B47B1BC3773BF7E8C6F62901228F8C28CBB18A55AE31341000A650196F931C77A57F2DDF463E5E9EC144B777DE62AAAB8A8628AC376D282D6ED3864E67982428EBC831D14348F6F2F9193B5045AF2767164E1DFC967C1FB3F2E55A4BD1BFFE83B9C80D052B985D182EA0ADB2A3B7313D3FE14C8484B1E052588B9B7D2BBD2DF016199ECD06E1557CD0915B3353BBB64E0EC377FD028370DF92B52C7891428CDC67EB6184B523D1DB246C32F63078490F00EF8D647D148D47954515E2327CFEF98C582664B4C0F6CC41659";
-
-	public static final BigInteger p = new BigInteger(str_p, 16);
-	public static final BigInteger field = new BigInteger(str_field, 16);
-	public static final BigInteger generator = new BigInteger(str_generator, 16);
-
+	private static String configurationFilePath =
+			"config" + File.separator + "cobra.config";
+	private long renewalPeriod;
+	private boolean renewalActive;
+	private String vssScheme;
+	private String primeField;
+	private String subPrimeField;
+	private String generator;
+	private String dataEncryptionAlgorithm = "AES";
+	private String shareEncryptionAlgorithm = "AES";
+	private int recoveryPort;
 
 	public static final BigInteger[] defaultKeys = {
 			new BigInteger("937810634060551071826485204471949219646466658841719067506"),
@@ -32,4 +32,110 @@ public final class Configuration {
 			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
 			new BigInteger("1251496368993253749696877697566511976712060271562136483661")
 	};
+
+	private static Configuration INSTANT;
+
+	public static void setConfigurationFilePath(String configurationFilePath) {
+		Configuration.configurationFilePath = configurationFilePath;
+	}
+
+	public static Configuration getInstance() {
+		if (INSTANT == null) {
+			try {
+				INSTANT = new Configuration(configurationFilePath);
+			} catch (IOException e) {
+				e.printStackTrace();
+			}
+		}
+		return INSTANT;
+	}
+
+	private Configuration(String configurationFilePath) throws IOException {
+		try (BufferedReader in = new BufferedReader(new FileReader(configurationFilePath))) {
+			String line;
+			while ((line = in.readLine()) != null) {
+				if (line.startsWith("#")) {
+					continue;
+				}
+				String[] tokens = line.split("=");
+				if (tokens.length != 2)
+					continue;
+				String propertyName = tokens[0];
+				String value = tokens[1];
+				switch (propertyName) {
+					case "cobra.vss.scheme":
+						if (value.equals("linear"))
+							vssScheme = "1";
+						else if (value.equals("constant"))
+							vssScheme = "2";
+						else
+							throw new IllegalArgumentException("Property cobra.vss.scheme " +
+									"has invalid value");
+						break;
+					case "cobra.vss.prime_field":
+						primeField = value;
+						break;
+					case "cobra.vss.sub_field":
+						subPrimeField = value;
+						break;
+					case "cobra.vss.generator":
+						generator = value;
+						break;
+					case "cobra.vss.data_encryption_algorithm":
+						dataEncryptionAlgorithm = value;
+						break;
+					case "cobra.vss.share_encryption_algorithm":
+						shareEncryptionAlgorithm = value;
+						break;
+					case "cobra.recovery.port":
+						recoveryPort = Integer.parseInt(value);
+						break;
+					case "cobra.renewal.active":
+						renewalActive = Boolean.parseBoolean(value);
+						break;
+					case "cobra.renewal.period":
+						renewalPeriod = Long.parseLong(value);
+						break;
+					default:
+						throw new IllegalArgumentException("Unknown property name");
+				}
+			}
+		}
+	}
+
+	public long getRenewalPeriod() {
+		return renewalPeriod;
+	}
+
+	public boolean isRenewalActive() {
+		return renewalActive;
+	}
+
+	public String getVssScheme() {
+		return vssScheme;
+	}
+
+	public String getPrimeField() {
+		return primeField;
+	}
+
+	public String getSubPrimeField() {
+		return subPrimeField;
+	}
+
+	public String getGenerator() {
+		return generator;
+	}
+
+	public String getDataEncryptionAlgorithm() {
+		return dataEncryptionAlgorithm;
+	}
+
+	public String getShareEncryptionAlgorithm() {
+		return shareEncryptionAlgorithm;
+	}
+
+	public int getRecoveryPort() {
+		return recoveryPort;
+	}
 }
