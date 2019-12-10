@@ -12,6 +12,7 @@ import confidential.Utils;
 import confidential.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.commitment.constant.ShareCommitment;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 

@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.constant.ShareCommitment;
 import vss.facade.SecretSharingException;
 import vss.interpolation.InterpolationStrategy;
 import vss.polynomial.Polynomial;
@@ -46,6 +47,7 @@ public class StateRecoveryHandler extends Thread {
     private CommitmentScheme commitmentScheme;
     private InterpolationStrategy interpolationStrategy;
 
+    private Map<BigInteger, Commitment> allTransferPolynomialCommitments;
     private Commitment transferPolynomialCommitments;
 
     private Map<Integer, Integer> commonData;
@@ -275,10 +277,9 @@ public class StateRecoveryHandler extends Thread {
             for (Map.Entry<Integer, LinkedList<Share>> entry : recoveryShares.entrySet()) {
                 currentShares.put(entry.getKey(), entry.getValue().iterator());
             }
-            logger.info("delete>>>>>>>>StRecHand>>>>> 1");
-            Map<BigInteger, Commitment> commitments = nextCommitment();
-            transferPolynomialCommitments = commitmentScheme.combineCommitments(commitments);
-            logger.info("delete>>>>>>>>StRecHand>>>>> {}", transferPolynomialCommitments);
+            allTransferPolynomialCommitments = nextCommitment();
+            transferPolynomialCommitments = commitmentScheme.combineCommitments(allTransferPolynomialCommitments);
+
             int lastCheckpointCID = commonDataStream.readInt();
             int lastCID = commonDataStream.readInt();
             int logSize = commonDataStream.readInt();
@@ -415,9 +416,7 @@ public class StateRecoveryHandler extends Thread {
     private VerifiableShare recoverShare(Map<Integer, Iterator<Share>> currentShares,
                                byte[] sharedData) {
         try {
-            Map<BigInteger, Commitment> commitments = nextCommitment();
-            Commitment commitment =
-                    commitmentScheme.recoverCommitment(shareholderId, commitments);
+            Map<BigInteger, Commitment> allCurrentCommitments = nextCommitment();
 
             Share[] recoveringShares = new Share[threshold + (corruptedServers < threshold ? 2 : 1)];
             int j = 0;
@@ -433,33 +432,94 @@ public class StateRecoveryHandler extends Thread {
 
             Polynomial polynomial = new Polynomial(field, recoveringShares);
             BigInteger shareNumber;
+            Map<BigInteger, Commitment> validCommitments;
+
             if (polynomial.getDegree() != threshold) {
                 recoveringShares = new Share[threshold + 1];
-
+                validCommitments = new HashMap<>(threshold);
                 Commitment combinedCommitment =
-                        commitmentScheme.combineCommitments(commitments);
+                        commitmentScheme.combineCommitments(allCurrentCommitments);
                 Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         combinedCommitment);
                 commitmentScheme.startVerification(verificationCommitments);
                 j = 0;
+                Set<Integer> invalidServers = new HashSet<>(threshold);
                 for (Map.Entry<Integer, Share> entry : allRecoveringShares.entrySet()) {
+                    int server = entry.getKey();
+                    BigInteger shareholder = confidentialityScheme.getShareholder(server);
                     if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
                         recoveringShares[j++] = entry.getValue();
                         //if (j == recoveringShares.length)
                             //break;
+                        if (validCommitments.size() <= threshold) {
+                            validCommitments.put(shareholder,
+                                    allCurrentCommitments.get(shareholder));
+                        }
                     } else {
-                        logger.error("Server {} sent me invalid share", entry.getKey());
-                        currentShares.remove(entry.getKey());
-                        recoveryShares.remove(entry.getKey());
-                        commitmentsBytes.remove(entry.getKey());
+                        logger.error("Server {} sent me invalid share", server);
+                        currentShares.remove(server);
+                        recoveryShares.remove(server);
+                        commitmentsBytes.remove(server);
                         corruptedServers++;
+                        invalidServers.add(server);
+                        allTransferPolynomialCommitments.remove(shareholder);
+                        transferPolynomialCommitments =
+                                commitmentScheme.combineCommitments(allTransferPolynomialCommitments);
                     }
                 }
                 commitmentScheme.endVerification();
 
+                for (Integer server : invalidServers) {
+                    allRecoveringShares.remove(server);
+                }
+
                 shareNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
             } else {
                 shareNumber = polynomial.evaluateAt(shareholderId);
+                int minNumberOfCommitments = corruptedServers >= threshold ? threshold :
+                        threshold + 1;
+                validCommitments = new HashMap<>(minNumberOfCommitments);
+
+                for (Share recoveringShare : recoveringShares) {
+                    validCommitments.put(recoveringShare.getShareholder(),
+                            allCurrentCommitments.get(recoveringShare.getShareholder()));
+                    if (validCommitments.size() == minNumberOfCommitments)
+                        break;
+                }
+            }
+
+            Commitment commitment;
+            try {
+                commitment = commitmentScheme.recoverCommitment(shareholderId,
+                        validCommitments);
+            } catch (SecretSharingException e) { //there is/are invalid witness(es)
+                Commitment combinedCommitment =
+                        commitmentScheme.combineCommitments(allCurrentCommitments);
+                Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
+                        combinedCommitment);
+                validCommitments.clear();
+                commitmentScheme.startVerification(verificationCommitments);
+                for (Map.Entry<Integer, Share> entry : allRecoveringShares.entrySet()) {
+                    int server = entry.getKey();
+                    BigInteger shareholder = confidentialityScheme.getShareholder(server);
+                    if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
+                        validCommitments.put(shareholder, allCurrentCommitments.get(shareholder));
+                        if (validCommitments.size() == threshold)
+                            break;
+                    } else {
+                        logger.error("Server {} sent me invalid commitment", server);
+                        currentShares.remove(server);
+                        recoveryShares.remove(server);
+                        commitmentsBytes.remove(server);
+                        corruptedServers++;
+                        allTransferPolynomialCommitments.remove(shareholder);
+                        transferPolynomialCommitments =
+                                commitmentScheme.combineCommitments(allTransferPolynomialCommitments);
+                    }
+                }
+                commitmentScheme.endVerification();
+                commitment = commitmentScheme.recoverCommitment(shareholderId,
+                        validCommitments);
             }
 
             Share share = new Share(shareholderId, shareNumber);
