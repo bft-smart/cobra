@@ -30,7 +30,7 @@ public abstract class CobraConfidentialityScheme {
     private final Map<Integer, BigInteger> serverToShareholder;
     private final Map<BigInteger, Integer> shareholderToServer;
     private Cipher cipher;
-    private KeysManager keysManager;
+    protected KeysManager keysManager;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
         int[] processes = view.getProcesses();
@@ -59,7 +59,7 @@ public abstract class CobraConfidentialityScheme {
             properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
         }
         try {
-            cipher = Cipher.getInstance(shareEncryptionAlgorithm);
+            cipher = Cipher.getInstance(configuration.getShareEncryptionAlgorithm());
         } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
             throw new SecretSharingException("Failed to initialize the cipher");
         }

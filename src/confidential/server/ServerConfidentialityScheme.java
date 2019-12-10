@@ -2,21 +2,14 @@ package confidential.server;
 
 import bftsmart.reconfiguration.views.View;
 import confidential.CobraConfidentialityScheme;
-import confidential.Configuration;
-import vss.Constants;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
-import vss.facade.VSSFacade;
 import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.VerifiableShare;
 
-import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
 import java.security.Key;
-import java.util.Properties;
-
-import static confidential.Configuration.*;
 
 public class ServerConfidentialityScheme extends CobraConfidentialityScheme {
     private final Key decipheringKey;
@@ -24,8 +17,7 @@ public class ServerConfidentialityScheme extends CobraConfidentialityScheme {
 
     public ServerConfidentialityScheme(int processId, View view) throws SecretSharingException {
         super(view);
-        decipheringKey = new SecretKeySpec(defaultKeys[processId].toByteArray(),
-                Configuration.getInstance().getShareEncryptionAlgorithm());
+        decipheringKey = keysManager.getDecryptionKeyFor(processId);
         me = getShareholder(processId);
     }
 

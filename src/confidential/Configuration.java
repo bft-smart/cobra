@@ -4,8 +4,6 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.math.BigInteger;
-import java.util.Arrays;
 
 public final class Configuration {
 	private static String configurationFilePath =
@@ -19,19 +17,6 @@ public final class Configuration {
 	private String dataEncryptionAlgorithm = "AES";
 	private String shareEncryptionAlgorithm = "AES";
 	private int recoveryPort;
-
-	public static final BigInteger[] defaultKeys = {
-			new BigInteger("937810634060551071826485204471949219646466658841719067506"),
-			new BigInteger("2070500848756246996383345868621307412466502332353200391602"),
-			new BigInteger("225622465560524539505877757960043111882233204074971325789"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661"),
-			new BigInteger("1251496368993253749696877697566511976712060271562136483661")
-	};
 
 	private static Configuration INSTANT;
 
