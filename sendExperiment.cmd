@@ -17,7 +17,7 @@ rem xcopy %SRC%\pairing\src\* %DST%\pairing\src\
 rem xcopy %SRC%\pairing\*.sh %DST%\pairing\
 rem xcopy %SRC%\lib\Ver*.jar %DST%\lib\
 rem xcopy %SRC%\*.sh %DST%\
-rem xcopy /e /q %SRC%\config\* %DST%\config\
+xcopy /e /q %SRC%\config\cobra* %DST%\config\
 rem xcopy %SRC%\scripts\*.sh %DST%\
 
 rem del %DST%\config\currentView

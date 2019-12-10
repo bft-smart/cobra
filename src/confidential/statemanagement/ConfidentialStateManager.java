@@ -11,6 +11,7 @@ import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
+import confidential.Configuration;
 import confidential.polynomial.DistributedPolynomial;
 import confidential.polynomial.PolynomialContext;
 import confidential.polynomial.PolynomialCreationListener;
@@ -29,9 +30,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
-    private static final long REFRESH_PERIOD = 30000;
-    private static final boolean RENEWAL = false;
-    private static final int SERVER_STATE_LISTENING_PORT = 5000;
+    private final long RENEWAL_PERIOD;
+    private final boolean RENEWAL;
+    private final int SERVER_STATE_LISTENING_PORT;
     private Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
@@ -55,6 +56,9 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         sequenceNumbers = new HashMap<>();
         refreshTimer = new Timer("Refresh Timer");
         usedReplicas = new HashSet<>();
+        RENEWAL_PERIOD = Configuration.getInstance().getRenewalPeriod();
+        RENEWAL = Configuration.getInstance().isRenewalActive();
+        SERVER_STATE_LISTENING_PORT = Configuration.getInstance().getRecoveryPort();
     }
 
     public void setDistributedPolynomial(DistributedPolynomial distributedPolynomial) {
@@ -249,11 +253,10 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                         stateTimer.cancel();
                     reset();
                     requestState();
-                    return;
                 } else {
                     logger.info("Waiting for more than {} states", SVController.getQuorum());
-                    return;
                 }
+                return;
             }
 
             logger.info("More than f states confirmed");
@@ -543,7 +546,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             }
         };
 
-        refreshTimer.schedule(refreshTriggerTask, REFRESH_PERIOD);
+        refreshTimer.schedule(refreshTriggerTask, RENEWAL_PERIOD);
     }
 
     private void sendRecoveryState(DefaultSMMessage recoveryMessage, VerifiableShare recoveryPoint) {
