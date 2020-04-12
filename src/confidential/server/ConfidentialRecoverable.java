@@ -11,7 +11,10 @@ import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import confidential.*;
+import confidential.ConfidentialData;
+import confidential.ConfidentialMessage;
+import confidential.Configuration;
+import confidential.MessageType;
 import confidential.encrypted.EncryptedConfidentialData;
 import confidential.encrypted.EncryptedConfidentialMessage;
 import confidential.encrypted.EncryptedVerifiableShare;
@@ -51,12 +54,14 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     private List<byte[]> commands;
     private List<MessageContext> msgContexts;
     private int currentF;
+    private boolean useTLSEncryption;
 
     public ConfidentialRecoverable(int processId) {
         this.processId = processId;
         this.logLock = new ReentrantLock();
         this.commands = new ArrayList<>();
         this.msgContexts = new ArrayList<>();
+        this.useTLSEncryption = Configuration.getInstance().useTLSEncryption();
     }
 
     @Override
@@ -233,8 +238,10 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             response = new byte[0];
         } else {
             stateLock.lock();
-            response = encryptResponse(appExecuteOrdered(request.getPlainData(), request.getShares(),
-                    msgCtx), msgCtx).serialize();
+            ConfidentialMessage r = appExecuteOrdered(request.getPlainData(), request.getShares(),
+                    msgCtx);
+            response = useTLSEncryption ? r.serialize() :
+                    encryptResponse(r, msgCtx).serialize();
             stateLock.unlock();
         }
         logRequest(preprocessedCommand, msgCtx);
@@ -252,9 +259,10 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             return new byte[0];
         }
-
-        return encryptResponse(appExecuteUnordered(request.getPlainData(), request.getShares(),
-                msgCtx), msgCtx).serialize();
+        ConfidentialMessage r = appExecuteUnordered(request.getPlainData(), request.getShares(),
+                msgCtx);
+        return useTLSEncryption ? r.serialize() :
+                encryptResponse(r, msgCtx).serialize();
     }
 
     private EncryptedConfidentialMessage encryptResponse(ConfidentialMessage clearResponse, MessageContext msgCtx) {

@@ -17,6 +17,7 @@ public final class Configuration {
 	private String dataEncryptionAlgorithm = "AES";
 	private String shareEncryptionAlgorithm = "AES";
 	private int recoveryPort;
+	private boolean useTLSEncryption;
 
 	private static Configuration INSTANT;
 
@@ -81,6 +82,9 @@ public final class Configuration {
 					case "cobra.renewal.period":
 						renewalPeriod = Long.parseLong(value);
 						break;
+					case "cobra.communication.use_tls_encryption":
+						useTLSEncryption = Boolean.parseBoolean(value);
+						break;
 					default:
 						throw new IllegalArgumentException("Unknown property name");
 				}
@@ -122,5 +126,9 @@ public final class Configuration {
 
 	public int getRecoveryPort() {
 		return recoveryPort;
+	}
+
+	public boolean useTLSEncryption() {
+		return useTLSEncryption;
 	}
 }
