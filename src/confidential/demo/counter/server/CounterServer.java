@@ -1,25 +1,24 @@
 package confidential.demo.counter.server;
 
 import bftsmart.tom.MessageContext;
-import bftsmart.tom.ServiceReplica;
 import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
-import confidential.server.ConfidentialRecoverable;
+import confidential.facade.server.ConfidentialServerFacade;
+import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
-public class CounterServer extends ConfidentialRecoverable {
+public class CounterServer implements ConfidentialSingleExecutable {
     private Logger logger = LoggerFactory.getLogger("demo");
     private AtomicInteger counter;
 
 
     CounterServer(int processId) {
-        super(processId);
         counter = new AtomicInteger();
-        new ServiceReplica(processId, this, this);
+        new ConfidentialServerFacade(processId, this);
     }
 
     @Override

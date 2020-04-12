@@ -1,11 +1,11 @@
 package confidential.demo.map.server;
 
 import bftsmart.tom.MessageContext;
-import bftsmart.tom.ServiceReplica;
 import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.demo.map.client.Operation;
-import confidential.server.ConfidentialRecoverable;
+import confidential.facade.server.ConfidentialServerFacade;
+import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -14,14 +14,13 @@ import java.io.*;
 import java.util.Map;
 import java.util.TreeMap;
 
-public class KVStoreServer extends ConfidentialRecoverable {
+public class KVStoreServer implements ConfidentialSingleExecutable {
     private Logger logger = LoggerFactory.getLogger("demo");
     private Map<String, ConfidentialData> map;
 
     KVStoreServer(int processId) {
-        super(processId);
         map = new TreeMap<>();
-        new ServiceReplica(processId, this, this);
+        new ConfidentialServerFacade(processId, this);
     }
 
     @Override

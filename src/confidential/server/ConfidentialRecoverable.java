@@ -6,6 +6,8 @@ import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.StateManager;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ReplicaContext;
+import bftsmart.tom.core.messages.TOMMessage;
+import bftsmart.tom.server.ProposeRequestVerifier;
 import bftsmart.tom.server.Recoverable;
 import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
@@ -18,6 +20,7 @@ import confidential.MessageType;
 import confidential.encrypted.EncryptedConfidentialData;
 import confidential.encrypted.EncryptedConfidentialMessage;
 import confidential.encrypted.EncryptedVerifiableShare;
+import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
 import confidential.statemanagement.ConfidentialSnapshot;
@@ -40,7 +43,7 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-public abstract class ConfidentialRecoverable implements SingleExecutable, Recoverable {
+public final class ConfidentialRecoverable implements SingleExecutable, Recoverable {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private ServerConfidentialityScheme confidentialityScheme;
     private final int processId;
@@ -55,9 +58,11 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     private List<MessageContext> msgContexts;
     private int currentF;
     private boolean useTLSEncryption;
+    private ConfidentialSingleExecutable confidentialExecutor;
 
-    public ConfidentialRecoverable(int processId) {
+    public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
         this.processId = processId;
+        this.confidentialExecutor = confidentialExecutor;
         this.logLock = new ReentrantLock();
         this.commands = new ArrayList<>();
         this.msgContexts = new ArrayList<>();
@@ -97,7 +102,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
     private ConfidentialStateLog initLog() {
         if (!replicaContext.getStaticConfiguration().isToLog())
             return null;
-        ConfidentialSnapshot snapshot = getConfidentialSnapshot();
+        ConfidentialSnapshot snapshot = confidentialExecutor.getConfidentialSnapshot();
         byte[] state = snapshot.serialize();
         if (replicaContext.getStaticConfiguration().logToDisk()) {
             logger.error("Log to disk not implemented");
@@ -140,7 +145,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             if (state.getSerializedState() != null) {
                 logger.info("Installing snapshot up to CID {}", lastCheckpointCID);
                 ConfidentialSnapshot snapshot = ConfidentialSnapshot.deserialize(state.getSerializedState());
-                installConfidentialSnapshot(snapshot);
+                confidentialExecutor.installConfidentialSnapshot(snapshot);
             }
 
             for (int cid = lastCheckpointCID + 1; cid <= lastCID; cid++) {
@@ -167,7 +172,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
                             logger.debug("Ignoring application request");
                             continue;
                         }
-                        appExecuteOrdered(request.getPlainData(), request.getShares(), msgCtx[i]);
+                        confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(), msgCtx[i]);
                     }
                 } catch (Exception e) {
                     logger.error("Failed to process and verify batched requests for CID {}", cid, e);
@@ -238,7 +243,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             response = new byte[0];
         } else {
             stateLock.lock();
-            ConfidentialMessage r = appExecuteOrdered(request.getPlainData(), request.getShares(),
+            ConfidentialMessage r = confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(),
                     msgCtx);
             response = useTLSEncryption ? r.serialize() :
                     encryptResponse(r, msgCtx).serialize();
@@ -259,7 +264,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             return new byte[0];
         }
-        ConfidentialMessage r = appExecuteUnordered(request.getPlainData(), request.getShares(),
+        ConfidentialMessage r = confidentialExecutor.appExecuteUnordered(request.getPlainData(), request.getShares(),
                 msgCtx);
         return useTLSEncryption ? r.serialize() :
                 encryptResponse(r, msgCtx).serialize();
@@ -302,14 +307,6 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
             return null;
         }
     }
-
-    public abstract ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
-
-    public abstract ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
-
-    public abstract ConfidentialSnapshot getConfidentialSnapshot();
-
-    public abstract void installConfidentialSnapshot(ConfidentialSnapshot snapshot);
 
     private Request preprocessRequest(byte[] message, MessageContext msgCtx) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(message);
@@ -404,7 +401,7 @@ public abstract class ConfidentialRecoverable implements SingleExecutable, Recov
         if (cid > 0 && (cid % checkpointPeriod) == 0) {
             logger.info("Performing checkpoint for consensus " + cid);
             stateLock.lock();
-            ConfidentialSnapshot snapshot = getConfidentialSnapshot();
+            ConfidentialSnapshot snapshot = confidentialExecutor.getConfidentialSnapshot();
             stateLock.unlock();
             saveState(snapshot.serialize(), cid);
         } else {

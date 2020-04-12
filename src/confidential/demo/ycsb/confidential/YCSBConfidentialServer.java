@@ -16,14 +16,13 @@
 package confidential.demo.ycsb.confidential;
 
 import bftsmart.tom.MessageContext;
-import bftsmart.tom.ServiceReplica;
 import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
-import confidential.server.ConfidentialRecoverable;
+import confidential.facade.server.ConfidentialServerFacade;
+import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.*;
@@ -33,7 +32,7 @@ import java.util.*;
  * @author Marcel Santos
  *
  */
-public class YCSBConfidentialServer extends ConfidentialRecoverable {
+public class YCSBConfidentialServer implements ConfidentialSingleExecutable {
     private Logger logger = LoggerFactory.getLogger("demo");
     private static final boolean _debug = false;
     private TreeMap<String, YCSBConfidentialTable> mTables;
@@ -51,9 +50,8 @@ public class YCSBConfidentialServer extends ConfidentialRecoverable {
     }
 
     private YCSBConfidentialServer(int id) {
-        super(id);
         this.mTables = new TreeMap<>();
-        new ServiceReplica(id, this, this);
+        new ConfidentialServerFacade(id, this);
         startTime = System.nanoTime();
         this.id = id;
     }

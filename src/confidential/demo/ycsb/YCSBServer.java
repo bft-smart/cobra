@@ -16,10 +16,10 @@
 package confidential.demo.ycsb;
 
 import bftsmart.tom.MessageContext;
-import bftsmart.tom.ServiceReplica;
 import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
-import confidential.server.ConfidentialRecoverable;
+import confidential.facade.server.ConfidentialServerFacade;
+import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 
 import java.io.*;
@@ -30,7 +30,7 @@ import java.util.TreeMap;
  * @author Marcel Santos
  *
  */
-public class YCSBServer extends ConfidentialRecoverable {
+public class YCSBServer implements ConfidentialSingleExecutable {
 
     private static final boolean _debug = false;
     private TreeMap<String, YCSBTable> mTables;
@@ -46,9 +46,8 @@ public class YCSBServer extends ConfidentialRecoverable {
     }
 
     private YCSBServer(int id) {
-        super(id);
         this.mTables = new TreeMap<>();
-        new ServiceReplica(id, this, this);
+        new ConfidentialServerFacade(id, this);
     }
 
     @Override
