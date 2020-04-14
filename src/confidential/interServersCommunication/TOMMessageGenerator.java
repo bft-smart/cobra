@@ -22,20 +22,24 @@ public class TOMMessageGenerator {
 		session = new Random(System.nanoTime()).nextInt();
 	}
 	
-	public TOMMessage getNextOrdered(byte[] payload) {
-		return nextMessage(payload, orderedSeq++, requestId++, TOMMessageType.ORDERED_REQUEST);
+	public TOMMessage getNextOrdered(byte[] metadata, byte[] payload) {
+		return nextMessage(metadata, payload, orderedSeq++, requestId++,
+				TOMMessageType.ORDERED_REQUEST);
 	}
 
 	public TOMMessage getNextUnordered(byte[] payload) {
-		return nextMessage(payload, unorderedSeq++, requestId++, TOMMessageType.UNORDERED_REQUEST);
+		return nextMessage(null, payload, unorderedSeq++, requestId++,
+				TOMMessageType.UNORDERED_REQUEST);
 	}
 
-	private TOMMessage nextMessage(byte[] payload, int sequence, int requestId, TOMMessageType type) {
+	private TOMMessage nextMessage(byte[] metadata, byte[] payload, int sequence,
+								   int requestId, TOMMessageType type) {
 		TOMMessage msg =  new TOMMessage(
 				id,
 				session,
 				sequence,
 				requestId,
+				metadata,
 				payload,
 				controller.getCurrentViewId(),
 				type);

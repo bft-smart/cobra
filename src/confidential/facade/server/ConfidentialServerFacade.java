@@ -46,6 +46,6 @@ public final class ConfidentialServerFacade {
         ConfidentialRecoverable cr =
                 new ConfidentialRecoverable(processId, confidentialExecutor);
         new ServiceReplica(processId, cr, cr, requestVerifier, replier, loader,
-                provider);
+                provider, cr);
     }
 }

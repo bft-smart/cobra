@@ -12,10 +12,7 @@ import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.Configuration;
-import confidential.polynomial.DistributedPolynomial;
-import confidential.polynomial.PolynomialContext;
-import confidential.polynomial.PolynomialCreationListener;
-import confidential.polynomial.PolynomialCreationReason;
+import confidential.polynomial.*;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
@@ -389,7 +386,9 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     }
 
     @Override
-    public void onPolynomialCreation(PolynomialContext context, VerifiableShare point, int consensusId) {
+    public void onPolynomialCreationSuccess(PolynomialContext context,
+                                          VerifiableShare point,
+                                      int consensusId) {
         logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
         if (sequenceNumber.get() <= context.getId())
             sequenceNumber.set(context.getId() + 1);
@@ -408,6 +407,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             long end = System.nanoTime() - start;
             logger.info("Renewal duration: {} ms", (end / 1_000_000.0));
         }
+    }
+
+    @Override
+    public void onPolynomialCreationFailure(PolynomialContext context, List<ProposalMessage> invalidProposals, int consensusId) {
+        logger.error("I received an invalid point");
+        System.exit(-1);
     }
 
     private void refreshState(VerifiableShare point, int consensusId) {

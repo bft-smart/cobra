@@ -13,16 +13,14 @@ import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import confidential.ConfidentialData;
-import confidential.ConfidentialMessage;
-import confidential.Configuration;
-import confidential.MessageType;
+import confidential.*;
 import confidential.encrypted.EncryptedConfidentialData;
 import confidential.encrypted.EncryptedConfidentialMessage;
 import confidential.encrypted.EncryptedVerifiableShare;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
+import confidential.polynomial.ProposalSetMessage;
 import confidential.statemanagement.ConfidentialSnapshot;
 import confidential.statemanagement.ConfidentialStateLog;
 import confidential.statemanagement.ConfidentialStateManager;
@@ -43,7 +41,8 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.locks.ReentrantLock;
 
-public final class ConfidentialRecoverable implements SingleExecutable, Recoverable {
+public final class ConfidentialRecoverable implements SingleExecutable, Recoverable,
+        ProposeRequestVerifier {
     private Logger logger = LoggerFactory.getLogger("confidential");
     private ServerConfidentialityScheme confidentialityScheme;
     private final int processId;
@@ -59,6 +58,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     private int currentF;
     private boolean useTLSEncryption;
     private ConfidentialSingleExecutable confidentialExecutor;
+    private DistributedPolynomial distributedPolynomial;
 
     public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
         this.processId = processId;
@@ -81,8 +81,9 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
 
-            DistributedPolynomial distributedPolynomial = new DistributedPolynomial(processId, interServersCommunication,
-                    confidentialityScheme);
+            distributedPolynomial =
+                    new DistributedPolynomial(replicaContext.getSVController(), interServersCommunication,
+                            confidentialityScheme);
             new Thread(distributedPolynomial, "Distributed polynomial").start();
             stateManager.setDistributedPolynomial(distributedPolynomial);
             stateManager.setConfidentialityScheme(confidentialityScheme);
@@ -91,6 +92,40 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         } catch (SecretSharingException e) {
             logger.error("Failed to initialize ServerConfidentialityScheme", e);
         }
+    }
+
+    @Override
+    public boolean isValidRequest(TOMMessage request) {
+        logger.debug("Checking request: {} - {}", request.getReqType(),
+                request.getSequence());
+        if (request.getMetadata() != null) {
+            Metadata metadata = Metadata.getMessageType(request.getMetadata()[0]);
+            logger.info("Metadata: {}", metadata);
+            if (metadata == Metadata.POLYNOMIAL_PROPOSAL_SET) {
+                Request req = preprocessRequest(request.getContent(), request.getSender());
+                if (req == null || req.getType() != MessageType.APPLICATION) {
+                    logger.error("Unknown request type to verify");
+                    return false;
+                }
+                byte[] m =
+                        Arrays.copyOfRange(req.getPlainData(), 1,
+                                req.getPlainData().length);
+                try (ByteArrayInputStream bis = new ByteArrayInputStream(m);
+                     ObjectInput in = new ObjectInputStream(bis)) {
+                    ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
+                    proposalSetMessage.readExternal(in);
+                    return distributedPolynomial.isValidProposalSet(proposalSetMessage);
+                } catch (IOException | ClassNotFoundException e) {
+                    logger.error("Failed to deserialize polynomial message of type " +
+                            "{}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);
+                    return false;
+                }
+            } else {
+                logger.error("Unknown metadata {}", metadata);
+                return false;
+            }
+        }
+        return true;
     }
 
     private ConfidentialStateLog getLog() {
@@ -231,7 +266,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 
     @Override
     public byte[] executeOrdered(byte[] command, MessageContext msgCtx) {
-        Request request = preprocessRequest(command, msgCtx);
+        Request request = preprocessRequest(command, msgCtx.getSender());
         if (request == null)
             return null;
         byte[] preprocessedCommand = request.serialize();
@@ -256,7 +291,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 
     @Override
     public byte[] executeUnordered(byte[] command, MessageContext msgCtx) {
-        Request request = preprocessRequest(command, msgCtx);
+        Request request = preprocessRequest(command, msgCtx.getSender());
         if (request == null)
             return null;
         if (request.getType() == MessageType.APPLICATION) {
@@ -301,14 +336,14 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             EncryptedShare encryptedShare = confidentialityScheme.encryptShareFor(id,
                     clearShare.getShare());
             return new EncryptedVerifiableShare(encryptedShare,
-                            clearShare.getCommitments(), clearShare.getSharedData());
+                    clearShare.getCommitments(), clearShare.getSharedData());
         } catch (SecretSharingException e) {
             logger.error("Failed to encrypt share for client {}", id, e);
             return null;
         }
     }
 
-    private Request preprocessRequest(byte[] message, MessageContext msgCtx) {
+    private Request preprocessRequest(byte[] message, int sender) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(message);
              ObjectInput in = new ObjectInputStream(bis)) {
             MessageType type = MessageType.getMessageType(in.read());
@@ -344,7 +379,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             }
             return result;
         } catch (IOException | SecretSharingException | ClassNotFoundException e) {
-            logger.warn("Failed to decompose request from {}", msgCtx.getSender(), e);
+            logger.warn("Failed to decompose request from {}", sender, e);
             return null;
         }
     }

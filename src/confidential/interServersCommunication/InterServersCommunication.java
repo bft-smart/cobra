@@ -31,8 +31,10 @@ public class InterServersCommunication {
         return communicationSystem.getSecretKey(serverId);
     }
 
-    public void sendOrdered(InterServersMessageType type, byte[] request, int... targets) {
-        TOMMessage msg = tomMessageGenerator.getNextOrdered(serializeRequest(type, request));
+    public void sendOrdered(InterServersMessageType type, byte[] metadata, byte[] request,
+                            int... targets) {
+        TOMMessage msg = tomMessageGenerator.getNextOrdered(metadata,
+                serializeRequest(type, request));
         communicationSystem.send(targets, new ForwardedMessage(msg.getSender(), msg));
     }
 

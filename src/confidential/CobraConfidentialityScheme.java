@@ -94,6 +94,16 @@ public abstract class CobraConfidentialityScheme {
         }
     }
 
+    public byte[] encryptDataFor(int id, byte[] data) {
+        Key encryptionKey = keysManager.getEncryptionKeyFor(id);
+
+        try {
+            return encrypt(data, encryptionKey);
+        } catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
+            return null;
+        }
+    }
+
     public Share decryptShare(int id, EncryptedShare encryptedShare) throws SecretSharingException {
         Key decryptionKey = keysManager.getDecryptionKeyFor(id);
         try {
@@ -101,6 +111,15 @@ public abstract class CobraConfidentialityScheme {
                     new BigInteger(decrypt(encryptedShare.getEncryptedShare(), decryptionKey)));
         } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
             throw new SecretSharingException("Failed to decrypt share", e);
+        }
+    }
+
+    public byte[] decryptData(int id, byte[] encryptedData) {
+        Key decryptionKey = keysManager.getDecryptionKeyFor(id);
+        try {
+            return decrypt(encryptedData, decryptionKey);
+        } catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
+            return null;
         }
     }
 
