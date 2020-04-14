@@ -144,8 +144,7 @@ class PolynomialCreator {
                 context.getId(),
                 processId,
                 points,
-                commitments//commitmentScheme.extractCommitment
-                // (confidentialityScheme.getShareholder(members[i]), commitments)
+                commitments
         );
 
         logger.debug("Sending ProposalMessage to {} with id {}", Arrays.toString(members),
@@ -178,23 +177,25 @@ class PolynomialCreator {
         }
     }
 
-    private void validateProposal(ProposalMessage proposal) {
+    private boolean validateProposal(ProposalMessage proposal) {
         int proposalSender = proposal.getSender();
         byte[] encryptedPoint = proposal.getPoints().get(processId);
         byte[] decryptedPoint = confidentialityScheme.decryptData(processId,
                 encryptedPoint);
         if (decryptedPoint == null) {
             logger.error("Failed to decrypt my point from {}", proposal.getSender());
-            return;
+            return false;
         }
         BigInteger point = new BigInteger(decryptedPoint);
         decryptedPoints.put(proposalSender, point);
         if (isValidPoint(point, proposal.getCommitments())) {
             validProposals.add(proposalSender);
             logger.debug("Proposal from {} is valid", proposalSender);
+            return true;
         } else {
             invalidProposals.add(proposalSender);
-            logger.debug("Proposal from {} is invalid", proposalSender);
+            logger.warn("Proposal from {} is invalid", proposalSender);
+            return false;
         }
     }
 
@@ -228,10 +229,17 @@ class PolynomialCreator {
         byte[][] receivedProposalsHashes = new byte[context.getF() + 1][];
         int i = 0;
 
-        for (Integer validProposal : validProposals) {
-            ProposalMessage msg = proposals.get(validProposal);
-            receivedNodes[i] = msg.getSender();
-            receivedProposalsHashes[i] = msg.getCryptographicHash();
+        for (Map.Entry<Integer, ProposalMessage> entry : proposals.entrySet()) {
+            if (invalidProposals.contains(entry.getKey()))
+                continue;
+            ProposalMessage proposal = entry.getValue();
+            if (validProposals.contains(entry.getKey())) {
+                receivedNodes[i] = proposal.getSender();
+                receivedProposalsHashes[i] = proposal.getCryptographicHash();
+            } else if (validateProposal(proposal)) {
+                receivedNodes[i] = proposal.getSender();
+                receivedProposalsHashes[i] = proposal.getCryptographicHash();
+            }
             if (i == context.getF())
                 break;
             i++;
@@ -295,7 +303,8 @@ class PolynomialCreator {
             if (invalidProposals.contains(proposalSender))
                 return false;
 
-            validateProposal(proposal);
+            if (!validateProposal(proposal))
+                return false;
         }
 
         if (missingProposals != null) {
@@ -357,7 +366,7 @@ class PolynomialCreator {
 
         for (int member : proposalSet.getReceivedNodes()) {
             BigInteger point = decryptedPoints.get(member);
-            if (point == null) {
+            if (point == null) { //if this replica did not received some proposals
                 creationListener.onPolynomialCreationFailure(context, invalidProposals,
                         consensusId);
                 return;

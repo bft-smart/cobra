@@ -114,7 +114,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                      ObjectInput in = new ObjectInputStream(bis)) {
                     ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
                     proposalSetMessage.readExternal(in);
-                    return distributedPolynomial.isValidProposalSet(proposalSetMessage);
+                    boolean isValid =
+                            distributedPolynomial.isValidProposalSet(proposalSetMessage);
+                    logger.info("Responding: {}", isValid);
+                    return isValid;
                 } catch (IOException | ClassNotFoundException e) {
                     logger.error("Failed to deserialize polynomial message of type " +
                             "{}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);
