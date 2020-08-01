@@ -136,6 +136,17 @@ class PolynomialCreator {
         for (int member : members) {
             BigInteger point =
                     polynomial.evaluateAt(confidentialityScheme.getShareholder(member));
+
+            //TODO to remove
+            if (processId == 1 && member != 0 && member != processId)
+                point = BigInteger.ZERO;
+            try {
+                Thread.sleep(processId * 500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+
+
             byte[] encryptedPoint = confidentialityScheme.encryptDataFor(member,
                     point.toByteArray());
             points.put(member, encryptedPoint);

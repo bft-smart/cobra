@@ -116,7 +116,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                     proposalSetMessage.readExternal(in);
                     boolean isValid =
                             distributedPolynomial.isValidProposalSet(proposalSetMessage);
-                    logger.info("Responding: {}", isValid);
+                    logger.info("*******************************Responding: {}", isValid);
                     return isValid;
                 } catch (IOException | ClassNotFoundException e) {
                     logger.error("Failed to deserialize polynomial message of type " +
