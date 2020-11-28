@@ -30,21 +30,21 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private final long RENEWAL_PERIOD;
     private final boolean RENEWAL;
     private final int SERVER_STATE_LISTENING_PORT;
-    private Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 220000;
     private DistributedPolynomial distributedPolynomial;
     private ServerConfidentialityScheme confidentialityScheme;
     private Timer stateTimer;
     private long timeout = INIT_TIMEOUT;
-    private ReentrantLock lockTimer;
-    private AtomicInteger sequenceNumber;
-    private Map<Integer, SMMessage> onGoingRecoveryRequests;
-    private HashMap<Integer, Integer> sequenceNumbers;
-    private Timer refreshTimer;
+    private final ReentrantLock lockTimer;
+    private final AtomicInteger sequenceNumber;
+    private final Map<Integer, SMMessage> onGoingRecoveryRequests;
+    private final HashMap<Integer, Integer> sequenceNumbers;
+    private final Timer refreshTimer;
     private TimerTask refreshTriggerTask;
     private long recoveryStartTime;
     private long renewalStartTime;
-    private Set<Integer> usedReplicas;
+    private final Set<Integer> usedReplicas;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
@@ -176,16 +176,19 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 int id = sequenceNumber.getAndIncrement();
                 onGoingRecoveryRequests.put(id, msg);
                 PolynomialContext context = new PolynomialContext(
-                        id,
                         SVController.getCurrentViewF(),
-                        BigInteger.valueOf(msg.getSender() + 1),
+                        confidentialityScheme.getShareholder(msg.getSender()),
                         BigInteger.ZERO,
-                        SVController.getCurrentViewAcceptors(),
+                        SVController.getCurrentViewAcceptors()
+                );
+                PolynomialCreationContext creationContext = new PolynomialCreationContext(
+                        id,
                         msg.getLeader(),
-                        PolynomialCreationReason.RECOVERY
+                        PolynomialCreationReason.RECOVERY,
+                        context
                 );
                 logger.debug("Starting creation of new polynomial with id {} to recover member {}", id, msg.getSender());
-                distributedPolynomial.createNewPolynomial(context);
+                distributedPolynomial.createNewPolynomial(creationContext);
 
             }
         } else
@@ -386,14 +389,14 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     }
 
     @Override
-    public void onPolynomialCreationSuccess(PolynomialContext context,
-                                          VerifiableShare point,
-                                      int consensusId) {
+    public void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
+                                            VerifiableShare... points) {
         logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
         if (sequenceNumber.get() <= context.getId())
             sequenceNumber.set(context.getId() + 1);
         if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
                 && context.getReason() == PolynomialCreationReason.RECOVERY) {
+            VerifiableShare point = points[0];//TODO change to recover multiple servers
             if (onGoingRecoveryRequests.containsKey(context.getId()))
                 sendRecoveryState((DefaultSMMessage)onGoingRecoveryRequests.remove(context.getId()), point);
             else
@@ -403,14 +406,14 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             long endTime = System.nanoTime() - renewalStartTime;
             logger.info("Renewal polynomial duration: {} ms", (endTime / 1_000_000.0));
             long start = System.nanoTime();
-            refreshState(point, consensusId);
+            refreshState(points[0], consensusId);//TODO change to new resharing scheme
             long end = System.nanoTime() - start;
             logger.info("Renewal duration: {} ms", (end / 1_000_000.0));
         }
     }
 
     @Override
-    public void onPolynomialCreationFailure(PolynomialContext context, List<ProposalMessage> invalidProposals, int consensusId) {
+    public void onPolynomialCreationFailure(PolynomialCreationContext context, List<ProposalMessage> invalidProposals, int consensusId) {
         logger.error("I received an invalid point");
         System.exit(-1);
     }
@@ -537,14 +540,24 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             public void run() {
                 renewalStartTime = System.nanoTime();
                 int id = sequenceNumber.getAndIncrement();
-                PolynomialContext context = new PolynomialContext(
-                        id,
+                PolynomialContext oldView = new PolynomialContext(
                         SVController.getCurrentViewF(),
                         BigInteger.ZERO,
+                        null,
+                        SVController.getCurrentViewAcceptors()
+                );
+                PolynomialContext newView = new PolynomialContext(
+                        SVController.getCurrentViewF(),
                         BigInteger.ZERO,
-                        SVController.getCurrentViewAcceptors(),
+                        null,
+                        SVController.getCurrentViewAcceptors()
+                );
+                PolynomialCreationContext context = new PolynomialCreationContext(
+                        id,
                         tomLayer.execManager.getCurrentLeader(),
-                        PolynomialCreationReason.RESHARING
+                        PolynomialCreationReason.RESHARING,
+                        oldView,
+                        newView
                 );
                 logger.debug("Starting creation of new polynomial with id {} for resharing", id);
                 distributedPolynomial.createNewPolynomial(context);

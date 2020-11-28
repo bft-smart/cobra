@@ -1,3 +1,4 @@
+#script used to compile developed code
 C_PROJECT=$(pwd)
 RELIC=$(pwd)/relic
 JAVA_PATH=$1

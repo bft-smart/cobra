@@ -5,16 +5,16 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 
 public class NewPolynomialMessage extends PolynomialMessage {
-    private PolynomialContext context;
+    private PolynomialCreationContext context;
 
     public NewPolynomialMessage() {}
 
-    public NewPolynomialMessage(int sender, PolynomialContext context) {
+    public NewPolynomialMessage(int sender, PolynomialCreationContext context) {
         super(context.getId(), sender);
         this.context = context;
     }
 
-    public PolynomialContext getContext() {
+    public PolynomialCreationContext getContext() {
         return context;
     }
 
@@ -27,7 +27,7 @@ public class NewPolynomialMessage extends PolynomialMessage {
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
-        context = new PolynomialContext();
+        context = new PolynomialCreationContext();
         context.readExternal(in);
     }
 }

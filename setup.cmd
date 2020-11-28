@@ -1,4 +1,4 @@
-set SRC=D:\IntelliJ\COBRA
+set SRC=C:\Users\robin\\Documents\IntelliJ\COBRA
 set DST=C:\Users\robin\Desktop\cobra
 set REP=0 1 2 3
 set CLI=0

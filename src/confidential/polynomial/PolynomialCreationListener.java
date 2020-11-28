@@ -5,9 +5,9 @@ import vss.secretsharing.VerifiableShare;
 import java.util.List;
 
 public interface PolynomialCreationListener {
-    void onPolynomialCreationSuccess(PolynomialContext context, VerifiableShare point,
-                                     int consensusId);
-    void onPolynomialCreationFailure(PolynomialContext context,
+    void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
+                                     VerifiableShare... points);
+    void onPolynomialCreationFailure(PolynomialCreationContext context,
                                      List<ProposalMessage> invalidProposals,
                                      int consensusId);
 }

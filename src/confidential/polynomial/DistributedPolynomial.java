@@ -5,6 +5,8 @@ import confidential.interServersCommunication.InterServerMessageHolder;
 import confidential.interServersCommunication.InterServerMessageListener;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
+import confidential.polynomial.creator.PolynomialCreator;
+import confidential.polynomial.creator.PolynomialCreatorFactory;
 import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,20 +25,20 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class DistributedPolynomial implements InterServerMessageListener, Runnable {
-    private Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("confidential");
     private static final byte[] SEED = "confidential".getBytes();
 
     private ServerViewController svController;
-    private InterServersCommunication serversCommunication;
-    private SecureRandom rndGenerator;
-    private BigInteger field;
-    private ServerConfidentialityScheme confidentialityScheme;
-    private Map<Integer, PolynomialCreator> polynomialCreators;//TODO should I change to concurrentMap?
-    private Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
-    private int processId;
+    private final InterServersCommunication serversCommunication;
+    private final SecureRandom rndGenerator;
+    private final BigInteger field;
+    private final ServerConfidentialityScheme confidentialityScheme;
+    private final Map<Integer, PolynomialCreator> polynomialCreators;//TODO should I change to concurrentMap?
+    private final Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
+    private final int processId;
     private int lastPolynomialCreationProcessed;
-    private BlockingQueue<InterServerMessageHolder> pendingMessages;
-    private Lock entryLock;
+    private final BlockingQueue<InterServerMessageHolder> pendingMessages;
+    private final Lock entryLock;
 
     public DistributedPolynomial(ServerViewController svController, InterServersCommunication serversCommunication,
                                  ServerConfidentialityScheme confidentialityScheme) {
@@ -68,11 +70,11 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
         entryLock.unlock();
     }
 
-    public void createNewPolynomial(PolynomialContext context) {
+    public void createNewPolynomial(PolynomialCreationContext context) {
         try {
             entryLock.lock();
             PolynomialCreator polynomialCreator = polynomialCreators.get(context.getId());
-            if (polynomialCreator != null && polynomialCreator.getContext().getReason() != context.getReason() ) {
+            if (polynomialCreator != null && polynomialCreator.getCreationContext().getReason() != context.getReason() ) {
                 logger.debug("Polynomial with id {} is already being created for different reason", context.getId());
                 return;
             }
@@ -88,21 +90,24 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
         }
     }
 
-    private PolynomialCreator createNewPolynomialCreator(PolynomialContext context) {
+    private PolynomialCreator createNewPolynomialCreator(PolynomialCreationContext context) {
         if (context.getId() <= lastPolynomialCreationProcessed) {
             logger.debug("Polynomial creation id {} is old", context.getId());
             return null;
         }
 
-        PolynomialCreator polynomialCreator = new PolynomialCreator(
+        PolynomialCreator polynomialCreator = PolynomialCreatorFactory.getInstance().getNewCreatorFor(
                 context,
                 processId,
-                svController.getCurrentView().getN(),
                 rndGenerator,
                 confidentialityScheme,
                 serversCommunication,
                 listeners.get(context.getReason())
         );
+
+        if (polynomialCreator == null)
+            return null;
+
         polynomialCreators.put(context.getId(), polynomialCreator);
         lastPolynomialCreationProcessed = context.getId();
         return polynomialCreator;

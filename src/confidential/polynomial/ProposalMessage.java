@@ -1,34 +1,22 @@
 package confidential.polynomial;
 
-import vss.Utils;
-import vss.commitment.Commitment;
-
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.HashMap;
-import java.util.Map;
 
 public class ProposalMessage extends PolynomialMessage {
-    private Map<Integer, byte[]> points;
-    private Commitment commitments;
+    private Proposal[] proposals;
     private byte[] cryptographicHash;
 
     public ProposalMessage() {}
 
-    public ProposalMessage(int id, int sender, Map<Integer, byte[]> points,
-                           Commitment commitments) {
+    public ProposalMessage(int id, int sender, Proposal... proposals) {
         super(id, sender);
-        this.points = points;
-        this.commitments = commitments;
+        this.proposals = proposals;
     }
 
-    public Map<Integer, byte[]> getPoints() {
-        return points;
-    }
-
-    public Commitment getCommitments() {
-        return commitments;
+    public Proposal[] getProposals() {
+        return proposals;
     }
 
     public byte[] getCryptographicHash() {
@@ -42,32 +30,26 @@ public class ProposalMessage extends PolynomialMessage {
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         super.writeExternal(out);
-        out.writeInt(points == null ? -1 : points.size());
-        for (Map.Entry<Integer, byte[]> entry : points.entrySet()) {
-            out.writeInt(entry.getKey());
-            byte[] b = entry.getValue();
-            out.writeInt(b.length);
-            out.write(b);
-
+        if (proposals == null)
+            out.writeInt(-1);
+        else {
+            out.writeInt(proposals.length);
+            for (Proposal proposal : proposals) {
+                proposal.writeExternal(out);
+            }
         }
-
-        Utils.writeCommitment(commitments, out);
     }
 
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         super.readExternal(in);
         int size = in.readInt();
-        if (size != -1) {
-            points = new HashMap<>(size);
-            byte[] b;
-            while (size-- > 0) {
-                int shareholder = in.readInt();
-                b = new byte[in.readInt()];
-                in.readFully(b);
-                points.put(shareholder, b);
+        if (size > -1) {
+            proposals = new Proposal[size];
+            for (int i = 0; i < size; i++) {
+                proposals[i] = new Proposal();
+                proposals[i].readExternal(in);
             }
         }
-        commitments = Utils.readCommitment(in);
     }
 }
