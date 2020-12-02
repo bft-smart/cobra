@@ -8,7 +8,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.LinkedList;
 
-public class RecoveryApplicationState implements Externalizable {
+public class BlindedApplicationState implements Externalizable {
     private byte[] commonState;
     private byte[] commitments;
     private byte[] commonStateHash;
@@ -17,12 +17,12 @@ public class RecoveryApplicationState implements Externalizable {
     private int lastCID;
     private int pid;
 
-    public RecoveryApplicationState() {}
+    public BlindedApplicationState() {}
 
-    public RecoveryApplicationState(byte[] commonState, LinkedList<Share> shares,
-                                    byte[] commitments, int lastCheckpointCID,
-                                    int lastCID,
-                                    int pid) {
+    public BlindedApplicationState(byte[] commonState, LinkedList<Share> shares,
+                                   byte[] commitments, int lastCheckpointCID,
+                                   int lastCID,
+                                   int pid) {
         this.commonState = commonState;
         this.shares = shares;
         this.commitments = commitments;

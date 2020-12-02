@@ -17,13 +17,13 @@ import java.util.concurrent.locks.ReentrantLock;
  * @author Robin
  */
 public class HashThread extends Thread {
-    private Logger logger = LoggerFactory.getLogger("confidential");
-    private MessageDigest digest;
-    private Lock lock;
-    private BlockingQueue<Pair> offsets;
+    private final Logger logger = LoggerFactory.getLogger("confidential");
+    private final MessageDigest digest;
+    private final Lock lock;
+    private final BlockingQueue<Pair> offsets;
     private byte[] data;
 
-    HashThread() throws NoSuchAlgorithmException {
+    public HashThread() throws NoSuchAlgorithmException {
         super("Hash Thread");
         //this.digest = TOMUtil.getHashEngine();
         //this.digest = MessageDigest.getInstance(Configuration.DEFAULT_HASH,
@@ -33,11 +33,11 @@ public class HashThread extends Thread {
         this.offsets = new LinkedBlockingDeque<>();
     }
 
-    void setData(byte[] data) {
+    public void setData(byte[] data) {
         this.data = data;
     }
 
-    byte[] getHash() {
+    public byte[] getHash() {
         lock.lock();
         byte[] result = digest.digest();
         lock.unlock();

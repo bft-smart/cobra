@@ -51,4 +51,12 @@ public class Utils {
 
         return result;
     }
+
+    public static boolean isIn(int n, int[] ns) {
+        for (int i : ns) {
+            if (i == n)
+                return true;
+        }
+        return false;
+    }
 }

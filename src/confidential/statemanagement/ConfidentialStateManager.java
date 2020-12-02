@@ -12,9 +12,14 @@ import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.Configuration;
+import confidential.Utils;
 import confidential.polynomial.*;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
+import confidential.statemanagement.resharing.BlindedStateHandler;
+import confidential.statemanagement.resharing.BlindedStateSender;
+import confidential.statemanagement.resharing.ConstantBlindedStateHandler;
+import confidential.statemanagement.resharing.LinearBlindedStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
@@ -45,6 +50,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private long recoveryStartTime;
     private long renewalStartTime;
     private final Set<Integer> usedReplicas;
+    private boolean isRefreshing;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
@@ -227,6 +233,10 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
      */
     @Override
     public void onReconstructionCompleted(DefaultApplicationState recoveredState) {
+        if (isRefreshing) {
+            finishRefresh(recoveredState);
+            return;
+        }
         try {
             lockTimer.lock();
 
@@ -355,39 +365,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         }
     }
 
-    private int getCorrectValue(HashMap<Integer, Integer> senders) {
-        int max = 0;
-        int result = 0;
-        for (Map.Entry<Integer, Integer> entry : senders.entrySet()) {
-            if (entry.getValue() > max) {
-                max = entry.getValue();
-                result = entry.getKey();
-            }
-        }
-        if (max <= SVController.getCurrentViewF())
-            return -1;
-        return result;
-    }
-
-    private<T> T getCurrentValue(HashMap<Integer, T> senderValues) {
-        Map<T, Integer> counter = new HashMap<>();
-        for (T value : senderValues.values()) {
-            counter.merge(value, 1, Integer::sum);
-        }
-
-        int max = 0;
-        T result = null;
-        for (Map.Entry<T, Integer> entry : counter.entrySet()) {
-            if (entry.getValue() > max) {
-                max = entry.getValue();
-                result = entry.getKey();
-            }
-        }
-        if (max <= SVController.getCurrentViewF())
-            return null;
-        return result;
-    }
-
     @Override
     public void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
                                             VerifiableShare... points) {
@@ -405,17 +382,81 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             refreshTriggerTask.cancel();
             long endTime = System.nanoTime() - renewalStartTime;
             logger.info("Renewal polynomial duration: {} ms", (endTime / 1_000_000.0));
-            long start = System.nanoTime();
-            refreshState(points[0], consensusId);//TODO change to new resharing scheme
-            long end = System.nanoTime() - start;
-            logger.info("Renewal duration: {} ms", (end / 1_000_000.0));
+
+            isRefreshing = true;
+            int[] oldMembers = context.getContexts()[0].getMembers();
+            int[] newMembers = context.getContexts()[1].getMembers();
+            int processId = SVController.getStaticConf().getProcessId();
+            if (Utils.isIn(processId, newMembers)) {
+                BlindedStateHandler blindedStateHandler;
+                if (Configuration.getInstance().getVssScheme().equals("1"))
+                    blindedStateHandler = new LinearBlindedStateHandler(
+                            processId,
+                            context,
+                            points[1],
+                            confidentialityScheme,
+                            context.getLeader(),
+                            SERVER_STATE_LISTENING_PORT,
+                            this
+                    );
+                else
+                    blindedStateHandler = new ConstantBlindedStateHandler(
+                            processId,
+                            context,
+                            points[1],
+                            confidentialityScheme,
+                            context.getLeader(),
+                            SERVER_STATE_LISTENING_PORT,
+                            this
+                    );
+                blindedStateHandler.start();
+            }
+
+            if (Utils.isIn(processId, oldMembers)) {
+                sendingBlindedState(context, points[0], consensusId);
+            }
         }
     }
 
-    @Override
-    public void onPolynomialCreationFailure(PolynomialCreationContext context, List<ProposalMessage> invalidProposals, int consensusId) {
-        logger.error("I received an invalid point");
-        System.exit(-1);
+    private void sendingBlindedState(PolynomialCreationContext creationContext, VerifiableShare blindingShare, int consensusId) {
+        try {
+            dt.iAmWaitingForDeliverLock();
+            logger.debug("Trying to acquire deliverLock");
+            dt.deliverLock();
+            logger.debug("deliverLock acquired");
+            dt.iAmNotWaitingForDeliverLock();
+
+            logger.debug("Getting state");
+            DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
+            if (appState == null) {
+                logger.debug("Something went wrong while retrieving state up to {}", consensusId);
+                return;
+            }
+
+            int[] newMembers = creationContext.getContexts()[1].getMembers();
+            String[] receiversIp = new String[newMembers.length];
+            for (int i = 0; i < newMembers.length; i++) {
+                receiversIp[i] = SVController.getCurrentView().getAddress(newMembers[i]).getAddress().getHostAddress();
+            }
+
+            boolean iAmStateSender = creationContext.getLeader() == SVController.getStaticConf().getProcessId();
+            new BlindedStateSender(SVController, confidentialityScheme.getField(), SERVER_STATE_LISTENING_PORT,
+                    receiversIp, appState, blindingShare, iAmStateSender)
+                    .start();
+        } catch (Exception e) {
+            logger.error("Failed to send blinded state.", e);
+        }
+    }
+
+    protected void finishRefresh(DefaultApplicationState renewedState) {
+        logger.info("Updating state");
+        dt.refreshState(renewedState);
+        logger.debug("State renewed");
+
+        dt.canDeliver();//signal deliverThread that state has been installed
+        dt.deliverUnlock();
+        isRefreshing = false;
+        setRefreshTimer();
     }
 
     private void refreshState(VerifiableShare point, int consensusId) {
@@ -452,6 +493,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             setRefreshTimer();
         }
 
+    }
+
+    @Override
+    public void onPolynomialCreationFailure(PolynomialCreationContext context, List<ProposalMessage> invalidProposals, int consensusId) {
+        logger.error("I received an invalid point");
+        System.exit(-1);
     }
 
     private DefaultApplicationState refreshState(VerifiableShare point, DefaultApplicationState appState) {
@@ -605,5 +652,38 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.info("Sending recovery state sender server info to {}", recoveryMessage.getSender());
         tomLayer.getCommunication().send(new int[]{recoveryMessage.getSender()}, response);
         logger.info("Recovery state sender server info sent");
+    }
+
+    private int getCorrectValue(HashMap<Integer, Integer> senders) {
+        int max = 0;
+        int result = 0;
+        for (Map.Entry<Integer, Integer> entry : senders.entrySet()) {
+            if (entry.getValue() > max) {
+                max = entry.getValue();
+                result = entry.getKey();
+            }
+        }
+        if (max <= SVController.getCurrentViewF())
+            return -1;
+        return result;
+    }
+
+    private<T> T getCurrentValue(HashMap<Integer, T> senderValues) {
+        Map<T, Integer> counter = new HashMap<>();
+        for (T value : senderValues.values()) {
+            counter.merge(value, 1, Integer::sum);
+        }
+
+        int max = 0;
+        T result = null;
+        for (Map.Entry<T, Integer> entry : counter.entrySet()) {
+            if (entry.getValue() > max) {
+                max = entry.getValue();
+                result = entry.getKey();
+            }
+        }
+        if (max <= SVController.getCurrentViewF())
+            return null;
+        return result;
     }
 }

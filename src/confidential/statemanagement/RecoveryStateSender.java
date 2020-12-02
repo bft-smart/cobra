@@ -6,13 +6,11 @@ import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
-import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.Utils;
 import confidential.server.Request;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.commitment.constant.ShareCommitment;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
@@ -89,7 +87,7 @@ public class RecoveryStateSender extends Thread {
     @Override
     public void run() {
         logger.debug("Generating recovery state");
-        RecoveryApplicationState recoveryState = createRecoverState();
+        BlindedApplicationState recoveryState = createRecoverState();
         if (recoveryState == null) {
             logger.error("Failed to generate recovery application state. Exiting state sender server thread.");
             return;
@@ -108,7 +106,7 @@ public class RecoveryStateSender extends Thread {
         logger.debug("Exiting state sender server thread");
     }
 
-    private void sendPublicState(RecoveryApplicationState state) {
+    private void sendPublicState(BlindedApplicationState state) {
         logger.debug("Connecting un-securely to {}:{}", recoveringServerIp, unSecureServerPort);
         try (Socket unSecureConnection = SocketFactory.getDefault().createSocket(recoveringServerIp, unSecureServerPort);
              BufferedOutputStream out = new BufferedOutputStream(unSecureConnection.getOutputStream())) {
@@ -184,7 +182,7 @@ public class RecoveryStateSender extends Thread {
         }
     }
 
-    private RecoveryApplicationState createRecoverState() {
+    private BlindedApplicationState createRecoverState() {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutputStream out = new ObjectOutputStream(bos);
              ByteArrayOutputStream bosCommitments = new ByteArrayOutputStream();
@@ -282,7 +280,7 @@ public class RecoveryStateSender extends Thread {
             byte[] commonState = bos.toByteArray();
             byte[] commitmentsBytes = bosCommitments.toByteArray();
 
-            return new RecoveryApplicationState(
+            return new BlindedApplicationState(
                     commonState,
                     shares,
                     commitmentsBytes,
