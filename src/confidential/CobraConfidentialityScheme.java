@@ -13,9 +13,7 @@ import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
 import java.math.BigInteger;
-import java.security.InvalidKeyException;
-import java.security.Key;
-import java.security.NoSuchAlgorithmException;
+import java.security.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -92,6 +90,14 @@ public abstract class CobraConfidentialityScheme {
         } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
             throw new SecretSharingException("Failed to encrypt share", e);
         }
+    }
+
+    public PublicKey getSigningPublicKeyFor(int id) {
+        return keysManager.getSigningPublicKeyFor(id);
+    }
+
+    public PrivateKey getSigningPrivateKey() {
+        return keysManager.getSigningKey();
     }
 
     public byte[] encryptDataFor(int id, byte[] data) {

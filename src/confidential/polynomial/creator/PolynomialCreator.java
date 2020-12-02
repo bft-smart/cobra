@@ -19,6 +19,8 @@ import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.math.BigInteger;
+import java.security.PrivateKey;
+import java.security.PublicKey;
 import java.security.SecureRandom;
 import java.util.*;
 
@@ -141,6 +143,12 @@ public abstract class PolynomialCreator {
 
     private void generateAndSendProposal() {
         myProposal = computeProposalMessage();
+
+        byte[] proposalHash = computeCryptographicHash(myProposal);
+        PrivateKey signingKey = confidentialityScheme.getSigningPrivateKey();
+        byte[] signature = TOMUtil.signMessage(signingKey, proposalHash);
+        myProposal.setSignature(signature);
+
         int[] members = getMembers(false);
         logger.debug("Sending ProposalMessage to {} with id {}", Arrays.toString(members),
                 creationContext.getId());
@@ -170,6 +178,11 @@ public abstract class PolynomialCreator {
         }
         byte[] cryptHash = computeCryptographicHash(message);
         if (cryptHash == null) {
+            return;
+        }
+        PublicKey signingPublicKey = confidentialityScheme.getSigningPublicKeyFor(message.getSender());
+        if (!TOMUtil.verifySignature(signingPublicKey, cryptHash, message.getSignature())) {
+            logger.warn("Server {} sent me a proposal with an invalid signature. Ignoring.", message.getSender());
             return;
         }
         message.setCryptographicHash(cryptHash);
@@ -248,6 +261,7 @@ public abstract class PolynomialCreator {
 
         proposalSetProposed = true;
     }
+
     boolean isValidShare(Commitment commitment, Share... shares) {
         boolean isValid = true;
         commitmentScheme.startVerification(commitment);
@@ -402,8 +416,8 @@ public abstract class PolynomialCreator {
             return bos.toByteArray();
         } catch (IOException e) {
             logger.warn("Polynomial message serialization failed", e);
+            return null;
         }
-        return null;
     }
 
     protected BigInteger getRandomNumber() {

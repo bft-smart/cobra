@@ -7,6 +7,7 @@ import java.io.ObjectOutput;
 public class ProposalMessage extends PolynomialMessage {
     private Proposal[] proposals;
     private byte[] cryptographicHash;
+    private byte[] signature;
 
     public ProposalMessage() {}
 
@@ -23,8 +24,16 @@ public class ProposalMessage extends PolynomialMessage {
         return cryptographicHash;
     }
 
+    public byte[] getSignature() {
+        return signature;
+    }
+
     public void setCryptographicHash(byte[] cryptographicHash) {
         this.cryptographicHash = cryptographicHash;
+    }
+
+    public void setSignature(byte[] signature) {
+        this.signature = signature;
     }
 
     @Override
@@ -38,6 +47,10 @@ public class ProposalMessage extends PolynomialMessage {
                 proposal.writeExternal(out);
             }
         }
+
+        out.writeInt(signature == null ? -1 : signature.length);
+        if (signature != null)
+            out.write(signature);
     }
 
     @Override
@@ -50,6 +63,12 @@ public class ProposalMessage extends PolynomialMessage {
                 proposals[i] = new Proposal();
                 proposals[i].readExternal(in);
             }
+        }
+
+        size = in.readInt();
+        if (size > -1) {
+            signature = new byte[size];
+            in.readFully(signature);
         }
     }
 }
