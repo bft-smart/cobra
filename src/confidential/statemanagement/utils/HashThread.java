@@ -1,15 +1,16 @@
-package confidential.statemanagement;
+package confidential.statemanagement.utils;
 
-import bftsmart.reconfiguration.util.Configuration;
 import bftsmart.tom.util.TOMUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.security.Security;
+import java.util.Arrays;
 import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -19,17 +20,18 @@ import java.util.concurrent.locks.ReentrantLock;
 public class HashThread extends Thread {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private final MessageDigest digest;
-    private final Lock lock;
+    private final CountDownLatch latch;
     private final BlockingQueue<Pair> offsets;
     private byte[] data;
+    private byte[] result;
 
     public HashThread() throws NoSuchAlgorithmException {
         super("Hash Thread");
-        //this.digest = TOMUtil.getHashEngine();
+        this.digest = TOMUtil.getHashEngine();
         //this.digest = MessageDigest.getInstance(Configuration.DEFAULT_HASH,
             //Security.getProvider(Configuration.DEFAULT_HASH_PROVIDER));
-        this.digest = MessageDigest.getInstance("SHA-256");
-        this.lock = new ReentrantLock();
+        //this.digest = MessageDigest.getInstance("SHA-256");
+        this.latch = new CountDownLatch(1);
         this.offsets = new LinkedBlockingDeque<>();
     }
 
@@ -38,10 +40,13 @@ public class HashThread extends Thread {
     }
 
     public byte[] getHash() {
-        lock.lock();
-        byte[] result = digest.digest();
-        lock.unlock();
-        return result;
+        try {
+            latch.await();
+            return result;
+        } catch (InterruptedException e) {
+            logger.error("Failed to wait for digest result", e);
+            return null;
+        }
     }
 
     public void update(int offset, int len) {
@@ -54,7 +59,6 @@ public class HashThread extends Thread {
 
     @Override
     public void run() {
-        lock.lock();
         while (true) {
             try {
                 Pair offset = offsets.take();
@@ -65,13 +69,14 @@ public class HashThread extends Thread {
                 logger.error("Failed to take offset from queue.", e);
             }
         }
-        lock.unlock();
+        result = digest.digest();
+        latch.countDown();
         logger.debug("Exiting Hash Thread");
     }
 
     private static class Pair {
-        private int offset;
-        private int len;
+        private final int offset;
+        private final int len;
 
         Pair(int offset, int len) {
             this.offset = offset;

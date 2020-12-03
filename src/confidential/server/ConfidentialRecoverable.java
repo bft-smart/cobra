@@ -43,21 +43,21 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public final class ConfidentialRecoverable implements SingleExecutable, Recoverable,
         ProposeRequestVerifier {
-    private Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("confidential");
     private ServerConfidentialityScheme confidentialityScheme;
     private final int processId;
     private ReplicaContext replicaContext;
     private ConfidentialStateLog log;
     private ReentrantLock stateLock;
-    private ReentrantLock logLock;
+    private final ReentrantLock logLock;
     private ConfidentialStateManager stateManager;
     private InterServersCommunication interServersCommunication;
     private int checkpointPeriod;
-    private List<byte[]> commands;
-    private List<MessageContext> msgContexts;
+    private final List<byte[]> commands;
+    private final List<MessageContext> msgContexts;
     private int currentF;
-    private boolean useTLSEncryption;
-    private ConfidentialSingleExecutable confidentialExecutor;
+    private final boolean useTLSEncryption;
+    private final ConfidentialSingleExecutable confidentialExecutor;
     private DistributedPolynomial distributedPolynomial;
 
     public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
@@ -114,10 +114,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                      ObjectInput in = new ObjectInputStream(bis)) {
                     ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
                     proposalSetMessage.readExternal(in);
-                    boolean isValid =
-                            distributedPolynomial.isValidProposalSet(proposalSetMessage);
-                    logger.info("*******************************Responding: {}", isValid);
-                    return isValid;
+                    return distributedPolynomial.isValidProposalSet(proposalSetMessage);
                 } catch (IOException | ClassNotFoundException e) {
                     logger.error("Failed to deserialize polynomial message of type " +
                             "{}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);

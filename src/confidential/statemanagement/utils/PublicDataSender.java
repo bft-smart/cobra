@@ -48,13 +48,13 @@ public class PublicDataSender extends Thread {
                 byte[] state = states.take();
                 t1 = System.nanoTime();
 
-                logger.info("Data {} has {} bytes", i + 1, state.length);
                 out.write(Utils.toBytes(state.length));
                 out.write(state);
                 out.flush();
 
                 t2 = System.nanoTime();
-                logger.info("Took {} ms to send data {}", (t2 - t1) / 1_000_000.0, i + 1);
+                logger.debug("Took {} ms to send data {} to {}:{}", (t2 - t1) / 1_000_000.0, i + 1,
+                        receiverServerIp, receiverServerPort);
             }
         } catch (IOException | InterruptedException e) {
             logger.error("Failed to send public data to {}:{}.", receiverServerIp, receiverServerPort);

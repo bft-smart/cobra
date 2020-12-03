@@ -1,6 +1,7 @@
 package confidential.statemanagement.resharing;
 
 import bftsmart.consensus.messages.ConsensusMessage;
+import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.core.messages.TOMMessage;
 import bftsmart.tom.core.messages.TOMMessageType;
@@ -70,7 +71,7 @@ public abstract class BlindedStateHandler extends Thread {
     private PublicDataReceiver publicDataReceiver;
     private final ReconstructionCompleted reconstructionListener;
 
-    public BlindedStateHandler(int processId,
+    public BlindedStateHandler(ServerViewController svController,
                                PolynomialCreationContext context,
                                VerifiableShare refreshPoint,
                                ServerConfidentialityScheme confidentialityScheme,
@@ -82,7 +83,7 @@ public abstract class BlindedStateHandler extends Thread {
         this.oldThreshold = context.getContexts()[0].getF();
         this.newThreshold = context.getContexts()[1].getF();
         this.oldQuorum = context.getContexts()[0].getMembers().length - oldThreshold;
-        this.processId = processId;
+        this.processId = svController.getStaticConf().getProcessId();
         this.refreshPoint = refreshPoint;
         this.confidentialityScheme = confidentialityScheme;
         this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
@@ -96,10 +97,11 @@ public abstract class BlindedStateHandler extends Thread {
         this.blindedSharesSize = new HashMap<>(oldQuorum);
 
         this.correctBlindedSharesSize = -1;
-        String[] receiversId = new String[context.getContexts()[0].getMembers().length];
-
+        int[] receiversId = context.getContexts()[0].getMembers();
         try {
-            this.publicDataReceiver = new PublicDataReceiver(this, serverPort, stateSenderReplica, receiversId);
+            int port = serverPort + processId;
+            this.publicDataReceiver = new PublicDataReceiver(this, svController, port,
+                    stateSenderReplica, receiversId);
             this.publicDataReceiver.start();
         } catch (IOException e) {
             logger.error("Failed to initialize public data receiver thread", e);
@@ -115,10 +117,11 @@ public abstract class BlindedStateHandler extends Thread {
             if (from == stateSenderReplica) {
                 selectedCommonState = serializedCommonState;
                 selectedCommonStateHash = commonStateHashCode;
-                logger.info("Replica {} sent me a common state of {} bytes", from, serializedCommonState.length);
+                logger.debug("Replica {} sent me a common state of {} bytes", from, serializedCommonState.length);
             } else {
-                logger.info("Replica {} sent me hash of a common state", from);
+                logger.debug("Replica {} sent me hash of a common state", from);
             }
+
             commonState.merge(commonStateHashCode, 1, Integer::sum);
 
             handleNewCommitments(from, serializedCommitments, commitmentsHash);
@@ -148,24 +151,26 @@ public abstract class BlindedStateHandler extends Thread {
         while (true) {
             try {
                 lock.lock();
+                logger.debug("Waiting for new blinded state");
                 condition.await();
+                logger.debug("Wait finished");
                 if (blindedShares.size() < oldQuorum || selectedCommonState == null
                         || nCommonStateReceived < oldQuorum/* || (commitmentsStreams != null && commitmentsStreams.size() < oldQuorum)*/)
                     continue;
-                logger.info("I have received n-f blinded states");
+                logger.debug("I have received enough states");
                 if (commonStateStream == null) {
                     if (haveCorrectState(selectedCommonState, commonState, selectedCommonStateHash))
                         commonStateStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommonState));
                     else
-                        logger.info("I don't have enough same states");
+                        logger.debug("I don't have enough same states");
                 }
                 if (!prepareCommitments()) {
                     continue;
                 }
                 if (correctBlindedSharesSize == -1) {
                     correctBlindedSharesSize = selectCorrectKey(blindedSharesSize);
+                    logger.debug("I have received {} secret blinded shares", correctBlindedSharesSize);
                 }
-
                 if (commonStateStream != null && correctBlindedSharesSize != -1) {
                     logger.info("Reconstructing state");
                     long startTime = System.nanoTime();
@@ -180,6 +185,9 @@ public abstract class BlindedStateHandler extends Thread {
                     reconstructionListener.onReconstructionCompleted(refreshedState);
                     break;
 
+                } else {
+                    logger.debug("Common state stream is null? {} | correct blinded shares size: {}",
+                            commonStateStream == null, correctBlindedSharesSize);
                 }
             } catch (InterruptedException e) {
                 logger.error("Failed to poll state from queue", e);
@@ -237,13 +245,13 @@ public abstract class BlindedStateHandler extends Thread {
                     refreshedSerializedState == null ? null : TOMUtil.computeHash(refreshedSerializedState),
                     processId
             );
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException | SecretSharingException e) {
             logger.error("Failed to reconstruct refreshed state", e);
             return null;
         }
     }
 
-    private CommandsInfo[] refreshLog(int logSize, Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException {
+    private CommandsInfo[] refreshLog(int logSize, Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException, SecretSharingException {
         logger.info("Refreshing log");
         CommandsInfo[] log = new CommandsInfo[logSize];
         for (int i = 0; i < logSize; i++) {
@@ -282,7 +290,7 @@ public abstract class BlindedStateHandler extends Thread {
         return log;
     }
 
-    private ConfidentialSnapshot refreshSnapshot(Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException {
+    private ConfidentialSnapshot refreshSnapshot(Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException, SecretSharingException {
         logger.info("Refreshing snapshot");
         int plainDataSize = commonStateStream.readInt();
         byte[] plainData = null;
@@ -305,7 +313,7 @@ public abstract class BlindedStateHandler extends Thread {
                 : new ConfidentialSnapshot(plainData, snapshotShares);
     }
 
-    private ConfidentialData[] getRefreshedShares(int nShares, Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException {
+    private ConfidentialData[] getRefreshedShares(int nShares, Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException, SecretSharingException {
         ConfidentialData[] shares = new ConfidentialData[nShares];
         for (int i = 0; i < nShares; i++) {
             int shareDataSize = commonStateStream.readInt();
@@ -324,6 +332,7 @@ public abstract class BlindedStateHandler extends Thread {
                     refreshPoint.getCommitments());
             vs.setCommitments(refreshedShareCommitment);
             vs.getShare().setShare(refreshedShare);
+            vs.getShare().setShareholder(shareholderId);
             shares[i] = new ConfidentialData(vs);
         }
         return shares;
@@ -451,7 +460,7 @@ public abstract class BlindedStateHandler extends Thread {
             return false;
         Optional<Map.Entry<Integer, Integer>> max = states.entrySet().stream()
                 .max(Comparator.comparingInt(Map.Entry::getValue));
-        if (max.isEmpty()) {
+        if (!max.isPresent()) {
             logger.info("I don't have correct common state");
             return false;
         }

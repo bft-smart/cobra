@@ -11,7 +11,7 @@ import confidential.Configuration;
 import confidential.server.Request;
 import confidential.statemanagement.BlindedApplicationState;
 import confidential.statemanagement.ConfidentialSnapshot;
-import confidential.statemanagement.HashThread;
+import confidential.statemanagement.utils.HashThread;
 import confidential.statemanagement.utils.PublicDataSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,17 +23,15 @@ import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Comparator;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 
 public class BlindedStateSender extends Thread {
     private final Logger logger = LoggerFactory.getLogger("confidential");
+    private final ServerViewController svController;
     private final int processId;
     private final BigInteger field;
     private final int unSecureServerPort;
-    private final String[] receiversIp;
+    private final int[] receivers;
     private final DefaultApplicationState state;
     private final VerifiableShare blindingShare;
     private final HashThread commonStateHashThread;
@@ -41,13 +39,14 @@ public class BlindedStateSender extends Thread {
     private final boolean iAmStateSender;
 
     public BlindedStateSender(ServerViewController svController, BigInteger field,
-                              int stateReceiverPort, String[] receiversIp,
+                              int stateReceiverPort, int[] receivers,
                               DefaultApplicationState state, VerifiableShare blindingShare, boolean iAmStateSender) throws Exception {
         super("State Sender Thread");
+        this.svController = svController;
         this.processId = svController.getStaticConf().getProcessId();
         this.field = field;
         this.unSecureServerPort = stateReceiverPort;
-        this.receiversIp = receiversIp;
+        this.receivers = receivers;
         this.state = state;
         this.blindingShare = blindingShare;
         this.iAmStateSender = iAmStateSender;
@@ -85,11 +84,19 @@ public class BlindedStateSender extends Thread {
         t1 = System.nanoTime();
         byte[] serializedBlindedShares = serializeBlindedShares(blindedState.getShares());
         t2 = System.nanoTime();
-        logger.info("Took {} ms to serialize private state", (t2 - t1) / 1_000_000.0);
+        if (serializedBlindedShares == null) {
+            logger.error("Failed to serialized blinded shares");
+            return;
+        }
+        logger.info("Took {} ms to serialize blinded state", (t2 - t1) / 1_000_000.0);
 
-        PublicDataSender[] publicDataSenders = new PublicDataSender[receiversIp.length];
-        for (int i = 0; i < receiversIp.length; i++) {
-            publicDataSenders[i] = new PublicDataSender(receiversIp[i], unSecureServerPort, processId, 3);
+        PublicDataSender[] publicDataSenders = new PublicDataSender[receivers.length];
+        logger.debug("Sending {} bytes of serialized blinded shares", serializedBlindedShares.length);
+
+        for (int i = 0; i < receivers.length; i++) {
+            String receiverIp = svController.getCurrentView().getAddress(receivers[i]).getAddress().getHostAddress();
+            int port = unSecureServerPort + receivers[i];
+            publicDataSenders[i] = new PublicDataSender(receiverIp, port , processId, 3);
             publicDataSenders[i].start();
             publicDataSenders[i].sendData(serializedBlindedShares);
         }
@@ -98,6 +105,7 @@ public class BlindedStateSender extends Thread {
         if (!iAmStateSender && commitmentHashThread != null) {
             commitments = commitmentHashThread.getHash();
         }
+        logger.debug("Sending {} bytes of commitments", commitments.length);
         for (PublicDataSender publicDataSender : publicDataSenders) {
             publicDataSender.sendData(commitments);
         }
@@ -109,6 +117,7 @@ public class BlindedStateSender extends Thread {
         } else {
             commonState = commonStateHashThread.getHash();
         }
+        logger.debug("Sending {} bytes of common state", commonState.length);
         for (PublicDataSender publicDataSender : publicDataSenders) {
             publicDataSender.sendData(commonState);
         }

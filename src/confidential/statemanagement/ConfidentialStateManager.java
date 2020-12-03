@@ -391,7 +391,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 BlindedStateHandler blindedStateHandler;
                 if (Configuration.getInstance().getVssScheme().equals("1"))
                     blindedStateHandler = new LinearBlindedStateHandler(
-                            processId,
+                            SVController,
                             context,
                             points[1],
                             confidentialityScheme,
@@ -401,7 +401,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     );
                 else
                     blindedStateHandler = new ConstantBlindedStateHandler(
-                            processId,
+                            SVController,
                             context,
                             points[1],
                             confidentialityScheme,
@@ -433,32 +433,45 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 return;
             }
 
-            int[] newMembers = creationContext.getContexts()[1].getMembers();
-            String[] receiversIp = new String[newMembers.length];
-            for (int i = 0; i < newMembers.length; i++) {
-                receiversIp[i] = SVController.getCurrentView().getAddress(newMembers[i]).getAddress().getHostAddress();
-            }
+            waitingCID = appState.getLastCID();
 
+            int[] receivers = creationContext.getContexts()[1].getMembers();
             boolean iAmStateSender = creationContext.getLeader() == SVController.getStaticConf().getProcessId();
             new BlindedStateSender(SVController, confidentialityScheme.getField(), SERVER_STATE_LISTENING_PORT,
-                    receiversIp, appState, blindingShare, iAmStateSender)
+                    receivers, appState, blindingShare, iAmStateSender)
                     .start();
         } catch (Exception e) {
             logger.error("Failed to send blinded state.", e);
+        } finally {
+            //dt.canDeliver();//signal deliverThread that state has been installed
+            dt.deliverUnlock();
         }
     }
 
     protected void finishRefresh(DefaultApplicationState renewedState) {
+        dt.iAmWaitingForDeliverLock();
+        logger.debug("Trying to acquire deliverLock");
+        dt.deliverLock();
+        logger.debug("deliverLock acquired");
+        dt.iAmNotWaitingForDeliverLock();
+
         logger.info("Updating state");
         dt.refreshState(renewedState);
         logger.debug("State renewed");
+
+        waitingCID = -1;
 
         dt.canDeliver();//signal deliverThread that state has been installed
         dt.deliverUnlock();
         isRefreshing = false;
         setRefreshTimer();
     }
-
+    @Override
+    public void onPolynomialCreationFailure(PolynomialCreationContext context, List<ProposalMessage> invalidProposals, int consensusId) {
+        logger.error("I received an invalid point");
+        System.exit(-1);
+    }
+/*
     private void refreshState(VerifiableShare point, int consensusId) {
         try {
             logger.debug("Renewing my state");
@@ -493,12 +506,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             setRefreshTimer();
         }
 
-    }
-
-    @Override
-    public void onPolynomialCreationFailure(PolynomialCreationContext context, List<ProposalMessage> invalidProposals, int consensusId) {
-        logger.error("I received an invalid point");
-        System.exit(-1);
     }
 
     private DefaultApplicationState refreshState(VerifiableShare point, DefaultApplicationState appState) {
@@ -580,7 +587,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 SVController.getStaticConf().getProcessId()
         );
     }
-
+*/
     private void setRefreshTimer() {
         refreshTriggerTask = new TimerTask() {
             @Override

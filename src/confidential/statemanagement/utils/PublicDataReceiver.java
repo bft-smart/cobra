@@ -1,8 +1,9 @@
 package confidential.statemanagement.utils;
 
+import bftsmart.reconfiguration.ServerViewController;
+import bftsmart.reconfiguration.views.View;
 import confidential.Configuration;
 import confidential.Utils;
-import confidential.statemanagement.HashThread;
 import confidential.statemanagement.resharing.BlindedStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,7 +14,6 @@ import java.io.IOException;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -26,18 +26,24 @@ public class PublicDataReceiver extends Thread {
     private final boolean isLinearCommitmentScheme;
 
     public PublicDataReceiver(BlindedStateHandler blindedStateHandler,
+                              ServerViewController svController,
                               int serverPort,
-                              int stateSender, String[] receiversIp) throws IOException {
+                              int stateSender, int[] receiversId) throws IOException {
         super("Public Data Receiver Thread");
         this.blindedStateHandler = blindedStateHandler;
         this.serverSocket = ServerSocketFactory.getDefault().createServerSocket(serverPort);
         this.stateSender = stateSender;
-        this.knownServersIp = new HashSet<>(Arrays.asList(receiversIp));
+        this.knownServersIp = new HashSet<>(receiversId.length);
+        View cv = svController.getCurrentView();
+        for (int id : receiversId) {
+            knownServersIp.add(cv.getAddress(id).getAddress().getHostAddress());
+        }
         this.isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
     }
 
     @Override
     public void run() {
+        logger.debug("Listening for public data on {}:{}", serverSocket.getInetAddress().getHostName(), serverSocket.getLocalPort());
         while (true) {
             try (Socket client = serverSocket.accept()) {
                 client.setKeepAlive(true);
@@ -52,12 +58,14 @@ public class PublicDataReceiver extends Thread {
 
                 BufferedInputStream in = new BufferedInputStream(client.getInputStream());
                 int pid = Utils.toNumber(Utils.readNBytes(4, in));
-                logger.info("Received unencrypted connection from {}", pid);
+                logger.debug("Received unencrypted connection from {}", pid);
 
                 int len = Utils.toNumber(Utils.readNBytes(4, in));
+                logger.debug("Going to receive {} bytes fo blinded shares from {}", len, pid);
                 byte[] serializedBlindedShares = Utils.readNBytes(len, in);
 
                 len = Utils.toNumber(Utils.readNBytes(4, in));
+                logger.debug("Going to receive {} bytes of commitments from {}", len, pid);
                 byte[] commitments = null;
                 byte[] commitmentHash = null;
                 if (!isLinearCommitmentScheme) {
@@ -73,6 +81,7 @@ public class PublicDataReceiver extends Thread {
                 byte[] commonStateHash;
 
                 len = Utils.toNumber(Utils.readNBytes(4, in));
+                logger.debug("Going to receive {} bytes of common state from {}", len, pid);
                 if (pid != stateSender) {
                     commonStateHash = Utils.readNBytes(len, in);
                 } else {
@@ -109,10 +118,6 @@ public class PublicDataReceiver extends Thread {
         int j = 0;
         while (j < len) {
             int received = in.read(dataHolder, j, len);
-            if (received < 1) {
-                logger.info("-->>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>Received " +
-                        "number: {}", received);
-            }
             hashThread.update(j, received);
             j += received;
         }

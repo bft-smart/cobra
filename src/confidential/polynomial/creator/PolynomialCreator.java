@@ -10,6 +10,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
@@ -393,7 +394,12 @@ public abstract class PolynomialCreator {
         VerifiableShare[] result = new VerifiableShare[finalPoint.length];
         for (int j = 0; j < finalPoint.length; j++) {
             Share share = new Share(shareholderId, finalPoint[j]);
-            Commitment commitments = commitmentScheme.sumCommitments(allCommitments[j]);
+            Commitment commitments = null;
+            try {
+                commitments = commitmentScheme.sumCommitments(allCommitments[j]);
+            } catch (SecretSharingException e) {
+                logger.error("Failed to combine commitments", e);
+            }
             result[j] =  new VerifiableShare(share,
                     commitmentScheme.extractCommitment(shareholderId, commitments), null);
         }

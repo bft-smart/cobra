@@ -1,5 +1,6 @@
 package confidential.statemanagement.resharing;
 
+import bftsmart.reconfiguration.ServerViewController;
 import confidential.polynomial.PolynomialCreationContext;
 import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.ReconstructionCompleted;
@@ -23,10 +24,10 @@ public class LinearBlindedStateHandler extends BlindedStateHandler {
     private int selectedCommitmentHash;
     private Commitment blindingCommitment;
 
-    public LinearBlindedStateHandler(int processId, PolynomialCreationContext context,
+    public LinearBlindedStateHandler(ServerViewController svController, PolynomialCreationContext context,
                                      VerifiableShare refreshPoint, ServerConfidentialityScheme confidentialityScheme,
                                      int stateSenderReplica, int serverPort, ReconstructionCompleted reconstructionCompleted) {
-        super(processId, context, refreshPoint, confidentialityScheme, stateSenderReplica, serverPort, reconstructionCompleted);
+        super(svController, context, refreshPoint, confidentialityScheme, stateSenderReplica, serverPort, reconstructionCompleted);
         this.commitments = new HashMap<>(oldQuorum);
     }
 
@@ -36,10 +37,11 @@ public class LinearBlindedStateHandler extends BlindedStateHandler {
         if (from == stateSenderReplica) {
             selectedCommitments = serializedCommitments;
             selectedCommitmentHash = commitmentsHashCode;
-            logger.info("Replica {} sent me commitments of {} bytes", from, serializedCommitments.length);
+            logger.debug("Replica {} sent me commitments of {} bytes", from, serializedCommitments.length);
         } else {
-            logger.info("Replica {} sent me hash of commitments", from);
+            logger.debug("Replica {} sent me hash of commitments", from);
         }
+
         commitments.merge(commitmentsHashCode, 1, Integer::sum);
     }
 
@@ -50,10 +52,10 @@ public class LinearBlindedStateHandler extends BlindedStateHandler {
         try {
             if (haveCorrectState(selectedCommitments, commitments, selectedCommitmentHash)) {
                 commitmentsStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommitments));
-                return false;
+                return true;
             } else {
                 logger.info("I don't have enough same commitments");
-                return true;
+                return false;
             }
         } catch (IOException e) {
             logger.error("Failed to prepare commitments");

@@ -2,8 +2,8 @@ package confidential.statemanagement;
 
 import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.reconfiguration.views.View;
-import bftsmart.tom.util.TOMUtil;
 import confidential.Utils;
+import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

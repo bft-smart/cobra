@@ -6,7 +6,7 @@
     <property name="dist.dir" location="bin"/>
     <property name="lib.dir" location="lib"/>
 
-    <target name="main" depends="clean,compile,jar" description="Main target">
+    <target name="main" depends="clean,compile,jar,deploy" description="Main target">
         <echo>
             Building the .jar file.
         </echo>
@@ -36,6 +36,13 @@
                 <include name="config/*" />
             </fileset>
         </jar>
+    </target>
+
+    <target name="deploy" description="Execute setup script">
+        <exec executable="cmd">
+            <arg value="/c"/>
+            <arg value="setup.cmd"/>
+        </exec>
     </target>
 
 </project>

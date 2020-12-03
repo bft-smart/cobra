@@ -9,6 +9,7 @@ import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import confidential.ConfidentialData;
 import confidential.Utils;
 import confidential.server.Request;
+import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.secretsharing.Share;
