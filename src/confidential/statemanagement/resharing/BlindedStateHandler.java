@@ -151,9 +151,7 @@ public abstract class BlindedStateHandler extends Thread {
         while (true) {
             try {
                 lock.lock();
-                logger.debug("Waiting for new blinded state");
                 condition.await();
-                logger.debug("Wait finished");
                 if (blindedShares.size() < oldQuorum || selectedCommonState == null
                         || nCommonStateReceived < oldQuorum/* || (commitmentsStreams != null && commitmentsStreams.size() < oldQuorum)*/)
                     continue;

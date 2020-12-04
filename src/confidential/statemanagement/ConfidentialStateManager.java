@@ -433,7 +433,13 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 return;
             }
 
-            waitingCID = appState.getLastCID();
+            dt.setRefreshingState(true);
+
+            //logger.info("Updating state");
+            //dt.refreshState(appState);
+            //logger.debug("State renewed");
+
+            //dt.setRefreshingState(false);
 
             int[] receivers = creationContext.getContexts()[1].getMembers();
             boolean iAmStateSender = creationContext.getLeader() == SVController.getStaticConf().getProcessId();
@@ -459,8 +465,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         dt.refreshState(renewedState);
         logger.debug("State renewed");
 
-        waitingCID = -1;
-
+        dt.setRefreshingState(false);
         dt.canDeliver();//signal deliverThread that state has been installed
         dt.deliverUnlock();
         isRefreshing = false;

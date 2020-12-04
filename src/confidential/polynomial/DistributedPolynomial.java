@@ -74,7 +74,7 @@ public class DistributedPolynomial implements InterServerMessageListener, Runnab
         try {
             entryLock.lock();
             PolynomialCreator polynomialCreator = polynomialCreators.get(context.getId());
-            if (polynomialCreator != null && polynomialCreator.getCreationContext().getReason() != context.getReason() ) {
+            if (polynomialCreator != null && !polynomialCreator.getCreationContext().getReason().equals(context.getReason())) {
                 logger.debug("Polynomial with id {} is already being created for different reason", context.getId());
                 return;
             }

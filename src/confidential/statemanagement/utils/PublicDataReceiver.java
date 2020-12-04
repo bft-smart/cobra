@@ -116,10 +116,15 @@ public class PublicDataReceiver extends Thread {
         hashThread.setData(dataHolder);
         hashThread.start();
         int j = 0;
-        while (j < len) {
-            int received = in.read(dataHolder, j, len);
-            hashThread.update(j, received);
-            j += received;
+        try {
+            while (j < len) {
+                int received = in.read(dataHolder, j, len);
+                hashThread.update(j, received);
+                j += received;
+            }
+        } catch (IndexOutOfBoundsException e) {
+            logger.error("DataHolder: {}, {}, {}", dataHolder.length, j, len);
+            throw e;
         }
         hashThread.update(-1, -1);
         return hashThread.getHash();

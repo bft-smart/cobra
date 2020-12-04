@@ -18,8 +18,8 @@ public class Client {
             writer = new Writer(DEFAULT_CLIENT_ID);
 
             int numRequests = args.length == 0 ? DEFAULT_NUM_REQUESTS : Integer.parseInt(args[0]);
-            logger.info("Sending {} requests", numRequests);
 
+            logger.info("Writing {} requests", numRequests);
             String value = "cobra";
 
             for  (int i = 0; i < numRequests; i++) {
@@ -27,6 +27,7 @@ public class Client {
             }
 
             reader = new Reader(DEFAULT_CLIENT_ID + 1);
+            logger.info("Reading {} requests", numRequests);
 
             for (int i = 0; i < numRequests; i++) {
                 String result = reader.read(String.valueOf(i));

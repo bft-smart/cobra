@@ -47,6 +47,7 @@ public abstract class PolynomialCreator {
     private final PolynomialCreationListener creationListener;
     private final Set<Integer> newPolynomialRequestsFrom;
     protected final int[] allMembers;
+    private boolean iHaveSentNewPolyRequest;
 
     PolynomialCreator(PolynomialCreationContext creationContext,
                       int processId, SecureRandom rndGenerator,
@@ -105,6 +106,8 @@ public abstract class PolynomialCreator {
     abstract int[] getMembers(boolean proposalMembers);
 
     public void sendNewPolynomialCreationRequest() {
+        if (iHaveSentNewPolyRequest)
+            return;
         NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage(
                 processId, creationContext);
         int[] members = getMembers(true);
@@ -112,6 +115,7 @@ public abstract class PolynomialCreator {
                 creationContext.getId());
         serversCommunication.sendUnordered(InterServersMessageType.NEW_POLYNOMIAL, serialize(newPolynomialMessage),
                 members);
+        iHaveSentNewPolyRequest = true;
     }
 
     public void processNewPolynomialMessage(NewPolynomialMessage newPolynomialMessage) {
