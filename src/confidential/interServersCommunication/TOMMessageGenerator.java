@@ -41,6 +41,7 @@ public class TOMMessageGenerator {
 				requestId,
 				metadata,
 				payload,
+				null,
 				controller.getCurrentViewId(),
 				type);
 		msg.serializedMessage = TOMMessage.messageToBytes(msg);

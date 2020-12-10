@@ -6,13 +6,19 @@ import confidential.ExtractedResponse;
 import confidential.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.Utils;
+import vss.commitment.Commitment;
 import vss.facade.SecretSharingException;
+import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
+import java.math.BigInteger;
+import java.util.HashMap;
+import java.util.Map;
 
 public class ConfidentialServiceProxy {
     private final Logger logger = LoggerFactory.getLogger("confidential");
@@ -35,22 +41,46 @@ public class ConfidentialServiceProxy {
 
     public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
-        byte[] request = composeRequest(plainData, confidentialData);
-        if (request == null)
+        PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
+        if (confidentialData != null && shares == null)
+            return null;
+        byte[] commonData = serializeCommonData(plainData, shares);
+        if (commonData == null)
             return null;
 
-        byte[] response = service.invokeOrdered(request);
+        Map<Integer, byte[]> privateData = null;
+        if (confidentialData != null){
+            int[] servers = service.getViewManager().getCurrentViewProcesses();
+            privateData = new HashMap<>(servers.length);
+            for (int server : servers) {
+                byte[] b = serializePrivateDataFor(server, shares);
+                privateData.put(server, b);
+            }
+        }
+        byte[] response = service.invokeOrdered(commonData, privateData);
 
         return composeResponse(response);
     }
 
     public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
-        byte[] request = composeRequest(plainData, confidentialData);
-        if (request == null)
+        PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
+        if (confidentialData != null && shares == null)
+            return null;
+        byte[] commonData = serializeCommonData(plainData, shares);
+        if (commonData == null)
             return null;
 
-        byte[] response = service.invokeUnordered(request);
+        Map<Integer, byte[]> privateData = null;
+        if (confidentialData != null){
+            int[] servers = service.getViewManager().getCurrentViewProcesses();
+            privateData = new HashMap<>(servers.length);
+            for (int server : servers) {
+                byte[] b = serializePrivateDataFor(server, shares);
+                privateData.put(server, b);
+            }
+        }
+        byte[] response = service.invokeUnordered(commonData, privateData);
 
         return composeResponse(response);
     }
@@ -70,22 +100,17 @@ public class ConfidentialServiceProxy {
         return new Response(extractedResponse.getPlainData(), extractedResponse.getConfidentialData());
     }
 
-    private byte[] composeRequest(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+    private byte[] serializePrivateDataFor(int server, PrivatePublishedShares[] shares) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-
-            out.write((byte) MessageType.CLIENT.ordinal());
-
-            out.writeInt(plainData == null ? -1 : plainData.length);
-            if (plainData != null)
-                out.write(plainData);
-
-            out.writeInt(confidentialData == null ? -1 : confidentialData.length);
-            if (confidentialData != null) {
-                PrivatePublishedShares privateShares;
-                for (byte[] secret : confidentialData) {
-                    privateShares = confidentialityScheme.share(secret);
-                    privateShares.writeExternal(out);
+            if (shares != null) {
+                BigInteger shareholder = confidentialityScheme.getShareholder(server);
+                for (PrivatePublishedShares share : shares) {
+                    EncryptedShare encryptedShare = share.getShareOf(shareholder);
+                    byte[] encryptedShareBytes = encryptedShare.getEncryptedShare();
+                    out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
+                    if (encryptedShareBytes != null)
+                        out.write(encryptedShareBytes);
                 }
             }
 
@@ -96,5 +121,46 @@ public class ConfidentialServiceProxy {
             logger.error("Occurred while composing request", e);
             return null;
         }
+    }
+
+    private byte[] serializeCommonData(byte[] plainData, PrivatePublishedShares[] shares) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutput out = new ObjectOutputStream(bos)) {
+
+            out.write((byte) MessageType.CLIENT.ordinal());
+
+            out.writeInt(plainData == null ? -1 : plainData.length);
+            if (plainData != null)
+                out.write(plainData);
+
+            out.writeInt(shares == null ? -1 : shares.length);
+            if (shares != null) {
+                for (PrivatePublishedShares share : shares) {
+                    byte[] sharedData = share.getSharedData();
+                    Commitment commitment = share.getCommitments();
+                    out.writeInt(sharedData == null ? -1 : sharedData.length);
+                    if (sharedData != null)
+                        out.write(sharedData);
+                    Utils.writeCommitment(commitment, out);
+                }
+            }
+
+            out.flush();
+            bos.flush();
+            return bos.toByteArray();
+        } catch (IOException e) {
+            logger.error("Occurred while composing request", e);
+            return null;
+        }
+    }
+
+    private PrivatePublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
+        if (privateData == null)
+            return null;
+        PrivatePublishedShares[] result = new PrivatePublishedShares[privateData.length];
+        for (int i = 0; i < privateData.length; i++) {
+            result[i] = confidentialityScheme.share(privateData[i]);
+        }
+        return result;
     }
 }

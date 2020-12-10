@@ -26,15 +26,19 @@ import confidential.statemanagement.ConfidentialStateLog;
 import confidential.statemanagement.ConfidentialStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.Utils;
+import vss.commitment.Commitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
+import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
+import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -102,7 +106,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             Metadata metadata = Metadata.getMessageType(request.getMetadata()[0]);
             logger.info("Metadata: {}", metadata);
             if (metadata == Metadata.POLYNOMIAL_PROPOSAL_SET) {
-                Request req = preprocessRequest(request.getContent(), request.getSender());
+                Request req = preprocessRequest(request.getContent(), request.getPrivateContent(), request.getSender());
                 if (req == null || req.getType() != MessageType.APPLICATION) {
                     logger.error("Unknown request type to verify");
                     return false;
@@ -265,8 +269,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     }
 
     @Override
-    public byte[] executeOrdered(byte[] command, MessageContext msgCtx) {
-        Request request = preprocessRequest(command, msgCtx.getSender());
+    public byte[] executeOrdered(byte[] command, byte[] privateData, MessageContext msgCtx) {
+        Request request = preprocessRequest(command, privateData, msgCtx.getSender());
         if (request == null)
             return null;
         byte[] preprocessedCommand = request.serialize();
@@ -290,8 +294,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     }
 
     @Override
-    public byte[] executeUnordered(byte[] command, MessageContext msgCtx) {
-        Request request = preprocessRequest(command, msgCtx.getSender());
+    public byte[] executeUnordered(byte[] command, byte[] privateData, MessageContext msgCtx) {
+        Request request = preprocessRequest(command, privateData, msgCtx.getSender());
         if (request == null)
             return null;
         if (request.getType() == MessageType.APPLICATION) {
@@ -343,8 +347,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         }
     }
 
-    private Request preprocessRequest(byte[] message, int sender) {
-        try (ByteArrayInputStream bis = new ByteArrayInputStream(message);
+    private Request preprocessRequest(byte[] commonData, byte[] privateData, int sender) {
+        try (ByteArrayInputStream bis = new ByteArrayInputStream(commonData);
              ObjectInput in = new ObjectInputStream(bis)) {
             MessageType type = MessageType.getMessageType(in.read());
             Request result = null;
@@ -360,12 +364,30 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                     len = in.readInt();
                     ConfidentialData[] shares = null;
                     if (len != -1) {
-                        shares = new ConfidentialData[len];
-                        PrivatePublishedShares publishedShares;
-                        for (int i = 0; i < len; i++) {
-                            publishedShares = new PrivatePublishedShares();
-                            publishedShares.readExternal(in);
-                            shares[i] = new ConfidentialData(confidentialityScheme.extractShare(publishedShares));
+                        BigInteger shareholder = confidentialityScheme.getMyShareholderId();
+                        try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
+                        ObjectInput privateIn = new ObjectInputStream(privateBis)) {
+                            shares = new ConfidentialData[len];
+                            PrivatePublishedShares publishedShares;
+                            for (int i = 0; i < len; i++) {
+                                int l = in.readInt();
+                                byte[] sharedData = null;
+                                if (l != -1) {
+                                    sharedData = new byte[l];
+                                    in.readFully(sharedData);
+                                }
+                                Commitment commitment = Utils.readCommitment(in);
+                                l = privateIn.readInt();
+                                byte[] encShare = null;
+                                if (l != -1) {
+                                    encShare = new byte[l];
+                                    privateIn.readFully(encShare);
+                                }
+                                EncryptedShare encryptedShare = new EncryptedShare(shareholder, encShare);
+                                publishedShares = new PrivatePublishedShares(
+                                        new EncryptedShare[]{encryptedShare}, commitment, sharedData);
+                                shares[i] = new ConfidentialData(confidentialityScheme.extractShare(publishedShares));
+                            }
                         }
                     }
                     result = new Request(type, plainData, shares);
