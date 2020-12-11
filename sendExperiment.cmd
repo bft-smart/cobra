@@ -1,5 +1,5 @@
 set TEMP_DIR=C:\Users\robin\Desktop
-set SRC=D:\IntelliJ\COBRA
+set SRC=C:\Users\robin\\Documents\IntelliJ\COBRA
 set FOLDER_NAME=cobraQ
 set QUINTA_USER=rvassantlal
 
@@ -21,11 +21,11 @@ xcopy /e /q %SRC%\config\*.config %DST%\config\
 rem xcopy %SRC%\scripts\*.sh %DST%\
 
 rem del %DST%\config\currentView
-rem del %DST%\config\hosts.config
-rem rmdir /s /q %DST%\config\keysECDSA
-rem rmdir /s /q %DST%\config\keysRSA
-rem rmdir /s /q %DST%\config\keysSSL_TLS
-rem rmdir /s /q %DST%\config\keysSunEC
-rem rmdir /s /q %DST%\config\workloads
+del %DST%\config\hosts.config
+rmdir /s /q %DST%\config\keysECDSA
+rmdir /s /q %DST%\config\keysRSA
+rmdir /s /q %DST%\config\keysSSL_TLS
+rmdir /s /q %DST%\config\keysSunEC
+rmdir /s /q %DST%\config\workloads
 
 scp -r %DST% %QUINTA_USER%@quinta.navigators.di.fc.ul.pt:/home/users/%QUINTA_USER%
