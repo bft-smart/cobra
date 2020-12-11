@@ -107,7 +107,7 @@ public class EncryptedServersResponseHandler extends ServersResponseHandler {
                             TOMMessage lastMsg = replies[lastReceived];
                             return new TOMMessage(lastMsg.getSender(),
                                     lastMsg.getSession(), lastMsg.getSequence(),
-                                    lastMsg.getOperationId(), extractedResponse.serialize(),
+                                    lastMsg.getOperationId(), extractedResponse.serialize(), new byte[0],
                                     lastMsg.getViewID(), lastMsg.getReqType());
                         }
                     }
@@ -116,7 +116,7 @@ public class EncryptedServersResponseHandler extends ServersResponseHandler {
                 TOMMessage lastMsg = replies[lastReceived];
                 return new TOMMessage(lastMsg.getSender(),
                         lastMsg.getSession(), lastMsg.getSequence(),
-                        lastMsg.getOperationId(), extractedResponse.serialize(),
+                        lastMsg.getOperationId(), extractedResponse.serialize(), new byte[0],
                         lastMsg.getViewID(), lastMsg.getReqType());
 
             }

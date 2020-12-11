@@ -183,6 +183,16 @@ jbyteArray convert_point_to_bytes(JNIEnv *env, ep_t *value) {
 	return result;
 }
 
+jbyteArray convert_fp12_to_bytes(JNIEnv *env, fp12_t *value) {
+    int bin_size = fp12_size_bin(*value, 1);
+    uint8_t *bin = malloc(sizeof(uint8_t) * bin_size);
+    fp12_write_bin(bin, bin_size, *value, 1);
+    jbyteArray result = (*env)->NewByteArray(env, bin_size);
+    (*env)->SetByteArrayRegion(env, result, 0, bin_size, bin);
+    free(bin);
+    return result;
+}
+
 bn_t *bn_custom_div(bn_t dividend, bn_t divisor) {
 	bn_t *result = malloc(sizeof(bn_t));
 	bn_null(*result);
@@ -238,6 +248,68 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_createWitness(
 	jbyteArray result =  convert_point_to_bytes(env, witness);
 	free(witness);
 	return result;
+}
+
+JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_computePartialVerification (JNIEnv *env, jobject obj,
+    jbyteArray xBytes, jbyteArray commitmentBytes, jbyteArray witnessBytes) {
+    ep_t *witness = read_point(env, witnessBytes);
+    if (witness == NULL) {
+        throw_illegal_state_exception(env, "Witness is incorrect");
+        return false;
+    }
+    ep_t *commitment = read_point(env, commitmentBytes);
+    if (commitment == NULL) {
+        throw_illegal_state_exception(env, "Commitment is incorrect");
+        return false;
+    }
+    bn_t *i = read_number(env, xBytes);
+
+    fp12_t eCommitment, eWitness, eWitnessInv;
+    fp12_null(eCommitment);
+    fp12_null(eWitness);
+    fp12_null(eWitnessInv);
+    fp12_new(eCommitment);
+    fp12_new(eWitness);
+    fp12_new(eWitnessInv);
+
+    ep2_t gI, gAlphaI;
+    ep2_null(gI);
+    ep2_null(gAlphaI);
+    ep2_new(gI);
+    ep2_new(gAlphaI);
+
+    ep2_mul_gen(gI, *i);
+    ep2_sub_basic(gAlphaI, gAlpha, gI);
+
+    pp_map_tatep_k12(eWitness, *witness, gAlphaI);
+    pp_map_tatep_k12(eCommitment, *commitment, g2);
+
+    fp12_inv(eWitnessInv, eWitness);
+
+    fp12_t *result = malloc(sizeof(fp12_t));
+    fp12_null(*result);
+    fp12_new(*result);
+
+    fp12_mul_basic(*result, eCommitment, eWitnessInv);
+
+    jbyteArray finalResult = convert_fp12_to_bytes(env, result);
+
+    fp12_free(*result);
+    free(result);
+
+    ep_free(*witness);
+    ep_free(*commitment);
+    bn_free(*i);
+    ep2_free(gI);
+    ep2_free(gAlphaI);
+    fp12_free(eWitness);
+    fp12_free(eWitnessInv);
+    fp12_free(eCommitment);
+
+    free(witness);
+    free(commitment);
+    free(i);
+    return finalResult;
 }
 
 JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verify(JNIEnv *env, jobject obj, 

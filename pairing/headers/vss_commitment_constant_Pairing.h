@@ -41,6 +41,14 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_createWitness
 
 /*
  * Class:     vss_commitment_constant_Pairing
+ * Method:    computePartialVerification
+ * Signature: ([B[B[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_computePartialVerification
+  (JNIEnv *, jobject, jbyteArray, jbyteArray, jbyteArray);
+
+/*
+ * Class:     vss_commitment_constant_Pairing
  * Method:    verify
  * Signature: ([B[B[B)Z
  */

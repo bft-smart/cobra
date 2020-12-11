@@ -8,12 +8,12 @@ import bftsmart.tom.util.TOMUtil;
 import java.util.Random;
 
 public class TOMMessageGenerator {
-	private int id;
-	private int session;
+	private final int id;
+	private final int session;
 	private int orderedSeq;
 	private int unorderedSeq;
 	private int requestId;
-	private ServerViewController controller;
+	private final ServerViewController controller;
 	
 	public TOMMessageGenerator(ServerViewController controller) {
 		this.controller = controller;
@@ -41,7 +41,7 @@ public class TOMMessageGenerator {
 				requestId,
 				metadata,
 				payload,
-				null,
+				new byte[0],
 				controller.getCurrentViewId(),
 				type);
 		msg.serializedMessage = TOMMessage.messageToBytes(msg);

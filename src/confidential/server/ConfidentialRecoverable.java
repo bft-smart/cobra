@@ -31,7 +31,6 @@ import vss.commitment.Commitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
-import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayInputStream;
@@ -364,29 +363,31 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                     len = in.readInt();
                     ConfidentialData[] shares = null;
                     if (len != -1) {
-                        BigInteger shareholder = confidentialityScheme.getMyShareholderId();
-                        try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
-                        ObjectInput privateIn = new ObjectInputStream(privateBis)) {
-                            shares = new ConfidentialData[len];
-                            PrivatePublishedShares publishedShares;
-                            for (int i = 0; i < len; i++) {
-                                int l = in.readInt();
-                                byte[] sharedData = null;
-                                if (l != -1) {
-                                    sharedData = new byte[l];
-                                    in.readFully(sharedData);
+                        shares = new ConfidentialData[len];
+                        if (len > 0) {
+                            BigInteger shareholder = confidentialityScheme.getMyShareholderId();
+                            try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
+                                 ObjectInput privateIn = new ObjectInputStream(privateBis)) {
+                                PrivatePublishedShares publishedShares;
+                                for (int i = 0; i < len; i++) {
+                                    int l = in.readInt();
+                                    byte[] sharedData = null;
+                                    if (l != -1) {
+                                        sharedData = new byte[l];
+                                        in.readFully(sharedData);
+                                    }
+                                    Commitment commitment = Utils.readCommitment(in);
+                                    l = privateIn.readInt();
+                                    byte[] encShare = null;
+                                    if (l != -1) {
+                                        encShare = new byte[l];
+                                        privateIn.readFully(encShare);
+                                    }
+                                    EncryptedShare encryptedShare = new EncryptedShare(shareholder, encShare);
+                                    publishedShares = new PrivatePublishedShares(
+                                            new EncryptedShare[]{encryptedShare}, commitment, sharedData);
+                                    shares[i] = new ConfidentialData(confidentialityScheme.extractShare(publishedShares));
                                 }
-                                Commitment commitment = Utils.readCommitment(in);
-                                l = privateIn.readInt();
-                                byte[] encShare = null;
-                                if (l != -1) {
-                                    encShare = new byte[l];
-                                    privateIn.readFully(encShare);
-                                }
-                                EncryptedShare encryptedShare = new EncryptedShare(shareholder, encShare);
-                                publishedShares = new PrivatePublishedShares(
-                                        new EncryptedShare[]{encryptedShare}, commitment, sharedData);
-                                shares[i] = new ConfidentialData(confidentialityScheme.extractShare(publishedShares));
                             }
                         }
                     }
