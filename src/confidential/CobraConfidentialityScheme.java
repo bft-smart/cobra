@@ -27,7 +27,8 @@ public abstract class CobraConfidentialityScheme {
     protected final VSSFacade vss;
     private final Map<Integer, BigInteger> serverToShareholder;
     private final Map<BigInteger, Integer> shareholderToServer;
-    private Cipher cipher;
+    private final Cipher cipher;
+    private final boolean isLinearCommitmentScheme;
     protected KeysManager keysManager;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
@@ -63,6 +64,11 @@ public abstract class CobraConfidentialityScheme {
         }
         vss = new VSSFacade(properties, shareholders);
         keysManager = new KeysManager();
+        isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
+    }
+
+    public boolean isLinearCommitmentScheme() {
+        return isLinearCommitmentScheme;
     }
 
     public CommitmentScheme getCommitmentScheme() {

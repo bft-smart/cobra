@@ -407,6 +407,25 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_multiplyValues
 	return result;
 }
 
+JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_divideValues(JNIEnv *env, jobject obj, jbyteArray v1, jbyteArray v2) {
+    ep_t *a = read_point(env, v1);
+    ep_t *b = read_point(env, v2);
+
+    ep_t *r = malloc(sizeof(ep_t));
+	ep_null(*r);
+	ep_new(*r);
+
+	ep_sub_basic(*r, *a, *b);
+
+	free(a);
+	free(b);
+
+	jbyteArray result = convert_point_to_bytes(env, r);
+	free(r);
+
+	return result;
+}
+
 
 bn_t *multiply_polynomials(bn_t *values_1, bn_t *values_2, int n_values_1, int n_values_2) {
 	int len = n_values_1 + n_values_2 - 1;

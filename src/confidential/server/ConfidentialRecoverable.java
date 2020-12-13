@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
@@ -38,10 +39,7 @@ import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.locks.ReentrantLock;
 
 public final class ConfidentialRecoverable implements SingleExecutable, Recoverable,
@@ -62,6 +60,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     private final boolean useTLSEncryption;
     private final ConfidentialSingleExecutable confidentialExecutor;
     private DistributedPolynomial distributedPolynomial;
+    private boolean isLinearCommitmentScheme;
 
     public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
         this.processId = processId;
@@ -83,7 +82,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         checkpointPeriod = replicaContext.getStaticConfiguration().getCheckpointPeriod();
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
-
+            this.isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
             distributedPolynomial =
                     new DistributedPolynomial(replicaContext.getSVController(), interServersCommunication,
                             confidentialityScheme);
@@ -376,12 +375,23 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                                         sharedData = new byte[l];
                                         in.readFully(sharedData);
                                     }
-                                    Commitment commitment = Utils.readCommitment(in);
                                     l = privateIn.readInt();
                                     byte[] encShare = null;
                                     if (l != -1) {
                                         encShare = new byte[l];
                                         privateIn.readFully(encShare);
+                                    }
+                                    Commitment commitment;
+                                    if (isLinearCommitmentScheme)
+                                        commitment = Utils.readCommitment(in);
+                                    else {
+                                        byte[] c = new byte[in.readInt()];
+                                        in.readFully(c);
+                                        byte[] witness = new byte[privateIn.readInt()];
+                                        privateIn.readFully(witness);
+                                        TreeMap<Integer, byte[]> witnesses = new TreeMap<>();
+                                        witnesses.put(shareholder.hashCode(), witness);
+                                        commitment = new ConstantCommitment(c, witnesses);
                                     }
                                     EncryptedShare encryptedShare = new EncryptedShare(shareholder, encShare);
                                     publishedShares = new PrivatePublishedShares(

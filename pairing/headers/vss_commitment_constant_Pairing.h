@@ -81,6 +81,14 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_multiplyValues
 
 /*
  * Class:     vss_commitment_constant_Pairing
+ * Method:    divideValues
+ * Signature: ([B[B)[B
+ */
+JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_divideValues
+  (JNIEnv *, jobject, jbyteArray, jbyteArray);
+
+/*
+ * Class:     vss_commitment_constant_Pairing
  * Method:    interpolateAndEvaluateAt
  * Signature: ([B[[[B)[B
  */

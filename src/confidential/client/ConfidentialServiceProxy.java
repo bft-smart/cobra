@@ -8,6 +8,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
@@ -25,6 +26,7 @@ public class ConfidentialServiceProxy {
     private final ServiceProxy service;
     private final ClientConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
+    private final boolean isLinearCommitmentScheme;
 
     public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
         if (Configuration.getInstance().useTLSEncryption()) {
@@ -36,7 +38,7 @@ public class ConfidentialServiceProxy {
                 serversResponseHandler, null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
-
+        isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
     }
 
     public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
@@ -111,6 +113,12 @@ public class ConfidentialServiceProxy {
                     out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
                     if (encryptedShareBytes != null)
                         out.write(encryptedShareBytes);
+                    if (!isLinearCommitmentScheme) {
+                        ConstantCommitment commitment = (ConstantCommitment)share.getCommitments();
+                        byte[] witness = commitment.getWitness(shareholder);
+                        out.writeInt(witness.length);
+                        out.write(witness);
+                    }
                 }
             }
 
@@ -141,7 +149,14 @@ public class ConfidentialServiceProxy {
                     out.writeInt(sharedData == null ? -1 : sharedData.length);
                     if (sharedData != null)
                         out.write(sharedData);
-                    Utils.writeCommitment(commitment, out);
+                    if (isLinearCommitmentScheme)
+                        Utils.writeCommitment(commitment, out);
+                    else {
+                        byte[] c = ((ConstantCommitment)commitment).getCommitment();
+                        out.writeInt(c.length);
+                        out.write(c);
+                    }
+
                 }
             }
 
