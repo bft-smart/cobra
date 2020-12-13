@@ -12,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.PrivatePublishedShares;
@@ -41,6 +42,7 @@ public class PreComputedProxy {
     Map<Integer, byte[]> privateData;
     public byte[] data;
     private final boolean preComputed;
+    private final boolean isLinearCommitmentScheme;
 
     PreComputedProxy(int clientId, int requestSize, boolean preComputed) throws SecretSharingException {
         this.preComputed = preComputed;
@@ -54,6 +56,7 @@ public class PreComputedProxy {
                 serversResponseHandler, null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
+        isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
         preComputeRequests(clientId, requestSize);
     }
 
@@ -76,7 +79,7 @@ public class PreComputedProxy {
             privateData.put(server, b);
         }
 
-        unorderedCommonData = serializeCommonData(plainReadData, null);
+        unorderedCommonData = serializeCommonData(plainReadData, shares);
 
         logger.info("plain write data size: {}", plainWriteData.length);
         logger.info("plain read data size: {}", plainReadData.length);
@@ -172,10 +175,6 @@ public class PreComputedProxy {
     private byte[] serializePrivateDataFor(int server, PrivatePublishedShares[] shares) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-
-            out.write((byte) MessageType.CLIENT.ordinal());
-
-            out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
                 BigInteger shareholder = confidentialityScheme.getShareholder(server);
                 for (PrivatePublishedShares share : shares) {
@@ -184,6 +183,12 @@ public class PreComputedProxy {
                     out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
                     if (encryptedShareBytes != null)
                         out.write(encryptedShareBytes);
+                    if (!isLinearCommitmentScheme) {
+                        ConstantCommitment commitment = (ConstantCommitment)share.getCommitments();
+                        byte[] witness = commitment.getWitness(shareholder);
+                        out.writeInt(witness.length);
+                        out.write(witness);
+                    }
                 }
             }
 
@@ -214,7 +219,13 @@ public class PreComputedProxy {
                     out.writeInt(sharedData == null ? -1 : sharedData.length);
                     if (sharedData != null)
                         out.write(sharedData);
-                    Utils.writeCommitment(commitment, out);
+                    if (isLinearCommitmentScheme)
+                        Utils.writeCommitment(commitment, out);
+                    else {
+                        byte[] c = ((ConstantCommitment)commitment).getCommitment();
+                        out.writeInt(c.length);
+                        out.write(c);
+                    }
                 }
             }
 
