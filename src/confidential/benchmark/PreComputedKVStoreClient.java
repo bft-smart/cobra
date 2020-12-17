@@ -7,6 +7,7 @@ import vss.facade.SecretSharingException;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedList;
+import java.util.Random;
 import java.util.concurrent.*;
 
 /**
@@ -38,8 +39,13 @@ public class PreComputedKVStoreClient {
 
         ExecutorService executorService = Executors.newFixedThreadPool(numClients);
         Collection<Future<?>> tasks = new LinkedList<>();
-
+        Random rndGenerator = new Random();
         for (Client client : clients) {
+            try {
+                Thread.sleep(rndGenerator.nextInt(50));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             tasks.add(executorService.submit(client));
         }
         Runtime.getRuntime().addShutdownHook(new Thread(executorService::shutdownNow));

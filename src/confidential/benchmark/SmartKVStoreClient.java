@@ -46,8 +46,13 @@ public class SmartKVStoreClient {
 
         ExecutorService executorService = Executors.newFixedThreadPool(numClients);
         Collection<Future<?>> tasks = new LinkedList<>();
-
+        Random rndGenerator = new Random();
         for (Client client : clients) {
+            try {
+                Thread.sleep(rndGenerator.nextInt(50));
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
             tasks.add(executorService.submit(client));
         }
         Runtime.getRuntime().addShutdownHook(new Thread(executorService::shutdownNow));
