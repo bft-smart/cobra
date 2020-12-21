@@ -44,14 +44,14 @@ public class ConfidentialServiceProxy {
     public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
         PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
-        if (confidentialData != null && shares == null)
+        if (confidentialData.length != 0 && shares == null)
             return null;
         byte[] commonData = serializeCommonData(plainData, shares);
         if (commonData == null)
             return null;
 
         Map<Integer, byte[]> privateData = null;
-        if (confidentialData != null){
+        if (confidentialData.length != 0){
             int[] servers = service.getViewManager().getCurrentViewProcesses();
             privateData = new HashMap<>(servers.length);
             for (int server : servers) {
@@ -67,14 +67,14 @@ public class ConfidentialServiceProxy {
     public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
         PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
-        if (confidentialData != null && shares == null)
+        if (confidentialData.length != 0 && shares == null)
             return null;
         byte[] commonData = serializeCommonData(plainData, shares);
         if (commonData == null)
             return null;
 
         Map<Integer, byte[]> privateData = null;
-        if (confidentialData != null){
+        if (confidentialData.length != 0){
             int[] servers = service.getViewManager().getCurrentViewProcesses();
             privateData = new HashMap<>(servers.length);
             for (int server : servers) {

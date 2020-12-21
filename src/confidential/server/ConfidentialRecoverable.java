@@ -100,7 +100,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     public boolean isValidRequest(TOMMessage request) {
         logger.debug("Checking request: {} - {}", request.getReqType(),
                 request.getSequence());
-        if (request.getMetadata() != null) {
+        if (request.getMetadata() != null && request.getMetadata().length == 1) {
             Metadata metadata = Metadata.getMessageType(request.getMetadata()[0]);
             logger.info("Metadata: {}", metadata);
             if (metadata == Metadata.POLYNOMIAL_PROPOSAL_SET) {
