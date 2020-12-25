@@ -7,7 +7,6 @@ import confidential.MessageType;
 import confidential.client.ClientConfidentialityScheme;
 import confidential.client.Response;
 import confidential.client.ServersResponseHandler;
-import confidential.demo.map.client.Operation;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
@@ -24,7 +23,6 @@ import java.io.ObjectOutputStream;
 import java.math.BigInteger;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Random;
 
 /**
  * @author Robin
@@ -32,74 +30,47 @@ import java.util.Random;
 public class PreComputedProxy {
     private final Logger logger = LoggerFactory.getLogger("confidential");
 
-    private final ServiceProxy service;
+    final ServiceProxy service;
     private final ClientConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
     private byte[] orderedCommonData;
     private byte[] unorderedCommonData;
-    byte[] plainReadData;
-    byte[] plainWriteData;
     Map<Integer, byte[]> privateData;
-    public byte[] data;
     private final boolean preComputed;
     private final boolean isLinearCommitmentScheme;
 
-    PreComputedProxy(int clientId, int requestSize, boolean preComputed) throws SecretSharingException {
-        this.preComputed = preComputed;
+    PreComputedProxy(int clientId) throws SecretSharingException {
+        this.preComputed = false;
         if (Configuration.getInstance().useTLSEncryption()) {
-            serversResponseHandler = new PreComputedPlainServersResponseHandler(preComputed);
+            serversResponseHandler = new PreComputedPlainServersResponseHandler(false);
         } else {
             serversResponseHandler =
-                    new PreComputedEncryptedServersResponseHandler(clientId, preComputed);
+                    new PreComputedEncryptedServersResponseHandler(clientId, false);
         }
         this.service = new ServiceProxy(clientId, null, serversResponseHandler,
                 serversResponseHandler, null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
-        preComputeRequests(clientId, requestSize);
     }
 
-    private void preComputeRequests(int clientId, int requestSize) throws SecretSharingException {
-        Random random = new Random(1L);
-        String key = "k" + clientId;
-        data = new byte[requestSize];
-        random.nextBytes(data);
-        plainWriteData = serialize(Operation.PUT, key);
-        plainReadData = serialize(Operation.GET, key);
-        PrivatePublishedShares[] shares = sharePrivateData(data);
-        orderedCommonData = serializeCommonData(plainWriteData, shares);
-        if (orderedCommonData == null)
-            throw new RuntimeException("Failed to serialize common data");
-
-        int[] servers = service.getViewManager().getCurrentViewProcesses();
-        privateData = new HashMap<>(servers.length);
-        for (int server : servers) {
-            byte[] b = serializePrivateDataFor(server, shares);
-            privateData.put(server, b);
+    PreComputedProxy(int clientId, byte[] unorderedCommonData, byte[] orderedCommonData,
+                     Map<Integer, byte[]> privateData) throws SecretSharingException {
+        this.preComputed = true;
+        if (Configuration.getInstance().useTLSEncryption()) {
+            serversResponseHandler = new PreComputedPlainServersResponseHandler(true);
+        } else {
+            serversResponseHandler =
+                    new PreComputedEncryptedServersResponseHandler(clientId, true);
         }
-
-        unorderedCommonData = serializeCommonData(plainReadData, shares);
-
-        logger.info("plain write data size: {}", plainWriteData.length);
-        logger.info("plain read data size: {}", plainReadData.length);
-        logger.info("ordered request size: {} bytes", orderedCommonData.length);
-        logger.info("unordered request size: {} bytes", unorderedCommonData.length);
-    }
-
-    private byte[] serialize(Operation op, String str) {
-        try(ByteArrayOutputStream bos = new ByteArrayOutputStream();
-            ObjectOutput out = new ObjectOutputStream(bos)) {
-            out.write((byte)op.ordinal());
-            if(str != null)
-                out.writeUTF(str);
-            out.flush();
-            bos.flush();
-            return bos.toByteArray();
-        } catch (IOException e) {
-            e.printStackTrace();
-            return null;
-        }
+        this.service = new ServiceProxy(clientId, null, serversResponseHandler,
+                serversResponseHandler, null);
+        this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
+        serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
+        isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
+        this.unorderedCommonData = unorderedCommonData;
+        this.orderedCommonData = orderedCommonData;
+        this.privateData = privateData;
     }
 
     Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
@@ -172,7 +143,7 @@ public class PreComputedProxy {
         return new Response(extractedResponse.getPlainData(), extractedResponse.getConfidentialData());
     }
 
-    private byte[] serializePrivateDataFor(int server, PrivatePublishedShares[] shares) {
+    byte[] serializePrivateDataFor(int server, PrivatePublishedShares[] shares) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
             if (shares != null) {
@@ -201,7 +172,7 @@ public class PreComputedProxy {
         }
     }
 
-    private byte[] serializeCommonData(byte[] plainData, PrivatePublishedShares[] shares) {
+    byte[] serializeCommonData(byte[] plainData, PrivatePublishedShares[] shares) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
 
@@ -238,7 +209,7 @@ public class PreComputedProxy {
         }
     }
 
-    private PrivatePublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
+    PrivatePublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
         if (privateData == null)
             return null;
         PrivatePublishedShares[] result = new PrivatePublishedShares[privateData.length];

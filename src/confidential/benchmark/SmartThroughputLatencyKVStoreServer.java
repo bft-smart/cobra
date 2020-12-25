@@ -35,12 +35,15 @@ public class SmartThroughputLatencyKVStoreServer extends DefaultRecoverable {
     private void printMeasurement() {
         long currentTime = System.nanoTime();
         double deltaTime = (currentTime - startTime) / 1_000_000_000.0;
-        if ((int) (deltaTime / 5) > 0) {
+        if ((int) (deltaTime / 2) > 0) {
+            long delta = currentTime - startTime;
             double throughput = numRequests / deltaTime;
             if (throughput > maxThroughput)
                 maxThroughput = throughput;
-            logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {} (max: {})",
-                    senders.size(), numRequests, deltaTime, throughput, maxThroughput);
+            logger.info("M:(clients[#]|requests[#]|delta[ns]|throughput[ops/s], max[ops/s])>({}|{}|{}|{}|{})",
+                    senders.size(), numRequests, delta, throughput, maxThroughput);
+            //logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {} (max: {})",
+            //        senders.size(), numRequests, deltaTime, throughput, maxThroughput);
             numRequests = 0;
             startTime = currentTime;
             senders.clear();

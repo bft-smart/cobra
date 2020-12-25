@@ -1,14 +1,19 @@
 package confidential.benchmark;
 
-import bftsmart.tom.util.Storage;
 import confidential.client.Response;
+import confidential.demo.map.client.Operation;
 import vss.facade.SecretSharingException;
+import vss.secretsharing.PrivatePublishedShares;
 
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.Random;
-import java.util.concurrent.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
+import java.util.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 /**
  * @author Robin
@@ -16,7 +21,7 @@ import java.util.concurrent.*;
 public class PreComputedKVStoreClient {
     private static int initialId;
 
-    public static void main(String[] args) throws SecretSharingException {
+    public static void main(String[] args) throws SecretSharingException, InterruptedException {
         if (args.length != 6) {
             System.out.println("USAGE: ... PreComputedKVStoreClient <initial client id> " +
                     "<num clients> <number of ops> <request size> <write?> <precomputed?>");
@@ -30,11 +35,48 @@ public class PreComputedKVStoreClient {
         boolean write = Boolean.parseBoolean(args[4]);
         boolean precomputed = Boolean.parseBoolean(args[5]);
 
+        Random random = new Random(1L);
+        byte[] data = new byte[requestSize];
+        random.nextBytes(data);
+        String key = "key";
+        byte[] plainWriteData = serialize(Operation.PUT, key);
+        byte[] plainReadData = serialize(Operation.GET, key);
 
         Client[] clients = new Client[numClients];
+        if (precomputed) {
+            PreComputedProxy generatorProxy = new PreComputedProxy(initialId - 1);
+            PrivatePublishedShares[] shares = generatorProxy.sharePrivateData(data);
+            byte[] orderedCommonData = generatorProxy.serializeCommonData(plainWriteData, shares);
+            if (orderedCommonData == null) {
+                throw new RuntimeException("Failed to serialize common data");
+            }
 
-        for (int i = 0; i < numClients; i++) {
-            clients[i] = new Client(initialId + i, precomputed, numOperations, requestSize, write);
+            int[] servers = generatorProxy.service.getViewManager().getCurrentViewProcesses();
+            Map<Integer, byte[]> privateData = new HashMap<>(servers.length);
+            for (int server : servers) {
+                byte[] b = generatorProxy.serializePrivateDataFor(server, shares);
+                privateData.put(server, b);
+            }
+
+            byte[] unorderedCommonData = generatorProxy.serializeCommonData(plainReadData, shares);
+
+            for (int i = 0; i < numClients; i++) {
+                int sleepTime = random.nextInt(50);
+                Thread.sleep(sleepTime);
+                PreComputedProxy proxy = new PreComputedProxy(initialId + i, unorderedCommonData,
+                        orderedCommonData, privateData);
+                clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
+                        plainReadData, data, write);
+            }
+            generatorProxy.close();
+        } else {
+            for (int i = 0; i < numClients; i++) {
+                int sleepTime = random.nextInt(50);
+                Thread.sleep(sleepTime);
+                PreComputedProxy proxy = new PreComputedProxy(initialId + i);
+                clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
+                        plainReadData, data, write);
+            }
         }
 
         ExecutorService executorService = Executors.newFixedThreadPool(numClients);
@@ -63,30 +105,49 @@ public class PreComputedKVStoreClient {
         executorService.shutdown();
     }
 
+    private static byte[] serialize(Operation op, String str) {
+        try(ByteArrayOutputStream bos = new ByteArrayOutputStream();
+            ObjectOutput out = new ObjectOutputStream(bos)) {
+            out.write((byte)op.ordinal());
+            if(str != null)
+                out.writeUTF(str);
+            out.flush();
+            bos.flush();
+            return bos.toByteArray();
+        } catch (IOException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     private static class Client extends Thread {
-        private int id;
-        private int numOperations;
-        private boolean write;
-        private PreComputedProxy proxy;
-        private boolean preComputed;
+        private final int id;
+        private final int numOperations;
+        private final byte[] plainWriteData;
+        private final byte[] plainReadData;
+        private final byte[] data;
+        private final boolean write;
+        private final PreComputedProxy proxy;
+        private final boolean preComputed;
         private int rampup = 1000;
 
-        Client(int id, boolean precomputed, int numOperations, int requestSize, boolean write) throws SecretSharingException {
+        Client(int id, PreComputedProxy proxy, boolean precomputed, int numOperations,
+               byte[] plainWriteData, byte[] plainReadData, byte[] data, boolean write) {
             super("Client " + id);
             this.id = id;
             this.numOperations = numOperations;
+            this.plainWriteData = plainWriteData;
+            this.plainReadData = plainReadData;
+            this.data = data;
             this.write = write;
             this.preComputed = precomputed;
-            this.proxy = new PreComputedProxy(id, requestSize, precomputed);
+            this.proxy = proxy;
         }
 
         @Override
         public void run() {
             if (id == initialId)
                 System.out.println("Warming up...");
-            byte[] plainWriteData = proxy.plainWriteData;
-            byte[] plainReadData = proxy.plainReadData;
-            byte[] data = proxy.data;
             try {
                 proxy.invokeOrdered(plainWriteData, data);
                 Response response;
@@ -99,26 +160,25 @@ public class PreComputedKVStoreClient {
                             throw new RuntimeException("Wrong response");
                     }
                 }
-                Storage st = new Storage(numOperations);
-
-                if (id == initialId)
+                //Storage st = new Storage(numOperations);
+                long[] latencies = null;
+                if (id == initialId) {
+                    latencies = new long[numOperations];
                     System.out.println("Executing experiment for " + numOperations + " ops");
+                }
                 for (int i = 0; i < numOperations; i++) {
-                    long t1 = System.nanoTime();
                     long t2;
+                    long t1 = System.nanoTime();
                     if (write) {
                         proxy.invokeOrdered(plainWriteData, data);
-                        t2 = System.nanoTime();
                     } else {
-                        response = proxy.invokeUnordered(plainReadData);
-                        t2 = System.nanoTime();
-                        if (!preComputed && !Arrays.equals(response.getConfidentialData()[0], data)) {
-                            System.out.println("Checking");
-                            throw new RuntimeException("Wrong response");
-                        }
+                        proxy.invokeUnordered(plainReadData);
                     }
+                    t2 = System.nanoTime();
                     long latency = t2 - t1;
-                    st.store(latency);
+                    if (latencies != null) {
+                        latencies[i] = latency;
+                    }
                     try {
                         if (rampup > 0) {
                             Thread.sleep(rampup);
@@ -129,12 +189,18 @@ public class PreComputedKVStoreClient {
                     }
                 }
 
-                if (id == initialId) {
-                    System.out.println("Average time for " + numOperations + " executions (-10%) = " + st.getAverage(true) / 1000 + " us ");
-                    System.out.println("Standard deviation for " + numOperations + " executions (-10%) = " + st.getDP(true) / 1000 + " us ");
-                    System.out.println("Average time for " + numOperations + " executions (all samples) = " + st.getAverage(false) / 1000 + " us ");
-                    System.out.println("Standard deviation for " + numOperations + " executions (all samples) = " + st.getDP(false) / 1000 + " us ");
-                    System.out.println("Maximum time for " + numOperations + " executions (all samples) = " + st.getMax(false) / 1000 + " us ");
+                if (latencies != null) {
+                    StringBuilder sb = new StringBuilder();
+                    for (long latency : latencies) {
+                        sb.append(latency);
+                        sb.append(" ");
+                    }
+                    System.out.println("M: " + sb.toString().trim());
+                    //System.out.println("Average time for " + numOperations + " executions (-10%) = " + st.getAverage(true) / 1000 + " us ");
+                    //System.out.println("Standard deviation for " + numOperations + " executions (-10%) = " + st.getDP(true) / 1000 + " us ");
+                    //System.out.println("Average time for " + numOperations + " executions (all samples) = " + st.getAverage(false) / 1000 + " us ");
+                    //System.out.println("Standard deviation for " + numOperations + " executions (all samples) = " + st.getDP(false) / 1000 + " us ");
+                    //System.out.println("Maximum time for " + numOperations + " executions (all samples) = " + st.getMax(false) / 1000 + " us ");
                 }
 
             } catch (SecretSharingException e) {
