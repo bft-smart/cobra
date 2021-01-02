@@ -19,8 +19,6 @@ import java.security.Key;
 import java.security.SecureRandom;
 import java.util.*;
 
-import static confidential.Configuration.*;
-
 /**
  * @author Robin
  */

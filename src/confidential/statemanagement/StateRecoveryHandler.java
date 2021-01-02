@@ -16,7 +16,6 @@ import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.constant.ShareCommitment;
 import vss.facade.SecretSharingException;
 import vss.interpolation.InterpolationStrategy;
 import vss.polynomial.Polynomial;
@@ -38,40 +37,40 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class StateRecoveryHandler extends Thread {
-    private Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("confidential");
     private final int threshold;
     private final BigInteger field;
     private int corruptedServers;
     private final int quorum;
 
-    private CommitmentScheme commitmentScheme;
-    private InterpolationStrategy interpolationStrategy;
+    private final CommitmentScheme commitmentScheme;
+    private final InterpolationStrategy interpolationStrategy;
 
     private Map<BigInteger, Commitment> allTransferPolynomialCommitments;
     private Commitment transferPolynomialCommitments;
 
-    private Map<Integer, Integer> commonData;
+    private final Map<Integer, Integer> commonData;
     private byte[] selectedCommonData;
     private int selectedCommonDataHash;
     private int nCommonDataReceived;
-    private Map<Integer, ObjectInputStream> commitmentsBytes;
+    private final Map<Integer, ObjectInputStream> commitmentsBytes;
 
-    private Map<Integer, LinkedList<Share>> recoveryShares;
-    private Map<Integer, Integer> recoverySharesSize;
+    private final Map<Integer, LinkedList<Share>> recoveryShares;
+    private final Map<Integer, Integer> recoverySharesSize;
     private int correctRecoverySharesSize;
 
 
-    private int pid;
-    private ServerConfidentialityScheme confidentialityScheme;
-    private int stateSenderReplica;
-    private BigInteger shareholderId;
+    private final int pid;
+    private final ServerConfidentialityScheme confidentialityScheme;
+    private final int stateSenderReplica;
+    private final BigInteger shareholderId;
 
     private ObjectInputStream commonDataStream;
-    private ReconstructionCompleted reconstructionListener;
+    private final ReconstructionCompleted reconstructionListener;
     private RecoveryPrivateStateReceiver recoveryPrivateStateReceiver;
     private RecoveryPublicStateReceiver recoveryPublicStateReceiver;
-    private Lock lock = new ReentrantLock();
-    private Condition condition = lock.newCondition();
+    private final Lock lock = new ReentrantLock();
+    private final Condition condition = lock.newCondition();
 
     StateRecoveryHandler(ReconstructionCompleted reconstructionListener, int threshold,
                          ServerViewController svController, BigInteger field,
@@ -119,13 +118,13 @@ public class StateRecoveryHandler extends Thread {
         lock.lock();
         if (commonDataStream == null) {
             int commonDataHashCode = Arrays.hashCode(publicStateHash);
-            logger.info("Public state hash {} of server {}", commonDataHashCode, from);
+            logger.debug("Public state hash {} of server {}", commonDataHashCode, from);
             if (stateSenderReplica == from) {
                 selectedCommonData = publicState;
                 selectedCommonDataHash = commonDataHashCode;
-                logger.info("Replica {} sent me public state of {} bytes", from, selectedCommonData.length);
+                logger.debug("Replica {} sent me public state of {} bytes", from, selectedCommonData.length);
             } else {
-                logger.info("Replica {} sent me hash of the public state", from);
+                logger.debug("Replica {} sent me hash of the public state", from);
             }
             commonData.merge(commonDataHashCode, 1, Integer::sum);
             try {
@@ -149,12 +148,12 @@ public class StateRecoveryHandler extends Thread {
                 if (recoveryShares.size() < quorum || selectedCommonData == null
                         || nCommonDataReceived < quorum || commitmentsBytes.size() < quorum)
                     continue;
-                logger.info("I have received 2t+1 recovery states");
+                logger.debug("I have received 2t+1 recovery states");
                 if (commonDataStream == null) {
                     if (haveCorrectCommonData())
                         commonDataStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommonData));
                     else
-                        logger.info("I don't have enough same states");
+                        logger.debug("I don't have enough same states");
                 }
                 if (correctRecoverySharesSize == -1)
                     correctRecoverySharesSize = selectCorrectKey(recoverySharesSize);
@@ -188,16 +187,15 @@ public class StateRecoveryHandler extends Thread {
         Optional<Map.Entry<Integer, Integer>> max = commonData.entrySet().stream()
                 .max(Comparator.comparingInt(Map.Entry::getValue));
         if (!max.isPresent()) {
-            logger.info("I don't have correct public state");
+            logger.debug("I don't have correct public state");
             return false;
         }
 
         Map.Entry<Integer, Integer> entry = max.get();
         if (entry.getValue() < threshold + 1) {
-            logger.info("I don't have correct public state");
+            logger.debug("I don't have correct public state");
             return false;
         }
-        logger.info("key: {}", entry.getKey());
         return selectedCommonDataHash == entry.getKey();
     }
 

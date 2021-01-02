@@ -48,6 +48,7 @@ public abstract class PolynomialCreator {
     private final Set<Integer> newPolynomialRequestsFrom;
     protected final int[] allMembers;
     private boolean iHaveSentNewPolyRequest;
+    private long startTime;
 
     PolynomialCreator(PolynomialCreationContext creationContext,
                       int processId, SecureRandom rndGenerator,
@@ -108,6 +109,7 @@ public abstract class PolynomialCreator {
     public void sendNewPolynomialCreationRequest() {
         if (iHaveSentNewPolyRequest)
             return;
+        startTime = System.nanoTime();
         NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage(
                 processId, creationContext);
         int[] members = getMembers(true);
@@ -407,7 +409,9 @@ public abstract class PolynomialCreator {
             result[j] =  new VerifiableShare(share,
                     commitmentScheme.extractCommitment(shareholderId, commitments), null);
         }
-
+        long endTime = System.nanoTime();
+        double totalTime = (endTime - startTime) / 1_000_000.0;
+        logger.info("{}: Polynomial {} creation time: {} ms", creationContext.getReason(), creationContext.getId(), totalTime);
         creationListener.onPolynomialCreationSuccess(creationContext, consensusId, result);
     }
 

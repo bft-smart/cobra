@@ -22,8 +22,6 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
 
-import static confidential.Configuration.*;
-
 /**
  * @author Robin
  */

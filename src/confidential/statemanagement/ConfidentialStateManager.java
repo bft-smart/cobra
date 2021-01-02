@@ -2,19 +2,15 @@ package confidential.statemanagement;
 
 import bftsmart.consensus.messages.ConsensusMessage;
 import bftsmart.reconfiguration.views.View;
-import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.SMMessage;
 import bftsmart.statemanagement.StateManager;
 import bftsmart.tom.core.DeliveryThread;
 import bftsmart.tom.core.TOMLayer;
-import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import confidential.ConfidentialData;
 import confidential.Configuration;
 import confidential.Utils;
 import confidential.polynomial.*;
-import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.resharing.BlindedStateHandler;
 import confidential.statemanagement.resharing.BlindedStateSender;
@@ -22,8 +18,6 @@ import confidential.statemanagement.resharing.ConstantBlindedStateHandler;
 import confidential.statemanagement.resharing.LinearBlindedStateHandler;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.commitment.Commitment;
-import vss.commitment.CommitmentScheme;
 import vss.secretsharing.VerifiableShare;
 
 import java.math.BigInteger;
@@ -36,7 +30,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     private final boolean RENEWAL;
     private final int SERVER_STATE_LISTENING_PORT;
     private final Logger logger = LoggerFactory.getLogger("confidential");
-    private final static long INIT_TIMEOUT = 220000;
+    private final static long INIT_TIMEOUT = 60 * 60 * 1000;
     private DistributedPolynomial distributedPolynomial;
     private ServerConfidentialityScheme confidentialityScheme;
     private Timer stateTimer;
@@ -351,7 +345,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             logger.info("I updated the state!");
             tomLayer.requestsTimer.clearAll();
             tomLayer.requestsTimer.Enabled(true);
-            //tomLayer.requestsTimer.startTimer();
+
 
             if (appStateOnly) {
                 appStateOnly = false;
@@ -380,12 +374,12 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 logger.debug("There is no recovery request for id {}", context.getId());
         } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
             refreshTriggerTask.cancel();
-            long endTime = System.nanoTime() - renewalStartTime;
-            logger.info("Renewal polynomial duration: {} ms", (endTime / 1_000_000.0));
 
             isRefreshing = true;
             int[] oldMembers = context.getContexts()[0].getMembers();
             int[] newMembers = context.getContexts()[1].getMembers();
+            logger.info("Old members: {}", Arrays.toString(oldMembers));
+            logger.info("New members: {}", Arrays.toString(newMembers));
             int processId = SVController.getStaticConf().getProcessId();
             if (Utils.isIn(processId, newMembers)) {
                 BlindedStateHandler blindedStateHandler;
@@ -420,26 +414,14 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     private void sendingBlindedState(PolynomialCreationContext creationContext, VerifiableShare blindingShare, int consensusId) {
         try {
-            dt.iAmWaitingForDeliverLock();
-            logger.debug("Trying to acquire deliverLock");
-            dt.deliverLock();
-            logger.debug("deliverLock acquired");
-            dt.iAmNotWaitingForDeliverLock();
+            dt.pauseDecisionDelivery();
 
-            logger.debug("Getting state");
+            logger.info("Getting state");
             DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
             if (appState == null) {
-                logger.debug("Something went wrong while retrieving state up to {}", consensusId);
+                logger.error("Something went wrong while retrieving state up to {}", consensusId);
                 return;
             }
-
-            dt.setRefreshingState(true);
-
-            //logger.info("Updating state");
-            //dt.refreshState(appState);
-            //logger.debug("State renewed");
-
-            //dt.setRefreshingState(false);
 
             int[] receivers = creationContext.getContexts()[1].getMembers();
             boolean iAmStateSender = creationContext.getLeader() == SVController.getStaticConf().getProcessId();
@@ -448,26 +430,18 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     .start();
         } catch (Exception e) {
             logger.error("Failed to send blinded state.", e);
-        } finally {
-            //dt.canDeliver();//signal deliverThread that state has been installed
-            dt.deliverUnlock();
         }
     }
 
     protected void finishRefresh(DefaultApplicationState renewedState) {
-        dt.iAmWaitingForDeliverLock();
-        logger.debug("Trying to acquire deliverLock");
-        dt.deliverLock();
-        logger.debug("deliverLock acquired");
-        dt.iAmNotWaitingForDeliverLock();
-
         logger.info("Updating state");
         dt.refreshState(renewedState);
         logger.debug("State renewed");
 
-        dt.setRefreshingState(false);
-        dt.canDeliver();//signal deliverThread that state has been installed
-        dt.deliverUnlock();
+        long endTime = System.nanoTime();
+        double totalTime = (endTime - renewalStartTime) / 1_000_000.0;
+        logger.info("Total renewal time: {}", totalTime);
+        dt.resumeDecisionDelivery();
         isRefreshing = false;
         setRefreshTimer();
     }
@@ -476,123 +450,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         logger.error("I received an invalid point");
         System.exit(-1);
     }
-/*
-    private void refreshState(VerifiableShare point, int consensusId) {
-        try {
-            logger.debug("Renewing my state");
 
-            dt.iAmWaitingForDeliverLock();
-            logger.debug("Trying to acquire deliverLock");
-            dt.deliverLock();
-            logger.debug("deliverLock acquired");
-            dt.iAmNotWaitingForDeliverLock();
-
-            DefaultApplicationState appState = (DefaultApplicationState) dt.getRecoverer().getState(consensusId, true);
-            if (appState == null) {
-                logger.debug("Something went wrong while retrieving state up to {}", consensusId);
-                return;
-            }
-
-            ApplicationState refreshedState = refreshState(point, appState);
-            if (refreshedState != null) {
-                logger.info("Updating state");
-                dt.refreshState(refreshedState);
-            }
-            else
-                logger.debug("State renewal ignored. Something went wrong while renewing the state");
-
-            if (refreshedState != null)
-                logger.debug("State renewed");
-
-        } finally {
-            dt.canDeliver();//signal deliverThread that state has been installed
-            dt.deliverUnlock();
-
-            setRefreshTimer();
-        }
-
-    }
-
-    private DefaultApplicationState refreshState(VerifiableShare point, DefaultApplicationState appState) {
-        BigInteger y = point.getShare().getShare();
-        Commitment refreshCommitments = point.getCommitments();
-        BigInteger field = distributedPolynomial.getField();
-        CommitmentScheme commitmentScheme = confidentialityScheme.getCommitmentScheme();
-        long numShares = 0;
-        byte[] renewedSnapshot = null;
-        if (appState.hasState()) {
-            ConfidentialSnapshot snapshot = ConfidentialSnapshot.deserialize(appState.getState());
-            if (snapshot == null)
-                return null;
-            if (snapshot.getShares() != null && snapshot.getShares().length > 0) {
-                ConfidentialData[] secretData = snapshot.getShares();
-                for (ConfidentialData oldShare : secretData) {
-                    VerifiableShare vs = oldShare.getShare();
-                    vs.getShare().setShare(y.add(vs.getShare().getShare()).mod(field));
-                    Commitment commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
-                            refreshCommitments);
-                    vs.setCommitments(commitments);
-                    numShares++;
-                    if (oldShare.getPublicShares() != null)
-                        for (VerifiableShare publicShare : oldShare.getPublicShares()) {
-                            publicShare.getShare().setShare(y.add(publicShare.getShare().getShare()).mod(field));
-                            commitments = commitmentScheme.sumCommitments(publicShare.getCommitments(),
-                                    refreshCommitments);
-                            publicShare.setCommitments(commitments);
-                            numShares++;
-                        }
-                }
-
-                renewedSnapshot = new ConfidentialSnapshot(snapshot.getPlainData(), secretData).serialize();
-            }
-        }
-
-        CommandsInfo[] oldLogs = appState.getMessageBatches();
-        CommandsInfo[] renewedLogs = new CommandsInfo[oldLogs.length];
-
-        for (int i = 0; i < oldLogs.length; i++) {
-            CommandsInfo oldLog = oldLogs[i];
-            byte[][] commands = new byte[oldLog.commands.length][];
-            for (int j = 0; j < oldLog.commands.length; j++) {
-                Request request = Request.deserialize(oldLog.commands[j]);
-                if (request == null || request.getShares() == null || request.getShares().length == 0)
-                    commands[j] = oldLog.commands[j];
-                else {
-                    ConfidentialData[] secretData = request.getShares();
-                    for (ConfidentialData oldShare : secretData) {
-                        VerifiableShare vs = oldShare.getShare();
-                        vs.getShare().setShare(y.add(vs.getShare().getShare()).mod(field));
-                        Commitment commitments = commitmentScheme.sumCommitments(vs.getCommitments(),
-                                refreshCommitments);
-                        vs.setCommitments(commitments);
-                        numShares++;
-                        if (oldShare.getPublicShares() != null)
-                            for (VerifiableShare publicShare : oldShare.getPublicShares()) {
-                                publicShare.getShare().setShare(y.add(publicShare.getShare().getShare()).mod(field));
-                                commitments = commitmentScheme.sumCommitments(publicShare.getCommitments(),
-                                        refreshCommitments);
-                                publicShare.setCommitments(commitments);
-                                numShares++;
-                            }
-                    }
-                    commands[j] = new Request(request.getType(), request.getPlainData(), secretData).serialize();
-                }
-            }
-            renewedLogs[i] = new CommandsInfo(commands, oldLog.msgCtx);
-        }
-
-        logger.info("Renewed {} shares", numShares);
-
-        return new DefaultApplicationState(
-                renewedLogs,
-                appState.getLastCheckpointCID(),
-                appState.getLastCID(),
-                renewedSnapshot == null ? appState.getState() : renewedSnapshot,
-                renewedSnapshot == null ? appState.getStateHash() : TOMUtil.computeHash(renewedSnapshot),
-                SVController.getStaticConf().getProcessId()
-        );
-    }
-*/
     private void setRefreshTimer() {
         refreshTriggerTask = new TimerTask() {
             @Override

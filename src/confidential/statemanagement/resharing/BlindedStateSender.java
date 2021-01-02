@@ -88,7 +88,7 @@ public class BlindedStateSender extends Thread {
             logger.error("Failed to serialized blinded shares");
             return;
         }
-        logger.info("Took {} ms to serialize blinded state", (t2 - t1) / 1_000_000.0);
+        logger.info("Took {} ms to serialize {} blinded state", (t2 - t1) / 1_000_000.0, blindedState.getShares().size());
 
         PublicDataSender[] publicDataSenders = new PublicDataSender[receivers.length];
         logger.debug("Sending {} bytes of serialized blinded shares", serializedBlindedShares.length);

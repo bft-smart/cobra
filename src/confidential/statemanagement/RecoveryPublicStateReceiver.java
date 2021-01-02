@@ -50,12 +50,12 @@ public class RecoveryPublicStateReceiver extends Thread {
                 String clientIp = client.getInetAddress().getHostAddress();
 
                 if (!knownServersIps.contains(clientIp)) {
-                    logger.info("Received connection from unknown server with ip {}", clientIp);
+                    logger.debug("Received connection from unknown server with ip {}", clientIp);
                     continue;
                 }
                 BufferedInputStream in = new BufferedInputStream(client.getInputStream());
                 int pid = Utils.toNumber(Utils.readNBytes(4, in));
-                logger.info("Received un-secure connection from {}", pid);
+                logger.debug("Received un-secure connection from {}", pid);
 
                 long t1, t2;
                 byte[] publicState = null;
@@ -64,7 +64,7 @@ public class RecoveryPublicStateReceiver extends Thread {
                 int commitmentBytes = Utils.toNumber(Utils.readNBytes(4, in));
                 byte[] commitments = Utils.readNBytes(commitmentBytes, in);
                 t2 = System.nanoTime();
-                logger.info("Took {} ms to commitments of size {} from {}",
+                logger.info("Took {} ms to receive commitments of size {} from {}",
                         (t2 - t1) / 1_000_000.0, commitmentBytes, pid);
 
                 t1 = System.nanoTime();
