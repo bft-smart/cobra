@@ -2,7 +2,6 @@ package confidential.benchmark;
 
 import confidential.Configuration;
 import vss.Constants;
-import vss.benchmark.Measurement;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
@@ -18,6 +17,9 @@ import java.math.BigInteger;
 import java.security.Key;
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * @author Robin
@@ -25,18 +27,18 @@ import java.util.*;
 public class RecoveryBenchmark {
     private static final BigInteger keyNumber = new BigInteger("937810634060551071826485204471949219646466658841719067506");
     private static SecureRandom rndGenerator;
-    private static final int nDecimals = 4;
     private static int threshold;
     private static BigInteger[] shareholders;
     private static int n;
     private static Map<BigInteger, Key> keys;
     private static boolean verifyCorrectness;
+    private static int nProcessingThreads;
 
-    public static void main(String[] args) throws SecretSharingException {
-        if (args.length != 6) {
+    public static void main(String[] args) throws SecretSharingException, InterruptedException {
+        if (args.length != 7) {
             System.out.println("USAGE: ... confidential.benchmark.RecoveryBenchmark " +
                     "<threshold> <num secrets> <warm up iterations> <test iterations> " +
-                    "<verify correctness> <commitment scheme -> linear|constant>");
+                    "<num processing threads> <verify correctness> <commitment scheme -> linear|constant>");
             System.exit(-1);
         }
 
@@ -44,8 +46,9 @@ public class RecoveryBenchmark {
         int nSecrets = Integer.parseInt(args[1]);
         int warmUpIterations = Integer.parseInt(args[2]);
         int testIterations = Integer.parseInt(args[3]);
-        verifyCorrectness = Boolean.parseBoolean(args[4]);
-        String commitmentSchemeName = args[5];
+        nProcessingThreads = Integer.parseInt(args[4]);
+        verifyCorrectness = Boolean.parseBoolean(args[5]);
+        String commitmentSchemeName = args[6];
 
         n = 3 * threshold + 1;
 
@@ -92,139 +95,192 @@ public class RecoveryBenchmark {
     }
 
     private static void runTests(int nTests, boolean printResults, int nSecrets,
-                                 VSSFacade vssFacade) throws SecretSharingException {
+                                 VSSFacade vssFacade) throws SecretSharingException, InterruptedException {
         int recoveryShareholderIndex = 0;
         BigInteger field = vssFacade.getField();
         CommitmentScheme commitmentScheme = vssFacade.getCommitmentScheme();
-        Measurement mRecoveryShareGeneration = new Measurement(nTests);
-        Measurement mSharesRecovery = new Measurement(nTests);
-        Measurement mCommitmentsRecovery = new Measurement(nTests);
-        Measurement mSharesVerification = new Measurement(nTests);
 
-        Set<BigInteger> corruptedServers = new HashSet<>(threshold);
-
-        Polynomial recoveryPolynomial =
+        Polynomial r =
                 createRecoveryPolynomialFor(recoveryShareholderIndex, vssFacade);
 
-        Commitment tempRecoveryCommitment =
-                commitmentScheme.generateCommitments(recoveryPolynomial);
-        Map<BigInteger, Commitment> temp = new HashMap<>(n - 1);
-        //removing recovering shareholder commitment
-        for (int i = 0; i < n; i++) {
-            if (i == recoveryShareholderIndex)
-                continue;
-            temp.put(shareholders[i],
-                    commitmentScheme.extractCommitment(shareholders[i], tempRecoveryCommitment));
-        }
-        Commitment recoveryCommitment = commitmentScheme.combineCommitments(temp);
-        BigInteger[] recoveryPoints = new BigInteger[n];
-        for (int i = 0; i < n; i++) {
-            recoveryPoints[i] = recoveryPolynomial.evaluateAt(shareholders[i]);
-        }
+        Commitment rCommitment = commitmentScheme.generateCommitments(r);
+
+        BigInteger[] rPoints = generateShares(shareholders, r);
 
         byte[] secret = new byte[1024];
         rndGenerator.nextBytes(secret);
-        //creating shares
         PrivatePublishedShares privateShares = vssFacade.share(secret, keys);
-        VerifiableShare[] verifiableShares = new VerifiableShare[n];
-        for (int i = 0; i < n; i++) {
-            verifiableShares[i] = vssFacade.extractShare(privateShares, shareholders[i],
-                    keys.get(shareholders[i]));
-        }
+
+        Set<BigInteger> corruptedServers = new HashSet<>(threshold);
+
+        long start, end;
+        long[] recoveryShareGenerationTimes = new long[nTests];
+        long[] sharesRecoveryTimes = new long[nTests];
+        long[] commitmentsRecoveryTimes = new long[nTests];
+        long[] allTimes = new long[nTests];
 
         for (int nT = 0; nT < nTests; nT++) {
             corruptedServers.clear();
+            long recoveryShareGenerationTime = 0;
+            long sharesRecoveryTime = 0;
+            long commitmentsRecoveryTime = 0;
+            long allTimeStart, allTimeEnd;
+            allTimeStart = System.nanoTime();
 
+            //Extracting shares
+            VerifiableShare[][] allVerifiableShares = new VerifiableShare[nSecrets][];
             for (int nS = 0; nS < nSecrets; nS++) {
-                //creating recovery shares
-                Share[] recoveryShares = new Share[n - 1];
-                for (int i = 0, j = 0; i < n; i++) {
-                    VerifiableShare vs = verifiableShares[i];
-                    if (i == recoveryShareholderIndex) {
-                        mRecoveryShareGeneration.start();
-                        new Share(vs.getShare().getShareholder(),
-                                vs.getShare().getShare().add(recoveryPoints[i]).mod(field));
-                        mRecoveryShareGeneration.stop();
-                        continue;
-                    }
-                    recoveryShares[j++] = new Share(vs.getShare().getShareholder(),
-                            vs.getShare().getShare().add(recoveryPoints[i]).mod(field));
-                }
-
-                Map<BigInteger, Commitment> recoveryCommitments = new HashMap<>(n - 1);
+                VerifiableShare[] verifiableShares = new VerifiableShare[n];
                 for (int i = 0; i < n; i++) {
                     if (i == recoveryShareholderIndex)
                         continue;
-                    recoveryCommitments.put(shareholders[i],
-                            verifiableShares[i].getCommitments());
+                    verifiableShares[i] = vssFacade.extractShare(privateShares, shareholders[i],
+                            keys.get(shareholders[i]));
                 }
+                allVerifiableShares[nS] = verifiableShares;
+            }
+            byte[] sharedData = allVerifiableShares[0][(recoveryShareholderIndex + 1) % n].getSharedData();
 
-                //recovering a share
-                mCommitmentsRecovery.start();
-                Commitment recoveredCommitment =
-                        commitmentScheme.recoverCommitment(shareholders[recoveryShareholderIndex], recoveryCommitments);
-                mCommitmentsRecovery.stop();
-
-                mSharesRecovery.start();
-                Share[] recoveringShares =
-                        new Share[threshold + (corruptedServers.size() < threshold ? 2
-                                : 1)];
-
-                Map<BigInteger, Share> allRecoveringShares = new HashMap<>();
-                for (int i = 0, j = 0; i < recoveryShares.length; i++) {
-                    Share share = recoveryShares[i];
-                    if (j < recoveringShares.length && !corruptedServers.contains(share.getShareholder()))
-                        recoveringShares[j++] = share;
-                    allRecoveringShares.put(share.getShareholder(), share);
-                }
-
-                Polynomial polynomial = new Polynomial(field, recoveringShares);
-                BigInteger shareNumber;
-                mSharesRecovery.stop();
-
-                if (polynomial.getDegree() != threshold) {
-                    mSharesVerification.start();
-                    recoveringShares = new Share[threshold + 1];
-                    Commitment combinedCommitment =
-                            commitmentScheme.combineCommitments(recoveryCommitments);
-                    Commitment verificationCommitment =
-                            commitmentScheme.sumCommitments(recoveryCommitment,
-                                    combinedCommitment);
-                    commitmentScheme.startVerification(verificationCommitment);
-                    int j = 0;
-                    for (Map.Entry<BigInteger, Share> entry : allRecoveringShares.entrySet()) {
-                        if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment))
-                            recoveringShares[j++] = entry.getValue();
-                        else {
-                            corruptedServers.add(entry.getValue().getShareholder());
-                        }
+            //creating recovery shares
+            Share[][] allRecoveryShares = new Share[nSecrets][];
+            for (int nS = 0; nS < nSecrets; nS++) {
+                VerifiableShare[] verifiableShares = allVerifiableShares[nS];
+                Share[] recoveryShares = new Share[n - 1];
+                for (int i = 0, j = 0; i < n; i++) {
+                    if (i == recoveryShareholderIndex)
+                        continue;
+                    VerifiableShare vs = verifiableShares[i];
+                    if (i == (recoveryShareholderIndex + 1) % n) {
+                        start = System.nanoTime();
+                        recoveryShares[j++] = new Share(vs.getShare().getShareholder(),
+                                vs.getShare().getShare().add(rPoints[i]).mod(field));
+                        end = System.nanoTime();
+                        recoveryShareGenerationTime += end - start;
+                        continue;
                     }
-                    commitmentScheme.endVerification();
-                    mSharesVerification.stop();
-                    mSharesRecovery.start();
-                    shareNumber =
-                            vssFacade.getInterpolationStrategy().interpolateAt(shareholders[recoveryShareholderIndex], recoveringShares);
-                } else {
-                    mSharesRecovery.start();
-                    shareNumber =
-                            polynomial.evaluateAt(shareholders[recoveryShareholderIndex]);
+                    recoveryShares[j++] = new Share(vs.getShare().getShareholder(),
+                            vs.getShare().getShare().add(rPoints[i]).mod(field));
                 }
+                allRecoveryShares[nS] = recoveryShares;
+            }
 
-                Share recoveredShare = new Share(shareholders[recoveryShareholderIndex], shareNumber);
-                verifiableShares[recoveryShareholderIndex] =
-                        new VerifiableShare(recoveredShare, recoveredCommitment,
-                                verifiableShares[(recoveryShareholderIndex + 1) % n].getSharedData());
-                mSharesRecovery.stop();
+            //Recovering commitments
+            ExecutorService executor = Executors.newFixedThreadPool(nProcessingThreads);
+            CountDownLatch commitmentRecoveryCounter = new CountDownLatch(nSecrets);
+            Commitment[] allRecoveredCommitment = new Commitment[nSecrets];
+            Map<BigInteger, Commitment>[] allRecoveryCommitments = new Map[nSecrets];
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                int finalNS = nS;
+                VerifiableShare[] verifiableShares = allVerifiableShares[nS];
+                executor.execute(() -> {
+                    int minNumberOfCommitments = corruptedServers.size() >= threshold ? threshold : threshold + 1;
+                    Map<BigInteger, Commitment> validCommitments = new HashMap<>(minNumberOfCommitments);
+                    for (int i = 0; i < n; i++) {
+                        if (i == recoveryShareholderIndex)
+                            continue;
+                        validCommitments.put(shareholders[i],
+                                verifiableShares[i].getCommitments());
+                        if (validCommitments.size() == minNumberOfCommitments)
+                            break;
+                    }
+                    Commitment recoveredCommitment;
+                    try {
+                        recoveredCommitment =
+                                commitmentScheme.recoverCommitment(shareholders[recoveryShareholderIndex], validCommitments);
+                    } catch (SecretSharingException e) {
+                        System.err.println("Invalid Commitments");
+                        validCommitments.clear();
+                        recoveredCommitment = null;
+                        System.exit(-1);
+                    }
+                    allRecoveryCommitments[finalNS] = validCommitments;
+                    allRecoveredCommitment[finalNS] = recoveredCommitment;
+                    commitmentRecoveryCounter.countDown();
+                });
+            }
+            executor.shutdown();
+            commitmentRecoveryCounter.await();
+            end = System.nanoTime();
+            commitmentsRecoveryTime += end - start;
 
-                if (verifyCorrectness) {
+            //Recovering shares
+            executor = Executors.newFixedThreadPool(nProcessingThreads);
+            CountDownLatch shareRecoveryCounter = new CountDownLatch(nSecrets);
+            VerifiableShare[] allRecoveredShares = new VerifiableShare[nSecrets];
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                int finalNS = nS;
+                Map<BigInteger, Commitment> recoveryCommitments = allRecoveryCommitments[nS];
+                Commitment recoveredCommitment = allRecoveredCommitment[nS];
+                Share[] recoveryShares = allRecoveryShares[nS];
+                executor.execute(() -> {
+                    try {
+                        Share[] recoveringShares =
+                                new Share[threshold + (corruptedServers.size() < threshold ? 2
+                                        : 1)];
+
+                        Map<BigInteger, Share> allRecoveringShares = new HashMap<>();
+                        for (int i = 0, j = 0; i < recoveryShares.length; i++) {
+                            Share share = recoveryShares[i];
+                            if (share == null)
+                                continue;
+                            if (j < recoveringShares.length && !corruptedServers.contains(share.getShareholder())) {
+                                recoveringShares[j++] = share;
+                            }
+                            allRecoveringShares.put(share.getShareholder(), share);
+                        }
+
+                        Polynomial polynomial = new Polynomial(field, recoveringShares);
+                        BigInteger shareNumber;
+                        if (polynomial.getDegree() != threshold) {
+                            recoveringShares = new Share[threshold + 1];
+                            Commitment combinedCommitment =
+                                    commitmentScheme.combineCommitments(recoveryCommitments);
+                            Commitment verificationCommitment =
+                                    commitmentScheme.sumCommitments(rCommitment,
+                                            combinedCommitment);
+                            commitmentScheme.startVerification(verificationCommitment);
+                            int j = 0;
+                            for (Map.Entry<BigInteger, Share> entry : allRecoveringShares.entrySet()) {
+                                if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
+                                    recoveringShares[j++] = entry.getValue();
+                                } else {
+                                    corruptedServers.add(entry.getValue().getShareholder());
+                                }
+                            }
+                            commitmentScheme.endVerification();
+                            shareNumber =
+                                    vssFacade.getInterpolationStrategy().interpolateAt(shareholders[recoveryShareholderIndex], recoveringShares);
+                        } else {
+                            shareNumber =
+                                    polynomial.evaluateAt(shareholders[recoveryShareholderIndex]);
+                        }
+                        Share recoveredShare = new Share(shareholders[recoveryShareholderIndex], shareNumber);
+                        allRecoveredShares[finalNS] =
+                                new VerifiableShare(recoveredShare, recoveredCommitment, sharedData);
+                        shareRecoveryCounter.countDown();
+                    } catch (SecretSharingException e) {
+                        e.printStackTrace();
+                    }
+                });
+            }
+            executor.shutdown();
+            shareRecoveryCounter.await();
+            end = System.nanoTime();
+            sharesRecoveryTime += end - start;
+
+            //Verifying correction
+            if (verifyCorrectness) {
+                for (int nS = 0; nS < nSecrets; nS++) {
+                    VerifiableShare[] verifiableShares = allVerifiableShares[nS];
+                    verifiableShares[recoveryShareholderIndex] = allRecoveredShares[nS];
                     Share[] shares = new Share[n];
                     Map<BigInteger, Commitment> commitments = new HashMap<>(n);
-                    byte[] sharedData = null;
                     for (int i = 0; i < n; i++) {
                         VerifiableShare vs = verifiableShares[i];
                         shares[i] = vs.getShare();
                         commitments.put(vs.getShare().getShareholder(), vs.getCommitments());
-                        sharedData = vs.getSharedData();
                     }
                     Commitment commitment = commitmentScheme.combineCommitments(commitments);
                     OpenPublishedShares openShares = new OpenPublishedShares(shares,
@@ -234,22 +290,39 @@ public class RecoveryBenchmark {
                         throw new IllegalStateException("Secret is different");
                 }
             }
+            allTimeEnd = System.nanoTime();
+
+            recoveryShareGenerationTimes[nT] = recoveryShareGenerationTime;
+            sharesRecoveryTimes[nT] = sharesRecoveryTime;
+            commitmentsRecoveryTimes[nT] = commitmentsRecoveryTime;
+            allTimes[nT] = allTimeEnd - allTimeStart;
         }
 
-        double recoveryShareGeneration =
-                mRecoveryShareGeneration.getAverageInMillis(nDecimals);
-        double sharesRecovery = mSharesRecovery.getAverageInMillis(nDecimals);
-        double commitmentsRecovery = mCommitmentsRecovery.getAverageInMillis(nDecimals);
-        double sharesVerification = mSharesVerification.getAverageInMillis(nDecimals);
-
         if (printResults) {
+            double recoveryShareGeneration = computeAverage(recoveryShareGenerationTimes) / 1_000_000.0;
+            double sharesRecovery = computeAverage(sharesRecoveryTimes) / 1_000_000.0;
+            double commitmentsRecovery = computeAverage(commitmentsRecoveryTimes) / 1_000_000.0;
+            double allTimeAvg = computeAverage(allTimes) / 1_000_000.0;
+
             System.out.println("Recovery share generation: " + recoveryShareGeneration +  " ms");
             System.out.println("Share recovery: " + sharesRecovery + " ms");
             System.out.println("Commitment recovery: " + commitmentsRecovery + " ms");
-            System.out.println("Shares verification: " + sharesVerification + " ms");
             System.out.println("Recovery total: " + (recoveryShareGeneration + sharesRecovery
-                    + commitmentsRecovery + sharesVerification) + " ms");
+                    + commitmentsRecovery) + " ms");
+            System.out.println("All: " + allTimeAvg + " ms");
         }
+    }
+
+    private static double computeAverage(long[] values) {
+        return (double) Arrays.stream(values).sum() / values.length;
+    }
+
+    private static BigInteger[] generateShares(BigInteger[] shareholders, Polynomial polynomial) {
+        BigInteger[] result = new BigInteger[shareholders.length];
+        for (int i = 0; i < shareholders.length; i++) {
+            result[i] = polynomial.evaluateAt(shareholders[i]);
+        }
+        return result;
     }
 
     private static Polynomial createRecoveryPolynomialFor(int recoveryShareholderIndex, VSSFacade vssFacade) {

@@ -4,7 +4,6 @@ import confidential.Configuration;
 import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.linear.FeldmanCommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.polynomial.Polynomial;
@@ -18,6 +17,7 @@ import java.math.BigInteger;
 import java.security.Key;
 import java.security.SecureRandom;
 import java.util.*;
+import java.util.concurrent.*;
 
 public class ResharingBenchmark {
     private static final BigInteger keyNumber = new BigInteger("937810634060551071826485204471949219646466658841719067506");
@@ -30,12 +30,13 @@ public class ResharingBenchmark {
     private static BigInteger[] newShareholders;
     private static Map<BigInteger, Key> keys;
     private static boolean verifyCorrectness;
+    private static int nProcessingThreads;
 
-    public static void main(String[] args) throws SecretSharingException {
-        if (args.length != 6) {
+    public static void main(String[] args) throws SecretSharingException, InterruptedException, ExecutionException {
+        if (args.length != 7) {
             System.out.println("USAGE: ... confidential.benchmark.ResharingBenchmark " +
                     "<threshold> <num secrets> <warm up iterations> <test iterations> " +
-                    "<verify correctness> <commitment scheme -> linear|constant>");
+                    "<num processing threads> <verify correctness> <commitment scheme -> linear|constant>");
             System.exit(-1);
         }
 
@@ -43,8 +44,9 @@ public class ResharingBenchmark {
         int nSecrets = Integer.parseInt(args[1]);
         int warmUpIterations = Integer.parseInt(args[2]);
         int testIterations = Integer.parseInt(args[3]);
-        verifyCorrectness = Boolean.parseBoolean(args[4]);
-        String commitmentSchemeName = args[5];
+        nProcessingThreads = Integer.parseInt(args[4]);
+        verifyCorrectness = Boolean.parseBoolean(args[5]);
+        String commitmentSchemeName = args[6];
 
         newThreshold = oldThreshold;
         oldN = oldThreshold + 2;
@@ -100,7 +102,7 @@ public class ResharingBenchmark {
     }
 
     private static void runTests(int nTests, boolean printResults, int nSecrets,
-                                  VSSFacade vssFacade) throws SecretSharingException {
+                                 VSSFacade vssFacade) throws SecretSharingException, InterruptedException, ExecutionException {
         BigInteger field = vssFacade.getField();
         CommitmentScheme commitmentScheme = vssFacade.getCommitmentScheme();
         BigInteger q = getRandomNumber(field.bitLength() - 1);
@@ -120,8 +122,7 @@ public class ResharingBenchmark {
 
         Set<BigInteger> corruptedShareholders = new HashSet<>(oldN);
 
-        long start, end, tempStart, tempEnd;
-        long[] tempTimes = new long[nTests];
+        long start, end;
         long[] sharingTimes = new long[nTests];
         long[] shareBlindingTimes = new long[nTests];
         long[] secretBlindingTimes = new long[nTests];
@@ -129,9 +130,9 @@ public class ResharingBenchmark {
         long[] commitmentRefreshTimes = new long[nTests];
         long[] refreshTimes = new long[nTests];
         long[] allTimes = new long[nTests];
+
         for (int nT = 0; nT < nTests; nT++) {
             corruptedShareholders.clear();
-            long tempTime = 0;
             long sharingTime = 0;
             long shareBlindingTime = 0;
             long secretBlindingTime = 0;
@@ -140,20 +141,27 @@ public class ResharingBenchmark {
             long refreshTime = 0;
             long allTimeStart, allTimeEnd;
             allTimeStart = System.nanoTime();
+
+            //Extracting shares
+            VerifiableShare[][] allVerifiableShares = new VerifiableShare[nSecrets][];
             for (int nS = 0; nS < nSecrets; nS++) {
-                tempStart = System.nanoTime();
-                start = System.nanoTime();
                 VerifiableShare[] verifiableShares = new VerifiableShare[oldN];
-                for (int i = 0; i < oldN; i++) {
+                start = System.nanoTime();
+                verifiableShares[0] = vssFacade.extractShare(privateShares, oldShareholders[0],
+                        keys.get(oldShareholders[0]));
+                end = System.nanoTime();
+                sharingTime += end - start;
+                for (int i = 1; i < oldN; i++) {
                     verifiableShares[i] = vssFacade.extractShare(privateShares, oldShareholders[i],
                             keys.get(oldShareholders[i]));
                 }
-                end = System.nanoTime();
-                sharingTime += end - start;
+                allVerifiableShares[nS] = verifiableShares;
+            }
+            byte[] sharedData = allVerifiableShares[0][0].getSharedData();
 
-                byte[] sharedData = verifiableShares[0].getSharedData();
-
-                //Creating blinded shares
+            //Creating blinded shares
+            for (int nS = 0; nS < nSecrets; nS++) {
+                VerifiableShare[] verifiableShares = allVerifiableShares[nS];
                 start = System.nanoTime();
                 verifiableShares[0].getShare()
                         .setShare(qOldPoints[0].add(verifiableShares[0].getShare().getShare()).mod(field));
@@ -164,69 +172,132 @@ public class ResharingBenchmark {
                     verifiableShares[i].getShare()
                             .setShare(qOldPoints[i].add(verifiableShares[i].getShare().getShare()).mod(field));
                 }
+            }
 
-                //Creating blinded secret
-                BigInteger blindedSecret = null;
-                start = System.nanoTime();
-                Share[] blindedShares =
-                        new Share[oldThreshold + (corruptedShareholders.size() < oldThreshold ? 2 : 1)];
-                int j = 0;
-                for (VerifiableShare vs : verifiableShares) {
-                    Share share = vs.getShare();
-                    if (corruptedShareholders.contains(share.getShareholder()))
-                        continue;
-                    blindedShares[j++] = share;
-                    if (j == blindedShares.length)
-                        break;
-                }
-                Polynomial polynomial = new Polynomial(field, blindedShares);
-                if (polynomial.getDegree() != oldThreshold) {
-                    System.err.println("Invalid blinded secret");
-                    System.exit(-1);
-                } else {
-                    blindedSecret = polynomial.evaluateAt(BigInteger.ZERO);
-                }
-                end = System.nanoTime();
-                secretBlindingTime += end - start;
+            //Creating blinded secret
+            ExecutorService executor = Executors.newFixedThreadPool(nProcessingThreads);
+            BigInteger[] allBlindedSecrets = new BigInteger[nSecrets];
+            Share[][] allBlindedShares = new Share[nSecrets][];
+            CountDownLatch blindedSecretCounter = new CountDownLatch(nSecrets);
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                VerifiableShare[] verifiableShares = allVerifiableShares[nS];
+                int finalNS = nS;
+                executor.execute(() -> {
+                    try {
+                        BigInteger blindedSecret = null;
+                        Share[] blindedShares =
+                                new Share[oldThreshold + (corruptedShareholders.size() < oldThreshold ? 2 : 1)];
+                        int j = 0;
+                        for (VerifiableShare vs : verifiableShares) {
+                            Share share = vs.getShare();
+                            if (corruptedShareholders.contains(share.getShareholder())) {
+                                continue;
+                            }
+                            blindedShares[j++] = share;
+                            if (j == blindedShares.length) {
+                                break;
+                            }
+                        }
+                        Polynomial polynomial = new Polynomial(field, blindedShares);
+                        if (polynomial.getDegree() != oldThreshold) {
+                            System.err.println("Invalid blinded secret");
+                            System.exit(-1);
+                        } else {
+                            blindedSecret = polynomial.evaluateAt(BigInteger.ZERO);
+                        }
+                        allBlindedSecrets[finalNS] = blindedSecret;
+                        allBlindedShares[finalNS] = blindedShares;
+                        blindedSecretCounter.countDown();
+                    } catch (SecretSharingException e) {
+                        e.printStackTrace();
+                    }
+                });
+            }
+            executor.shutdown();;
+            blindedSecretCounter.await();
+            end = System.nanoTime();
+            secretBlindingTime += end - start;
 
-                //Processing commitments
-                start = System.nanoTime();
-                Map<BigInteger, Commitment> allCurrentCommitments = new HashMap<>(oldN);
-                for (VerifiableShare verifiableShare : verifiableShares) {
-                    allCurrentCommitments.put(verifiableShare.getShare().getShareholder(),
-                            verifiableShare.getCommitments());
-                }
-                Commitment combinedCommitment = commitmentScheme.combineCommitments(allCurrentCommitments);
+            //Processing commitments
+            executor = Executors.newFixedThreadPool(nProcessingThreads);
+            Commitment[] allBlindedSecretCommitment = new Commitment[nSecrets];
+            CountDownLatch blindedSecretCommitmentCounter = new CountDownLatch(nSecrets);
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                int finalNS = nS;
+                VerifiableShare[] verifiableShares = allVerifiableShares[nS];
+                Share[] blindedShares = allBlindedShares[nS];
+                executor.execute(() -> {
+                    try {
+                        Map<BigInteger, Commitment> allCurrentCommitments = new HashMap<>(oldN);
+                        for (VerifiableShare verifiableShare : verifiableShares) {
+                            allCurrentCommitments.put(verifiableShare.getShare().getShareholder(),
+                                    verifiableShare.getCommitments());
+                        }
+                        Commitment combinedCommitment = commitmentScheme.combineCommitments(allCurrentCommitments);
+                        Commitment verificationCommitment = commitmentScheme.sumCommitments(qOldCommitment, combinedCommitment);
+                        int minNumberOfCommitments = corruptedShareholders.size() >= oldThreshold ? oldThreshold : oldThreshold + 1;
+                        Map<BigInteger, Commitment> validCommitments = new HashMap<>(minNumberOfCommitments);
+                        for (Share blindingShare : blindedShares) {
+                            validCommitments.put(blindingShare.getShareholder(),
+                                    commitmentScheme.extractCommitment(blindingShare.getShareholder(), verificationCommitment));
+                            if (validCommitments.size() == minNumberOfCommitments) {
+                                break;
+                            }
+                        }
+                        Commitment blindedSecretCommitment;
+                        try {
+                            blindedSecretCommitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
+                        } catch (SecretSharingException e) {
+                            System.err.println("Invalid Commitments");
+                            System.exit(-1);
+                            validCommitments.clear();
+                            blindedSecretCommitment = null;
+                        }
+                        allBlindedSecretCommitment[finalNS] = blindedSecretCommitment;
+                        blindedSecretCommitmentCounter.countDown();
+                    } catch (SecretSharingException e) {
+                        e.printStackTrace();
+                    }
+                });
+            }
+            executor.shutdown();
+            blindedSecretCommitmentCounter.await();
+            end = System.nanoTime();
+            commitmentRecoveryTime += end - start;
 
-                Commitment verificationCommitment = commitmentScheme.sumCommitments(qOldCommitment, combinedCommitment);
-                int minNumberOfCommitments = corruptedShareholders.size() >= oldThreshold ? oldThreshold : oldThreshold + 1;
-                Map<BigInteger, Commitment> validCommitments = new HashMap<>(minNumberOfCommitments);
-                for (Share blindingShare : blindedShares) {
-                    validCommitments.put(blindingShare.getShareholder(),
-                            commitmentScheme.extractCommitment(blindingShare.getShareholder(), verificationCommitment));
-                    if (validCommitments.size() == minNumberOfCommitments)
-                        break;
-                }
-                Commitment blindedSecretCommitment;
-                try {
-                    blindedSecretCommitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
-                } catch (SecretSharingException e) {
-                    System.err.println("Invalid Commitments");
-                    System.exit(-1);
-                    validCommitments.clear();
-                    blindedSecretCommitment = null;
-                }
-                end = System.nanoTime();
-                commitmentRecoveryTime += end - start;
+            executor = Executors.newFixedThreadPool(nProcessingThreads);
+            Commitment[] allRefreshedShareCommitment = new Commitment[nSecrets];
+            CountDownLatch refreshCommitmentCounter = new CountDownLatch(nSecrets);
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                int finalNS = nS;
+                Commitment blindedSecretCommitment = allBlindedSecretCommitment[nS];
+                executor.execute(() -> {
+                    try {
+                        Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
+                                commitmentScheme.extractCommitment(newShareholders[0], qNewCommitment));
+                        allRefreshedShareCommitment[finalNS] = refreshedShareCommitment;
+                        refreshCommitmentCounter.countDown();
+                    } catch (SecretSharingException e) {
+                        e.printStackTrace();
+                    }
 
+                });
+            }
+            executor.shutdown();
+            refreshCommitmentCounter.await();
+            end = System.nanoTime();
+            commitmentRefreshTime += end - start;
 
-                //Renewing shares
+            //Renewing shares
+            VerifiableShare[][] allRenewedShares = new VerifiableShare[nSecrets][];
+            for (int nS = 0; nS < nSecrets; nS++) {
+                Commitment refreshedShareCommitment = allRefreshedShareCommitment[nS];
+                BigInteger blindedSecret = allBlindedSecrets[nS];
                 VerifiableShare[] renewedShares = new VerifiableShare[newN];
-                start = System.nanoTime();
-                Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
-                        commitmentScheme.extractCommitment(newShareholders[0], qNewCommitment));
-                end = System.nanoTime();
-                commitmentRefreshTime += end - start;
+
                 start = System.nanoTime();
                 BigInteger refreshedShare = blindedSecret.subtract(qNewPoints[0]).mod(field);
                 renewedShares[0] = new VerifiableShare(
@@ -237,19 +308,27 @@ public class ResharingBenchmark {
                 end = System.nanoTime();
                 refreshTime += end - start;
 
-                for (int i = 1; i < newN; i++) {
-                    refreshedShare = blindedSecret.subtract(qNewPoints[i]).mod(field);
-                    refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
-                            commitmentScheme.extractCommitment(newShareholders[i], qNewCommitment));
-                    renewedShares[i] = new VerifiableShare(
-                            new Share(newShareholders[i], refreshedShare),
-                            refreshedShareCommitment,
-                            sharedData
-                    );
-                }
-
-                //Checking correctness of renewed shares
                 if (verifyCorrectness) {
+                    Commitment blindedSecretCommitment = allBlindedSecretCommitment[nS];
+                    for (int i = 1; i < newN; i++) {
+                        refreshedShare = blindedSecret.subtract(qNewPoints[i]).mod(field);
+                        refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
+                                commitmentScheme.extractCommitment(newShareholders[i], qNewCommitment));
+                        renewedShares[i] = new VerifiableShare(
+                                new Share(newShareholders[i], refreshedShare),
+                                refreshedShareCommitment,
+                                sharedData
+                        );
+                    }
+                }
+                allRenewedShares[nS] = renewedShares;
+            }
+
+
+            //Checking correctness of renewed shares
+            if (verifyCorrectness) {
+                for (int nS = 0; nS < nSecrets; nS++) {
+                    VerifiableShare[] renewedShares = allRenewedShares[nS];
                     Share[] shares = new Share[newN];
                     Map<BigInteger, Commitment> commitments = new HashMap<>(newN);
                     for (int i = 0; i < newN; i++) {
@@ -264,12 +343,9 @@ public class ResharingBenchmark {
                     if (!Arrays.equals(secret, recoveredSecret))
                         throw new IllegalStateException("Secret is different");
                 }
-                tempEnd = System.nanoTime();
-                tempTime += tempEnd - tempStart;
             }
             allTimeEnd = System.nanoTime();
 
-            tempTimes[nT] = tempTime;
             sharingTimes[nT] = sharingTime;
             shareBlindingTimes[nT] = shareBlindingTime;
             secretBlindingTimes[nT] = secretBlindingTime;
@@ -280,7 +356,6 @@ public class ResharingBenchmark {
         }
 
         if (printResults) {
-            double tempAvg = computeAverage(tempTimes) / 1_000_000.0;
             double sharingAvg = computeAverage(sharingTimes) / 1_000_000.0;
             double shareBlindingAvg = computeAverage(shareBlindingTimes) / 1_000_000.0;
             double secretBlindingAvg = computeAverage(secretBlindingTimes) / 1_000_000.0;
@@ -289,15 +364,14 @@ public class ResharingBenchmark {
             double refreshTimeAvg = computeAverage(refreshTimes) / 1_000_000.0;
             double allTimeAvg = computeAverage(allTimes) / 1_000_000.0;
 
-            System.out.println("Sharing: " + sharingAvg + " ms");
+            System.out.println("Share extraction: " + sharingAvg + " ms");
             System.out.println("Share blinding: " + shareBlindingAvg + " ms");
-            System.out.println("Secret blinding: " + secretBlindingAvg + " ms");
+            System.out.println("Blinded secret: " + secretBlindingAvg + " ms");
             System.out.println("Commitment recovery: " + commitmentRecoveryAvg + " ms");
             System.out.println("Commitment refresh: " + commitmentRefreshAvg + " ms");
             System.out.println("Refresh: " + refreshTimeAvg + " ms");
             System.out.println("Total: " + (shareBlindingAvg + secretBlindingAvg + commitmentRecoveryAvg
                     + commitmentRefreshAvg + refreshTimeAvg) + " ms");
-            System.out.println("Temp: " + tempAvg + " ms");
             System.out.println("All: " + allTimeAvg + " ms");
         }
     }
