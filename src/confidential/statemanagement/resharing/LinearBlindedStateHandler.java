@@ -22,7 +22,6 @@ public class LinearBlindedStateHandler extends BlindedStateHandler {
     private ObjectInput commitmentsStream;
     private byte[] selectedCommitments;
     private int selectedCommitmentHash;
-    private Commitment blindingCommitment;
 
     public LinearBlindedStateHandler(ServerViewController svController, PolynomialCreationContext context,
                                      VerifiableShare refreshPoint, ServerConfidentialityScheme confidentialityScheme,
@@ -64,12 +63,6 @@ public class LinearBlindedStateHandler extends BlindedStateHandler {
     }
 
     @Override
-    protected Commitment readBlindingCommitment() throws IOException, ClassNotFoundException {
-        blindingCommitment = Utils.readCommitment(commitmentsStream);
-        return blindingCommitment;
-    }
-
-    @Override
     protected Map<BigInteger, Commitment> readNextCommitment() throws IOException, ClassNotFoundException {
         Commitment commitment = Utils.readCommitment(commitmentsStream);
         Map<BigInteger, Commitment> result = new HashMap<>(stillValidSenders.size());
@@ -77,10 +70,5 @@ public class LinearBlindedStateHandler extends BlindedStateHandler {
             result.put(confidentialityScheme.getShareholder(sender), commitment);
         }
         return result;
-    }
-
-    @Override
-    protected Commitment removeServersCommitment(int server) {
-        return blindingCommitment;
     }
 }

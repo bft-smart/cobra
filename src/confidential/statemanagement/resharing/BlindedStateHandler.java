@@ -9,6 +9,7 @@ import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
+import confidential.Configuration;
 import confidential.polynomial.PolynomialCreationContext;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
@@ -31,6 +32,10 @@ import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -41,7 +46,7 @@ public abstract class BlindedStateHandler extends Thread {
     protected final int oldThreshold;
     protected final int newThreshold;
     protected final int oldQuorum;
-    private int corruptedServers;
+    private final AtomicInteger corruptedServers;
     protected final Set<Integer> stillValidSenders;
 
     protected final int processId;
@@ -62,8 +67,6 @@ public abstract class BlindedStateHandler extends Thread {
     private final Map<Integer, LinkedList<Share>> blindedShares;
     private final Map<Integer, Integer> blindedSharesSize;
     private int correctBlindedSharesSize;
-
-    private Commitment blindingCommitment;
 
     private final Lock lock = new ReentrantLock();
     private final Condition condition = lock.newCondition();
@@ -95,6 +98,7 @@ public abstract class BlindedStateHandler extends Thread {
         this.commonState = new HashMap<>(oldQuorum);
         this.blindedShares = new HashMap<>(oldQuorum);
         this.blindedSharesSize = new HashMap<>(oldQuorum);
+        this.corruptedServers = new AtomicInteger(0);
 
         this.correctBlindedSharesSize = -1;
         int[] receiversId = context.getContexts()[0].getMembers();
@@ -142,9 +146,7 @@ public abstract class BlindedStateHandler extends Thread {
 
     protected abstract void handleNewCommitments(int from, byte[] serializedCommitments, byte[] commitmentsHash);
     protected abstract boolean prepareCommitments();
-    protected abstract Commitment readBlindingCommitment() throws IOException, ClassNotFoundException;
     protected abstract Map<BigInteger, Commitment> readNextCommitment() throws IOException, ClassNotFoundException;
-    protected abstract Commitment removeServersCommitment(int server);
 
     @Override
     public void run() {
@@ -202,12 +204,50 @@ public abstract class BlindedStateHandler extends Thread {
 
     private DefaultApplicationState refreshState() {
         try {
-            Map<Integer, Iterator<Share>> currentShares = new HashMap<>(blindedShares.size());
+            int nShares = -1;
+
+            //Collecting all blinded shares
+            Map<Integer, Share[]> allBlindedShares = new HashMap<>(stillValidSenders.size());
+            Share[] shareTemp;
             for (Map.Entry<Integer, LinkedList<Share>> entry : blindedShares.entrySet()) {
-                currentShares.put(entry.getKey(), entry.getValue().iterator());
+                int i = 0;
+                if (nShares == -1) {
+                    nShares = entry.getValue().size();
+                }
+                shareTemp = new Share[nShares];
+                for (Share share : entry.getValue()) {
+                    shareTemp[i++] = share;
+                }
+                allBlindedShares.put(entry.getKey(), shareTemp);
             }
 
-            blindingCommitment = readBlindingCommitment();
+            //Collecting all commitments
+            Map<BigInteger, Commitment[]> allBlindedCommitments = new HashMap<>(stillValidSenders.size());
+            Commitment[] commitmentTemp;
+            Map<BigInteger, Commitment> commitments;
+            for (int i = 0; i < nShares; i++) {
+                commitments = readNextCommitment();
+                for (Map.Entry<BigInteger, Commitment> commitment : commitments.entrySet()) {
+                    commitmentTemp = allBlindedCommitments.get(commitment.getKey());
+                    if (commitmentTemp == null) {
+                        commitmentTemp = new Commitment[nShares];
+                        allBlindedCommitments.put(commitment.getKey(), commitmentTemp);
+                    }
+                    commitmentTemp[i] = commitment.getValue();
+                }
+            }
+
+            long t1, t2;
+            t1 = System.nanoTime();
+            Iterator<VerifiableShare> refreshedShares = refreshShares(refreshPoint, nShares, allBlindedShares,
+                    allBlindedCommitments);
+            t2 = System.nanoTime();
+            if (refreshedShares == null) {
+                logger.error("Failed to refresh shares");
+                return null;
+            }
+            double duration = (t2 - t1) / 1_000_000.0;
+            logger.info("Took {} ms to refresh {} shares", duration, nShares);
 
             int lastCheckPointCID = commonStateStream.readInt();
             int lastCID = commonStateStream.readInt();
@@ -215,7 +255,7 @@ public abstract class BlindedStateHandler extends Thread {
 
             CommandsInfo[] refreshedLog = null;
             if (logSize > -1) {
-                refreshedLog = refreshLog(logSize, currentShares);
+                refreshedLog = refreshLog(logSize, refreshedShares);
                 if (refreshedLog == null) {
                     logger.error("Failed to refresh log");
                     return null;
@@ -227,11 +267,7 @@ public abstract class BlindedStateHandler extends Thread {
             ConfidentialSnapshot refreshedSnapshot = null;
 
             if (hasState) {
-                refreshedSnapshot = refreshSnapshot(currentShares);
-                if (refreshedSnapshot == null) {
-                    logger.error("Failed to refresh snapshot");
-                    return null;
-                }
+                refreshedSnapshot = refreshSnapshot(refreshedShares);
             }
 
             byte[] refreshedSerializedState = refreshedSnapshot == null ? null : refreshedSnapshot.serialize();
@@ -243,13 +279,77 @@ public abstract class BlindedStateHandler extends Thread {
                     refreshedSerializedState == null ? null : TOMUtil.computeHash(refreshedSerializedState),
                     processId
             );
-        } catch (IOException | ClassNotFoundException | SecretSharingException e) {
+        } catch (IOException | ClassNotFoundException | SecretSharingException | InterruptedException e) {
             logger.error("Failed to reconstruct refreshed state", e);
             return null;
         }
     }
 
-    private CommandsInfo[] refreshLog(int logSize, Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException, SecretSharingException {
+    private Iterator<VerifiableShare> refreshShares(VerifiableShare refreshPoint, int nShares,
+                                                    Map<Integer, Share[]> allBlindedShares,
+                                                    Map<BigInteger, Commitment[]> allBlindedCommitments)
+            throws InterruptedException {
+        ExecutorService executorService = Executors
+                .newFixedThreadPool(Configuration.getInstance().getShareProcessingThreads());
+        VerifiableShare[] refreshedShares = new VerifiableShare[nShares];
+        CountDownLatch shareProcessingCounter = new CountDownLatch(nShares);
+        Integer[] servers = new Integer[allBlindedShares.size()];
+        BigInteger[] shareholders = new BigInteger[allBlindedCommitments.size()];
+        int k = 0;
+        //Load share senders
+        for (Integer server : allBlindedShares.keySet()) {
+            servers[k++] = server;
+        }
+        k = 0;
+        //Load commitments senders
+        for (BigInteger shareholder : allBlindedCommitments.keySet()) {
+            shareholders[k++] = shareholder;
+        }
+
+        for (int i = 0; i < nShares; i++) {
+            int finalI = i;
+            Map<Integer, Share> blindedShares = new HashMap<>(stillValidSenders.size());
+            Map<BigInteger, Commitment> blindedCommitments = new HashMap<>(stillValidSenders.size());
+            for (Integer server : servers) {
+                blindedShares.put(server, allBlindedShares.get(server)[i]);
+            }
+            for (BigInteger shareholder : shareholders) {
+                blindedCommitments.put(shareholder, allBlindedCommitments.get(shareholder)[i]);
+            }
+            executorService.execute(() -> {
+                try {
+                    VerifiableShare vs = recoverBlindedSecret(blindedShares, blindedCommitments);
+                    if (vs == null) {
+                        return;
+                    }
+                    BigInteger blindedSecret = vs.getShare().getShare();
+                    BigInteger refreshedShare = blindedSecret.subtract(refreshPoint.getShare().getShare()).mod(field);
+                    Commitment blindedSecretCommitment = vs.getCommitments();
+                    Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
+                            refreshPoint.getCommitments());
+                    vs.setCommitments(refreshedShareCommitment);
+                    vs.getShare().setShare(refreshedShare);
+                    vs.getShare().setShareholder(shareholderId);
+                    refreshedShares[finalI] = vs;
+                    shareProcessingCounter.countDown();
+                } catch (IOException | ClassNotFoundException | SecretSharingException e) {
+                    logger.error("Failed to refresh share.", e);
+                }
+            });
+        }
+        shareProcessingCounter.await();
+        executorService.shutdown();
+        LinkedList<VerifiableShare> result = new LinkedList<>();
+        for (VerifiableShare refreshedShare : refreshedShares) {
+            if (refreshedShare == null)
+                return null;
+            result.add(refreshedShare);
+        }
+        return result.iterator();
+    }
+
+    private CommandsInfo[] refreshLog(int logSize, Iterator<VerifiableShare> refreshedShares) throws IOException,
+            ClassNotFoundException, SecretSharingException {
         logger.info("Refreshing log");
         CommandsInfo[] log = new CommandsInfo[logSize];
         for (int i = 0; i < logSize; i++) {
@@ -263,9 +363,7 @@ public abstract class BlindedStateHandler extends Thread {
                     command = new byte[commonStateStream.readInt()];
                     commonStateStream.readFully(command);
                 } else {
-                    ConfidentialData[] shares = getRefreshedShares(nShares, currentShares);
-                    if (shares == null)
-                        return null;
+                    ConfidentialData[] shares = getRefreshedShares(nShares, refreshedShares);
 
                     byte[] b = new byte[commonStateStream.readInt()];
                     commonStateStream.readFully(b);
@@ -288,7 +386,8 @@ public abstract class BlindedStateHandler extends Thread {
         return log;
     }
 
-    private ConfidentialSnapshot refreshSnapshot(Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException, SecretSharingException {
+    private ConfidentialSnapshot refreshSnapshot(Iterator<VerifiableShare> refreshedShares)
+            throws IOException, ClassNotFoundException, SecretSharingException {
         logger.info("Refreshing snapshot");
         int plainDataSize = commonStateStream.readInt();
         byte[] plainData = null;
@@ -301,9 +400,7 @@ public abstract class BlindedStateHandler extends Thread {
         ConfidentialData[] snapshotShares = null;
 
         if (nShares > -1) {
-            snapshotShares = getRefreshedShares(nShares, currentShares);
-            if (snapshotShares == null)
-                return null;
+            snapshotShares = getRefreshedShares(nShares, refreshedShares);
         }
 
         return snapshotShares == null ?
@@ -311,7 +408,8 @@ public abstract class BlindedStateHandler extends Thread {
                 : new ConfidentialSnapshot(plainData, snapshotShares);
     }
 
-    private ConfidentialData[] getRefreshedShares(int nShares, Map<Integer, Iterator<Share>> currentShares) throws IOException, ClassNotFoundException, SecretSharingException {
+    private ConfidentialData[] getRefreshedShares(int nShares, Iterator<VerifiableShare> refreshedShares)
+            throws IOException {
         ConfidentialData[] shares = new ConfidentialData[nShares];
         for (int i = 0; i < nShares; i++) {
             int shareDataSize = commonStateStream.readInt();
@@ -320,82 +418,67 @@ public abstract class BlindedStateHandler extends Thread {
                 sharedData = new byte[shareDataSize];
                 commonStateStream.readFully(sharedData);
             }
-            VerifiableShare vs = recoverBlindedSecret(currentShares, sharedData);
-            if (vs == null)
-                return null;
-            BigInteger blindedSecret = vs.getShare().getShare();
-            BigInteger refreshedShare = blindedSecret.subtract(refreshPoint.getShare().getShare()).mod(field);
-            Commitment blindedSecretCommitment = vs.getCommitments();
-            Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
-                    refreshPoint.getCommitments());
-            vs.setCommitments(refreshedShareCommitment);
-            vs.getShare().setShare(refreshedShare);
-            vs.getShare().setShareholder(shareholderId);
+            VerifiableShare vs = refreshedShares.next();
+            refreshedShares.remove();
+            vs.setSharedData(sharedData);
             shares[i] = new ConfidentialData(vs);
         }
         return shares;
     }
 
-    private VerifiableShare recoverBlindedSecret(Map<Integer, Iterator<Share>> currentShares, byte[] sharedData) throws IOException, ClassNotFoundException {
+    private VerifiableShare recoverBlindedSecret(Map<Integer, Share> allBlindedShares,
+                                                 Map<BigInteger, Commitment> allBlindedCommitments)
+            throws IOException, ClassNotFoundException {
         try {
-            Map<BigInteger, Commitment> allCurrentCommitments = readNextCommitment();
-
-            Share[] blindingShares = new Share[oldThreshold + (corruptedServers < oldThreshold ? 2 : 1)];
+            int corruptedServers = this.corruptedServers.get();
+            Share[] blindedShares = new Share[oldThreshold + (corruptedServers < oldThreshold ? 2 : 1)];
             int j = 0;
-            Map<Integer, Share> allBlindingShares = new HashMap<>(oldQuorum);
-            for (Map.Entry<Integer, Iterator<Share>> entry : currentShares.entrySet()) {
-                Share share = entry.getValue().next();
-                if (j < blindingShares.length) {
-                    blindingShares[j++] = share;
+            for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
+                Share share = entry.getValue();
+                if (j < blindedShares.length) {
+                    blindedShares[j++] = share;
                 }
-                allBlindingShares.put(entry.getKey(), share);
-                entry.getValue().remove();
             }
 
-            Polynomial polynomial = new Polynomial(field, blindingShares);
+            Polynomial polynomial = new Polynomial(field, blindedShares);
             BigInteger blindedSecret;
             Map<BigInteger, Commitment> validCommitments;
 
-            Commitment combinedCommitment = commitmentScheme.combineCommitments(allCurrentCommitments);
-            Commitment verificationCommitment = commitmentScheme.sumCommitments(blindingCommitment, combinedCommitment);
+            Commitment verificationCommitment = commitmentScheme.combineCommitments(allBlindedCommitments);
 
             if (polynomial.getDegree() != oldThreshold) {
-                blindingShares = new Share[oldThreshold + 1];
+                blindedShares = new Share[oldThreshold + 1];
                 validCommitments = new HashMap<>(oldThreshold + 1);
                 commitmentScheme.startVerification(verificationCommitment);
                 j = 0;
                 Set<Integer> invalidServers = new HashSet<>(oldThreshold);
-                for (Map.Entry<Integer, Share> entry : allBlindingShares.entrySet()) {
+                for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
                     if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
-                        blindingShares[j++] = entry.getValue();
+                        blindedShares[j++] = entry.getValue();
                         if (validCommitments.size() <= oldThreshold) {
-                            validCommitments.put(shareholder,
-                                    commitmentScheme.extractCommitment(shareholder, verificationCommitment));
+                            validCommitments.put(shareholder, allBlindedCommitments.get(shareholder));
                         }
                     } else {
                         logger.error("Server {} sent me an invalid share", server);
-                        currentShares.remove(server);
-                        blindedShares.remove(server);
-                        blindingCommitment = removeServersCommitment(server);
-                        corruptedServers++;
+                        allBlindedCommitments.remove(shareholder);
+                        this.corruptedServers.incrementAndGet();
                         invalidServers.add(server);
                         stillValidSenders.remove(server);
                     }
                 }
                 commitmentScheme.endVerification();
                 for (Integer server : invalidServers) {
-                    allBlindingShares.remove(server);
+                    allBlindedShares.remove(server);
                 }
-                blindedSecret = interpolationStrategy.interpolateAt(BigInteger.ZERO, blindingShares);
+                blindedSecret = interpolationStrategy.interpolateAt(BigInteger.ZERO, blindedShares);
             } else {
                 blindedSecret = polynomial.evaluateAt(BigInteger.ZERO);
                 int minNumberOfCommitments = corruptedServers >= oldThreshold ? oldThreshold : oldThreshold + 1;
                 validCommitments = new HashMap<>(minNumberOfCommitments);
-                for (Share blindingShare : blindingShares) {
-                    validCommitments.put(blindingShare.getShareholder(),
-                            commitmentScheme.extractCommitment(blindingShare.getShareholder(), verificationCommitment));
+                for (Map.Entry<BigInteger, Commitment> blindedCommitments : allBlindedCommitments.entrySet()) {
+                    validCommitments.put(blindedCommitments.getKey(), blindedCommitments.getValue());
                     if (validCommitments.size() == minNumberOfCommitments)
                         break;
                 }
@@ -407,20 +490,16 @@ public abstract class BlindedStateHandler extends Thread {
             } catch (SecretSharingException e) { //there is/are invalid witness(es)
                 validCommitments.clear();
                 commitmentScheme.startVerification(verificationCommitment);
-                for (Map.Entry<Integer, Share> entry : allBlindingShares.entrySet()) {
+                for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
                     if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
-                        validCommitments.put(shareholder,
-                                commitmentScheme.extractCommitment(shareholder, verificationCommitment));
+                        validCommitments.put(shareholder, allBlindedCommitments.get(shareholder));
                         if (validCommitments.size() == oldThreshold)
                             break;
                     } else {
                         logger.error("Server {} sent me an invalid commitment", server);
-                        currentShares.remove(server);
-                        blindedShares.remove(server);
-                        blindingCommitment = removeServersCommitment(server);
-                        corruptedServers++;
+                        this.corruptedServers.incrementAndGet();
                         stillValidSenders.remove(server);
                     }
                 }
@@ -429,7 +508,7 @@ public abstract class BlindedStateHandler extends Thread {
             }
 
             Share share = new Share(BigInteger.ZERO, blindedSecret);
-            return new VerifiableShare(share, commitment, sharedData);
+            return new VerifiableShare(share, commitment, null);
         } catch (SecretSharingException e) {
             logger.error("Failed to create recovery polynomial", e);
             return null;

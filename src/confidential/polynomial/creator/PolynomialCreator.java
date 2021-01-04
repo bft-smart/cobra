@@ -109,7 +109,6 @@ public abstract class PolynomialCreator {
     public void sendNewPolynomialCreationRequest() {
         if (iHaveSentNewPolyRequest)
             return;
-        startTime = System.nanoTime();
         NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage(
                 processId, creationContext);
         int[] members = getMembers(true);
@@ -149,6 +148,7 @@ public abstract class PolynomialCreator {
     }
 
     private void generateAndSendProposal() {
+        startTime = System.nanoTime();
         myProposal = computeProposalMessage();
 
         byte[] proposalHash = computeCryptographicHash(myProposal);

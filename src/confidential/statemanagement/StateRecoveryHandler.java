@@ -9,6 +9,7 @@ import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
+import confidential.Configuration;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
@@ -32,6 +33,10 @@ import java.security.NoSuchAlgorithmException;
 import java.security.UnrecoverableKeyException;
 import java.security.cert.CertificateException;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
@@ -40,13 +45,12 @@ public class StateRecoveryHandler extends Thread {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private final int threshold;
     private final BigInteger field;
-    private int corruptedServers;
+    private final AtomicInteger corruptedServers;
     private final int quorum;
 
     private final CommitmentScheme commitmentScheme;
     private final InterpolationStrategy interpolationStrategy;
 
-    private Map<BigInteger, Commitment> allTransferPolynomialCommitments;
     private Commitment transferPolynomialCommitments;
 
     private final Map<Integer, Integer> commonData;
@@ -85,7 +89,7 @@ public class StateRecoveryHandler extends Thread {
         this.stateSenderReplica = stateSenderReplica;
         this.shareholderId = confidentialityScheme.getMyShareholderId();
         this.field = field;
-
+        this.corruptedServers = new AtomicInteger(0);
         this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
         this.interpolationStrategy = confidentialityScheme.getInterpolationStrategy();
 
@@ -96,12 +100,14 @@ public class StateRecoveryHandler extends Thread {
         this.correctRecoverySharesSize = -1;
 
         try {
-            this.recoveryPrivateStateReceiver = new RecoveryPrivateStateReceiver(this, svController, serverPort);
-            this.recoveryPublicStateReceiver = new RecoveryPublicStateReceiver(this, svController, serverPort + 1);
+            this.recoveryPrivateStateReceiver =
+                    new RecoveryPrivateStateReceiver(this, svController, serverPort);
+            this.recoveryPublicStateReceiver =
+                    new RecoveryPublicStateReceiver(this, svController, serverPort + 1);
             this.recoveryPrivateStateReceiver.start();
             this.recoveryPublicStateReceiver.start();
-        } catch (IOException | CertificateException | NoSuchAlgorithmException | UnrecoverableKeyException | KeyStoreException | KeyManagementException e) {
-            logger.error("Failed to initialize recovery state receiver threads");
+        } catch (Exception e) {
+            logger.error("Failed to initialize recovery state receiver threads", e);
         }
     }
 
@@ -164,7 +170,7 @@ public class StateRecoveryHandler extends Thread {
                     DefaultApplicationState recoveredState = recoverState();
                     long endTime = System.nanoTime();
                     double totalTime = (endTime - startTime) / 1_000_000.0;
-                    logger.info("State Reconstruction duration: {} ms", totalTime);
+                    logger.info("Took {} ms to recover state", totalTime);
                     reconstructionListener.onReconstructionCompleted(recoveredState);
                     break;
                 }
@@ -271,12 +277,52 @@ public class StateRecoveryHandler extends Thread {
 
     private DefaultApplicationState recoverState() {
         try {
-            Map<Integer, Iterator<Share>> currentShares = new HashMap<>(recoveryShares.size());
+            int nS = -1;
+
+            //Collecting all blinded shares
+            Map<Integer, Share[]> allBlindedShares = new HashMap<>(recoveryShares.size());
+            Share[] shareTemp;
             for (Map.Entry<Integer, LinkedList<Share>> entry : recoveryShares.entrySet()) {
-                currentShares.put(entry.getKey(), entry.getValue().iterator());
+                int i = 0;
+                if (nS == -1) {
+                    nS = entry.getValue().size();
+                }
+                shareTemp = new Share[nS];
+                for (Share share : entry.getValue()) {
+                    shareTemp[i++] = share;
+                }
+                allBlindedShares.put(entry.getKey(), shareTemp);
             }
-            allTransferPolynomialCommitments = nextCommitment();
+
+            //Collecting all commitments
+            Map<BigInteger, Commitment> allTransferPolynomialCommitments = nextCommitment();
             transferPolynomialCommitments = commitmentScheme.combineCommitments(allTransferPolynomialCommitments);
+
+            Map<BigInteger, Commitment[]> allCommitments = new HashMap<>(recoveryShares.size());
+            Commitment[] commitmentTemp;
+            Map<BigInteger, Commitment> commitments;
+            for (int i = 0; i < nS; i++) {
+                commitments = nextCommitment();
+                for (Map.Entry<BigInteger, Commitment> commitment : commitments.entrySet()) {
+                    commitmentTemp = allCommitments.get(commitment.getKey());
+                    if (commitmentTemp == null) {
+                        commitmentTemp = new Commitment[nS];
+                        allCommitments.put(commitment.getKey(), commitmentTemp);
+                    }
+                    commitmentTemp[i] = commitment.getValue();
+                }
+            }
+
+            long t1, t2;
+            t1 = System.nanoTime();
+            Iterator<VerifiableShare> recoveredShares = recoverShares(nS, allBlindedShares, allCommitments);
+            t2 = System.nanoTime();
+            if (recoveredShares == null) {
+                logger.error("Failed to recover shares");
+                return null;
+            }
+            double duration = (t2 - t1) / 1_000_000.0;
+            logger.info("Took {} ms to recover {} shares", duration, nS);
 
             int lastCheckpointCID = commonDataStream.readInt();
             int lastCID = commonDataStream.readInt();
@@ -306,12 +352,9 @@ public class StateRecoveryHandler extends Thread {
                                     commonDataStream.readFully(sharedData);
                                 }
 
-                                VerifiableShare vs = recoverShare(currentShares,
-                                        sharedData);
-
-                                if (vs == null) {
-                                    return null;
-                                }
+                                VerifiableShare vs = recoveredShares.next();
+                                recoveredShares.remove();
+                                vs.setSharedData(sharedData);
 
                                 int nPublicShares = commonDataStream.readInt();
                                 LinkedList<VerifiableShare> publicShares = null;
@@ -368,10 +411,9 @@ public class StateRecoveryHandler extends Thread {
                             commonDataStream.readFully(sharedData);
                         }
 
-                        VerifiableShare vs = recoverShare(currentShares, sharedData);
-                        if (vs == null) {
-                            return null;
-                        }
+                        VerifiableShare vs = recoveredShares.next();
+                        recoveredShares.remove();
+                        vs.setSharedData(sharedData);
 
                         int nPublicShares = commonDataStream.readInt();
                         LinkedList<VerifiableShare> publicShares = null;
@@ -404,28 +446,76 @@ public class StateRecoveryHandler extends Thread {
                     serializedState == null ? null : TOMUtil.computeHash(serializedState),
                     pid
             );
-        } catch (IOException | ClassNotFoundException e) {
+        } catch (IOException | ClassNotFoundException | InterruptedException e) {
             logger.error("Failed to restore the state", e);
         }
 
         return null;
     }
 
-    private VerifiableShare recoverShare(Map<Integer, Iterator<Share>> currentShares,
-                               byte[] sharedData) {
-        try {
-            Map<BigInteger, Commitment> allCurrentCommitments = nextCommitment();
+    private Iterator<VerifiableShare> recoverShares(int nShares, Map<Integer, Share[]> allBlindedShares,
+                                                    Map<BigInteger, Commitment[]> allCommitments)
+            throws InterruptedException {
+        ExecutorService executorService = Executors
+                .newFixedThreadPool(Configuration.getInstance().getShareProcessingThreads());
+        VerifiableShare[] recoveredShares = new VerifiableShare[nShares];
+        CountDownLatch shareProcessingCounter = new CountDownLatch(nShares);
+        Integer[] servers = new Integer[allBlindedShares.size()];
+        BigInteger[] shareholders = new BigInteger[allCommitments.size()];
+        int k = 0;
+        //Load share senders
+        for (Integer server : allBlindedShares.keySet()) {
+            servers[k++] = server;
+        }
+        k = 0;
+        //Load commitments senders
+        for (BigInteger shareholder : allCommitments.keySet()) {
+            shareholders[k++] = shareholder;
+        }
 
+        for (int i = 0; i < nShares; i++) {
+            int finalI = i;
+            Map<Integer, Share> blindedShares = new HashMap<>(allBlindedShares.size());
+            Map<BigInteger, Commitment> commitments = new HashMap<>(allCommitments.size());
+            for (Integer server : servers) {
+                blindedShares.put(server, allBlindedShares.get(server)[i]);
+            }
+            for (BigInteger shareholder : shareholders) {
+                commitments.put(shareholder, allCommitments.get(shareholder)[i]);
+            }
+
+            executorService.execute(() -> {
+                VerifiableShare vs = recoverShare(blindedShares, commitments);
+                if (vs == null) {
+                    return;
+                }
+                recoveredShares[finalI] = vs;
+                shareProcessingCounter.countDown();
+            });
+        }
+
+        shareProcessingCounter.await();
+        executorService.shutdown();
+        LinkedList<VerifiableShare> result = new LinkedList<>();
+        for (VerifiableShare refreshedShare : recoveredShares) {
+            if (refreshedShare == null)
+                return null;
+            result.add(refreshedShare);
+        }
+        return result.iterator();
+    }
+
+    private VerifiableShare recoverShare(Map<Integer, Share> allBlindedShares,
+                                         Map<BigInteger, Commitment> allCommitments) {
+        try {
+            int corruptedServers = this.corruptedServers.get();
             Share[] recoveringShares = new Share[threshold + (corruptedServers < threshold ? 2 : 1)];
             int j = 0;
-            Map<Integer, Share> allRecoveringShares = new HashMap<>();
-            for (Map.Entry<Integer, Iterator<Share>> entry : currentShares.entrySet()) {
-                Share share = entry.getValue().next();
+            for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
+                Share share = entry.getValue();
                 if (j < recoveringShares.length) {
                     recoveringShares[j++] = share;
                 }
-                allRecoveringShares.put(entry.getKey(), share);
-                entry.getValue().remove();
             }
 
             Polynomial polynomial = new Polynomial(field, recoveringShares);
@@ -436,13 +526,13 @@ public class StateRecoveryHandler extends Thread {
                 recoveringShares = new Share[threshold + 1];
                 validCommitments = new HashMap<>(threshold);
                 Commitment combinedCommitment =
-                        commitmentScheme.combineCommitments(allCurrentCommitments);
+                        commitmentScheme.combineCommitments(allCommitments);
                 Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         combinedCommitment);
                 commitmentScheme.startVerification(verificationCommitments);
                 j = 0;
                 Set<Integer> invalidServers = new HashSet<>(threshold);
-                for (Map.Entry<Integer, Share> entry : allRecoveringShares.entrySet()) {
+                for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
                     if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
@@ -450,25 +540,19 @@ public class StateRecoveryHandler extends Thread {
                         //if (j == recoveringShares.length)
                             //break;
                         if (validCommitments.size() <= threshold) {
-                            validCommitments.put(shareholder,
-                                    allCurrentCommitments.get(shareholder));
+                            validCommitments.put(shareholder, allCommitments.get(shareholder));
                         }
                     } else {
                         logger.error("Server {} sent me invalid share", server);
-                        currentShares.remove(server);
-                        recoveryShares.remove(server);
-                        commitmentsBytes.remove(server);
-                        corruptedServers++;
+                        allCommitments.remove(shareholder);
+                        this.corruptedServers.incrementAndGet();
                         invalidServers.add(server);
-                        allTransferPolynomialCommitments.remove(shareholder);
-                        transferPolynomialCommitments =
-                                commitmentScheme.combineCommitments(allTransferPolynomialCommitments);
                     }
                 }
                 commitmentScheme.endVerification();
 
                 for (Integer server : invalidServers) {
-                    allRecoveringShares.remove(server);
+                    allBlindedShares.remove(server);
                 }
 
                 shareNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
@@ -480,7 +564,7 @@ public class StateRecoveryHandler extends Thread {
 
                 for (Share recoveringShare : recoveringShares) {
                     validCommitments.put(recoveringShare.getShareholder(),
-                            allCurrentCommitments.get(recoveringShare.getShareholder()));
+                            allCommitments.get(recoveringShare.getShareholder()));
                     if (validCommitments.size() == minNumberOfCommitments)
                         break;
                 }
@@ -492,27 +576,21 @@ public class StateRecoveryHandler extends Thread {
                         validCommitments);
             } catch (SecretSharingException e) { //there is/are invalid witness(es)
                 Commitment combinedCommitment =
-                        commitmentScheme.combineCommitments(allCurrentCommitments);
+                        commitmentScheme.combineCommitments(allCommitments);
                 Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         combinedCommitment);
                 validCommitments.clear();
                 commitmentScheme.startVerification(verificationCommitments);
-                for (Map.Entry<Integer, Share> entry : allRecoveringShares.entrySet()) {
+                for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
                     if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
-                        validCommitments.put(shareholder, allCurrentCommitments.get(shareholder));
+                        validCommitments.put(shareholder, allCommitments.get(shareholder));
                         if (validCommitments.size() == threshold)
                             break;
                     } else {
                         logger.error("Server {} sent me invalid commitment", server);
-                        currentShares.remove(server);
-                        recoveryShares.remove(server);
-                        commitmentsBytes.remove(server);
-                        corruptedServers++;
-                        allTransferPolynomialCommitments.remove(shareholder);
-                        transferPolynomialCommitments =
-                                commitmentScheme.combineCommitments(allTransferPolynomialCommitments);
+                        this.corruptedServers.incrementAndGet();
                     }
                 }
                 commitmentScheme.endVerification();
@@ -521,11 +599,9 @@ public class StateRecoveryHandler extends Thread {
             }
 
             Share share = new Share(shareholderId, shareNumber);
-            return new VerifiableShare(share, commitment, sharedData);
+            return new VerifiableShare(share, commitment, null);
         } catch (SecretSharingException e) {
             logger.error("Failed to create recovering polynomial", e);
-        } catch (IOException | ClassNotFoundException e) {
-            logger.error("Failed to recover share", e);
         }
         return null;
     }

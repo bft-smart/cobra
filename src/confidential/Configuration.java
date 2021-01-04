@@ -18,6 +18,7 @@ public final class Configuration {
 	private String shareEncryptionAlgorithm = "AES";
 	private int recoveryPort;
 	private boolean useTLSEncryption;
+	private int shareProcessingThreads;
 
 	private static Configuration INSTANT;
 
@@ -46,8 +47,8 @@ public final class Configuration {
 				String[] tokens = line.split("=");
 				if (tokens.length != 2)
 					continue;
-				String propertyName = tokens[0];
-				String value = tokens[1];
+				String propertyName = tokens[0].trim();
+				String value = tokens[1].trim();
 				switch (propertyName) {
 					case "cobra.vss.scheme":
 						if (value.equals("linear"))
@@ -85,11 +86,18 @@ public final class Configuration {
 					case "cobra.communication.use_tls_encryption":
 						useTLSEncryption = Boolean.parseBoolean(value);
 						break;
+					case "cobra.share_processing_threads":
+						shareProcessingThreads = Integer.parseInt(value);
+						break;
 					default:
 						throw new IllegalArgumentException("Unknown property name");
 				}
 			}
 		}
+	}
+
+	public int getShareProcessingThreads() {
+		return shareProcessingThreads;
 	}
 
 	public long getRenewalPeriod() {

@@ -18,8 +18,6 @@ import java.util.Map;
 
 public class ConstantBlindedStateHandler extends BlindedStateHandler {
     private final Map<Integer, ObjectInput> commitmentsStreams;
-    private Map<BigInteger, Commitment> allBlindingCommitments;
-    private Commitment blindingCommitment;
 
     public ConstantBlindedStateHandler(ServerViewController svController, PolynomialCreationContext context,
                                        VerifiableShare refreshPoint, ServerConfidentialityScheme confidentialityScheme,
@@ -42,25 +40,12 @@ public class ConstantBlindedStateHandler extends BlindedStateHandler {
         return commitmentsStreams.size() >= oldQuorum;
     }
 
-    @Override
-    protected Commitment readBlindingCommitment() throws IOException, ClassNotFoundException {
-        allBlindingCommitments = nextCommitment();
-        blindingCommitment = commitmentScheme.combineCommitments(allBlindingCommitments);
-        return blindingCommitment;
-    }
 
     @Override
     protected Map<BigInteger, Commitment> readNextCommitment() throws IOException, ClassNotFoundException {
         return nextCommitment();
     }
 
-    @Override
-    protected Commitment removeServersCommitment(int server) {
-        commitmentsStreams.remove(server);
-        allBlindingCommitments.remove(confidentialityScheme.getShareholder(server));
-        blindingCommitment = commitmentScheme.combineCommitments(allBlindingCommitments);
-        return blindingCommitment;
-    }
 
     private Map<BigInteger, Commitment> nextCommitment() throws IOException, ClassNotFoundException {
         Map<BigInteger, Commitment> commitments =

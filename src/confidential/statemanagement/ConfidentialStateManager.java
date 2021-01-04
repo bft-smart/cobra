@@ -426,7 +426,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             int[] receivers = creationContext.getContexts()[1].getMembers();
             boolean iAmStateSender = creationContext.getLeader() == SVController.getStaticConf().getProcessId();
             new BlindedStateSender(SVController, confidentialityScheme.getField(), SERVER_STATE_LISTENING_PORT,
-                    receivers, appState, blindingShare, iAmStateSender)
+                    receivers, appState, blindingShare, confidentialityScheme, iAmStateSender)
                     .start();
         } catch (Exception e) {
             logger.error("Failed to send blinded state.", e);
