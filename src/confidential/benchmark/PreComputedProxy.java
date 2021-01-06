@@ -4,6 +4,7 @@ import bftsmart.tom.ServiceProxy;
 import confidential.Configuration;
 import confidential.ExtractedResponse;
 import confidential.MessageType;
+import confidential.Metadata;
 import confidential.client.ClientConfidentialityScheme;
 import confidential.client.Response;
 import confidential.client.ServersResponseHandler;
@@ -77,7 +78,8 @@ public class PreComputedProxy {
         serversResponseHandler.reset();
         byte[] response;
         if (preComputed) {
-            response = service.invokeOrdered(orderedCommonData, privateData);
+            byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+            response = service.invokeOrdered(orderedCommonData, privateData, metadata);
         } else {
             PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData != null && shares == null)
@@ -95,7 +97,8 @@ public class PreComputedProxy {
                     privateData.put(server, b);
                 }
             }
-            response = service.invokeOrdered(commonData, privateData);
+            byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+            response = service.invokeOrdered(commonData, privateData, metadata);
         }
         return preComputed ? null : composeResponse(response);
     }
@@ -104,7 +107,8 @@ public class PreComputedProxy {
         serversResponseHandler.reset();
         byte[] response;
         if (preComputed) {
-            response = service.invokeUnordered(unorderedCommonData, null);
+            byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+            response = service.invokeUnordered(unorderedCommonData, null, metadata);
         } else {
             PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData != null && shares == null)
@@ -122,7 +126,8 @@ public class PreComputedProxy {
                     privateData.put(server, b);
                 }
             }
-            response = service.invokeUnordered(commonData, privateData);
+            byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+            response = service.invokeUnordered(commonData, privateData, metadata);
         }
 
         return preComputed ? null : composeResponse(response);

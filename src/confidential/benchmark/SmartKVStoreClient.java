@@ -123,12 +123,12 @@ public class SmartKVStoreClient {
                 System.out.println("Warming up...");
             byte[] response;
             try {
-                proxy.invokeOrdered(writeRequest, null);
+                proxy.invokeOrdered(writeRequest, null, (byte) -1);
                 for (int i = 0; i < 50; i++) {
                     if (write)
-                        proxy.invokeOrdered(writeRequest, null);
+                        proxy.invokeOrdered(writeRequest, null, (byte) -1);
                     else {
-                        response = proxy.invokeUnordered(readRequest, null);
+                        response = proxy.invokeUnordered(readRequest, null, (byte) -1);
                         if (!Arrays.equals(response, data))
                             throw new RuntimeException("Wrong response");
                     }
@@ -143,9 +143,9 @@ public class SmartKVStoreClient {
                     long t2;
                     long t1 = System.nanoTime();
                     if (write) {
-                        proxy.invokeOrdered(writeRequest, null);
+                        proxy.invokeOrdered(writeRequest, null, (byte) -1);
                     } else {
-                        proxy.invokeUnordered(readRequest, null);
+                        proxy.invokeUnordered(readRequest, null, (byte) -1);
                     }
                     t2 = System.nanoTime();
                     long latency = t2 - t1;

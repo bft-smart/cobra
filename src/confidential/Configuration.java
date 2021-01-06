@@ -19,6 +19,7 @@ public final class Configuration {
 	private int recoveryPort;
 	private boolean useTLSEncryption;
 	private int shareProcessingThreads;
+	private boolean verifyClientRequests;
 
 	private static Configuration INSTANT;
 
@@ -89,6 +90,9 @@ public final class Configuration {
 					case "cobra.share_processing_threads":
 						shareProcessingThreads = Integer.parseInt(value);
 						break;
+					case "cobra.verify.requests":
+						verifyClientRequests = Boolean.parseBoolean(value);
+						break;
 					default:
 						throw new IllegalArgumentException("Unknown property name");
 				}
@@ -98,6 +102,10 @@ public final class Configuration {
 
 	public int getShareProcessingThreads() {
 		return shareProcessingThreads;
+	}
+
+	public boolean isVerifyClientRequests() {
+		return verifyClientRequests;
 	}
 
 	public long getRenewalPeriod() {

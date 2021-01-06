@@ -4,6 +4,7 @@ import bftsmart.tom.ServiceProxy;
 import confidential.Configuration;
 import confidential.ExtractedResponse;
 import confidential.MessageType;
+import confidential.Metadata;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
@@ -59,7 +60,8 @@ public class ConfidentialServiceProxy {
                 privateData.put(server, b);
             }
         }
-        byte[] response = service.invokeOrdered(commonData, privateData);
+        byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+        byte[] response = service.invokeOrdered(commonData, privateData, metadata);
 
         return composeResponse(response);
     }
@@ -82,7 +84,8 @@ public class ConfidentialServiceProxy {
                 privateData.put(server, b);
             }
         }
-        byte[] response = service.invokeUnordered(commonData, privateData);
+        byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+        byte[] response = service.invokeUnordered(commonData, privateData, metadata);
 
         return composeResponse(response);
     }

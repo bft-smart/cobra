@@ -358,6 +358,67 @@ JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verify(JNIEnv *e
 	return cmp == 0;
 }
 
+JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verifyWithoutPreComputation (JNIEnv *env, jobject obj,
+    jbyteArray xBytes, jbyteArray yBytes, jbyteArray commitmentBytes, jbyteArray witnessBytes) {
+    ep_t *commitment = read_point(env, commitmentBytes);
+    if (commitment == NULL) {
+    	throw_illegal_state_exception(env, "Commitment is incorrect");
+    	return false;
+    }
+    fp12_t *commitmentP = malloc(sizeof(fp12_t));
+    fp12_null(*commitmentPairing);
+    fp12_new(*commitmentPairing);
+
+    pp_map_tatep_k12(*commitmentP, *commitment, g2);
+
+    ep_t *witness = read_point(env, witnessBytes);
+    if (witness == NULL) {
+        throw_illegal_state_exception(env, "Witness is incorrect");
+        return false;
+    }
+    bn_t *i = read_number(env, xBytes);
+    bn_t *share = read_number(env, yBytes);
+
+    fp12_t sharePairing, witnessPairing, righSide;
+    fp12_null(sharePairing);
+    fp12_null(witnessPairing);
+    fp12_null(righSide);
+    fp12_new(sharePairing);
+    fp12_new(witnessPairing);
+    fp12_new(righSide);
+
+    ep2_t gI, gAlphaI;
+    ep2_null(gI);
+    ep2_null(gAlphaI);
+    ep2_new(gI);
+    ep2_new(gAlphaI);
+
+    ep2_mul_gen(gI, *i);
+    ep2_sub_basic(gAlphaI, gAlpha, gI);
+
+    pp_map_tatep_k12(witnessPairing, *witness, gAlphaI);
+    fp12_exp(sharePairing, gPairing, *share);
+
+    fp12_mul_basic(righSide, witnessPairing, sharePairing);
+
+    int cmp = fp12_cmp(*commitmentP, righSide);
+
+    fp12_free(sharePairing);
+    fp12_free(witnessPairing);
+    fp12_free(righSide);
+    ep2_free(gI);
+    ep2_free(gAlphaI);
+    free(witness);
+    free(i);
+    free(share);
+    fp12_free(*commitmentP);
+    free(commitmentP);
+    ep_free(*commitment);
+    free(commitment);
+
+    return cmp == 0;
+}
+
 JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_endVerification(JNIEnv *env, jobject obj) {
 	fp12_free(*commitmentPairing);
 	free(commitmentPairing);

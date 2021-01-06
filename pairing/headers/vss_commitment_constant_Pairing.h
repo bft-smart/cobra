@@ -57,6 +57,14 @@ JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verify
 
 /*
  * Class:     vss_commitment_constant_Pairing
+ * Method:    verifyWithoutPreComputation
+ * Signature: ([B[B[B[B)Z
+ */
+JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verifyWithoutPreComputation
+  (JNIEnv *, jobject, jbyteArray, jbyteArray, jbyteArray, jbyteArray);
+
+/*
+ * Class:     vss_commitment_constant_Pairing
  * Method:    endVerification
  * Signature: ()V
  */

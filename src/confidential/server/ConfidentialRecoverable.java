@@ -28,6 +28,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentScheme;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.EncryptedShare;
@@ -40,12 +41,14 @@ import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public final class ConfidentialRecoverable implements SingleExecutable, Recoverable,
         ProposeRequestVerifier {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private ServerConfidentialityScheme confidentialityScheme;
+    private CommitmentScheme commitmentScheme;
     private final int processId;
     private ReplicaContext replicaContext;
     private ConfidentialStateLog log;
@@ -61,6 +64,9 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     private final ConfidentialSingleExecutable confidentialExecutor;
     private DistributedPolynomial distributedPolynomial;
     private boolean isLinearCommitmentScheme;
+    // Not the best solution. Requests failed during consensus, will not be removed from this map
+    private final Map<Integer, Request> deserializedRequests;
+    private final boolean verifyClientsRequests;
 
     public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
         this.processId = processId;
@@ -69,6 +75,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         this.commands = new ArrayList<>();
         this.msgContexts = new ArrayList<>();
         this.useTLSEncryption = Configuration.getInstance().useTLSEncryption();
+        this.deserializedRequests = new ConcurrentHashMap<>();
+        this.verifyClientsRequests = Configuration.getInstance().isVerifyClientRequests();
     }
 
     @Override
@@ -82,6 +90,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         checkpointPeriod = replicaContext.getStaticConfiguration().getCheckpointPeriod();
         try {
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
+            this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
             this.isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
             distributedPolynomial =
                     new DistributedPolynomial(replicaContext.getSVController(), interServersCommunication,
@@ -100,34 +109,61 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     public boolean isValidRequest(TOMMessage request) {
         logger.debug("Checking request: {} - {}", request.getReqType(),
                 request.getSequence());
-        if (request.getMetadata() != null && request.getMetadata().length == 1) {
-            Metadata metadata = Metadata.getMessageType(request.getMetadata()[0]);
-            logger.info("Metadata: {}", metadata);
-            if (metadata == Metadata.POLYNOMIAL_PROPOSAL_SET) {
-                Request req = preprocessRequest(request.getContent(), request.getPrivateContent(), request.getSender());
-                if (req == null || req.getType() != MessageType.APPLICATION) {
-                    logger.error("Unknown request type to verify");
-                    return false;
-                }
-                byte[] m =
-                        Arrays.copyOfRange(req.getPlainData(), 1,
-                                req.getPlainData().length);
-                try (ByteArrayInputStream bis = new ByteArrayInputStream(m);
-                     ObjectInput in = new ObjectInputStream(bis)) {
-                    ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
-                    proposalSetMessage.readExternal(in);
-                    return distributedPolynomial.isValidProposalSet(proposalSetMessage);
-                } catch (IOException | ClassNotFoundException e) {
-                    logger.error("Failed to deserialize polynomial message of type " +
-                            "{}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);
-                    return false;
-                }
-            } else {
-                logger.error("Unknown metadata {}", metadata);
+        if (request.getMetadata() == null)
+            return true;
+        Metadata metadata = Metadata.getMessageType(request.getMetadata()[0]);
+        logger.debug("Metadata: {}", metadata);
+        if (metadata == Metadata.POLYNOMIAL_PROPOSAL_SET) {
+            Request req = preprocessRequest(request.getContent(), request.getPrivateContent(), request.getSender());
+            if (req == null || req.getType() != MessageType.APPLICATION) {
+                logger.error("Unknown request type to verify");
                 return false;
             }
+            byte[] m =
+                    Arrays.copyOfRange(req.getPlainData(), 1,
+                            req.getPlainData().length);
+            try (ByteArrayInputStream bis = new ByteArrayInputStream(m);
+                 ObjectInput in = new ObjectInputStream(bis)) {
+                ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
+                proposalSetMessage.readExternal(in);
+                return distributedPolynomial.isValidProposalSet(proposalSetMessage);
+            } catch (IOException | ClassNotFoundException e) {
+                logger.error("Failed to deserialize polynomial message of type " +
+                        "{}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);
+                return false;
+            }
+        } else if (metadata == Metadata.VERIFY) {
+            if (!verifyClientsRequests)
+                return true;
+            Request req = preprocessRequest(request.getContent(), request.getPrivateContent(), request.getSender());
+            if (req == null || req.getShares() == null) {
+                return false;
+            }
+            deserializedRequests.put(hashRequest(request.getSender(), request.getSession(), request.getSequence()), req);
+            for (ConfidentialData share : req.getShares()) {
+                VerifiableShare vs = share.getShare();
+                commitmentScheme.startVerification(vs.getCommitments());
+                boolean isValid = commitmentScheme.checkValidityWithoutPreComputation(vs.getShare(), vs.getCommitments());
+                commitmentScheme.endVerification();
+                if (!isValid) {
+                    logger.warn("Client {} sent me an invalid share", request.getSender());
+                    return false;
+                }
+            }
+            return true;
+        } else if (metadata == Metadata.DOES_NOT_VERIFY) {
+            return true;
+        } else {
+            logger.error("Unknown metadata {}", metadata);
+            return false;
         }
-        return true;
+    }
+
+    private int hashRequest(int sender, int session, int sequence) {
+        int hash = sender;
+        hash = 31 * hash + session;
+        hash = 31 * hash + sequence;
+        return hash;
     }
 
     private ConfidentialStateLog getLog() {
@@ -268,7 +304,16 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 
     @Override
     public byte[] executeOrdered(byte[] command, byte[] privateData, MessageContext msgCtx) {
-        Request request = preprocessRequest(command, privateData, msgCtx.getSender());
+        Request request;
+        if (verifyClientsRequests) {
+            int hash = hashRequest(msgCtx.getSender(), msgCtx.getSession(), msgCtx.getSequence());
+            request = deserializedRequests.remove(hash);
+            if (request == null) {
+                request = preprocessRequest(command, privateData, msgCtx.getSender());
+            }
+        } else {
+            request = preprocessRequest(command, privateData, msgCtx.getSender());
+        }
         if (request == null)
             return null;
         byte[] preprocessedCommand = request.serialize();
@@ -396,7 +441,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                                     EncryptedShare encryptedShare = new EncryptedShare(shareholder, encShare);
                                     publishedShares = new PrivatePublishedShares(
                                             new EncryptedShare[]{encryptedShare}, commitment, sharedData);
-                                    shares[i] = new ConfidentialData(confidentialityScheme.extractShare(publishedShares));
+                                    VerifiableShare vs = confidentialityScheme.extractShare(publishedShares);
+                                    shares[i] = new ConfidentialData(vs);
                                 }
                             }
                         }
