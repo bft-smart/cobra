@@ -142,9 +142,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             deserializedRequests.put(hashRequest(request.getSender(), request.getSession(), request.getSequence()), req);
             for (ConfidentialData share : req.getShares()) {
                 VerifiableShare vs = share.getShare();
-                commitmentScheme.startVerification(vs.getCommitments());
                 boolean isValid = commitmentScheme.checkValidityWithoutPreComputation(vs.getShare(), vs.getCommitments());
-                commitmentScheme.endVerification();
                 if (!isValid) {
                     logger.warn("Client {} sent me an invalid share", request.getSender());
                     return false;
