@@ -3,19 +3,18 @@ package confidential.benchmark;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ServiceReplica;
 import bftsmart.tom.server.defaultservices.DefaultRecoverable;
-import confidential.ConfidentialData;
-import confidential.ConfidentialMessage;
 import confidential.demo.map.client.Operation;
-import confidential.server.ConfidentialRecoverable;
-import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
-import java.util.*;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
 
 public class SmartThroughputLatencyKVStoreServer extends DefaultRecoverable {
-    private Logger logger = LoggerFactory.getLogger("demo");
+    private final Logger logger = LoggerFactory.getLogger("demo");
     private Map<String, byte[]> map;
     private long startTime;
     private long numRequests;
@@ -42,8 +41,6 @@ public class SmartThroughputLatencyKVStoreServer extends DefaultRecoverable {
                 maxThroughput = throughput;
             logger.info("M:(clients[#]|requests[#]|delta[ns]|throughput[ops/s], max[ops/s])>({}|{}|{}|{}|{})",
                     senders.size(), numRequests, delta, throughput, maxThroughput);
-            //logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {} (max: {})",
-            //        senders.size(), numRequests, deltaTime, throughput, maxThroughput);
             numRequests = 0;
             startTime = currentTime;
             senders.clear();
@@ -53,7 +50,6 @@ public class SmartThroughputLatencyKVStoreServer extends DefaultRecoverable {
     private byte[] execute(byte[] command, MessageContext msgCtx) {
         numRequests++;
         senders.add(msgCtx.getSender());
-
         try (ByteArrayInputStream bis = new ByteArrayInputStream(command);
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
@@ -85,7 +81,7 @@ public class SmartThroughputLatencyKVStoreServer extends DefaultRecoverable {
              ObjectInput in = new ObjectInputStream(bis)) {
             int size = in.readInt();
             map = new TreeMap<>();
-
+            senders = new HashSet<>(1000);
             for (int i = 0; i < size; i++) {
                 String key = in.readUTF();
                 byte[] b = new byte[in.readInt()];

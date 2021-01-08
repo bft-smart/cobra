@@ -318,6 +318,10 @@ public class RecoveryStateSender extends Thread {
             out.writeInt(ctx.getConsensusId());
             out.writeInt(ctx.getNumOfNonces());
             out.writeLong(ctx.getSeed());
+            out.writeInt(ctx.getMetadata() == null ? -1 : ctx.getMetadata().length);
+            if (ctx.getMetadata() != null) {
+                out.write(ctx.getMetadata());
+            }
             out.writeInt(ctx.getProof() == null ? -1 : ctx.getProof().size());
             if (ctx.getProof() != null) {
                 List<ConsensusMessage> orderedProf = new ArrayList<>(ctx.getProof());

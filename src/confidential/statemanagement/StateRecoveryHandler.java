@@ -231,6 +231,12 @@ public class StateRecoveryHandler extends Thread {
             int numOfNonces = in.readInt();
             long seed = in.readLong();
             len = in.readInt();
+            byte[] metadata = null;
+            if (len > -1) {
+                metadata = new byte[len];
+                in.readFully(metadata);
+            }
+            len = in.readInt();
             Set<ConsensusMessage> proof = null;
             if (len != -1) {
                 proof = new HashSet<>(len);
@@ -266,7 +272,7 @@ public class StateRecoveryHandler extends Thread {
 
             MessageContext messageContext = new MessageContext(sender, viewId, type, session, sequence, operationId,
                     replyServer, signature, timestamp, numOfNonces, seed, regency, leader, consensusId,
-                    proof, firstInBatch, noOp);
+                    proof, firstInBatch, noOp, metadata);
             if (lastInBatch)
                 messageContext.setLastInBatch();
             messageContexts[i] = messageContext;
