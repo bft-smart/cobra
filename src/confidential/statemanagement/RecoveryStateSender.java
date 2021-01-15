@@ -88,11 +88,16 @@ public class RecoveryStateSender extends Thread {
     @Override
     public void run() {
         logger.debug("Generating recovery state");
+        long t1, t2;
+        t1 = System.nanoTime();
         BlindedApplicationState recoveryState = createRecoverState();
+        t2 = System.nanoTime();
+        double total = (t2 - t1) / 1_000_000.0;
         if (recoveryState == null) {
             logger.error("Failed to generate recovery application state. Exiting state sender server thread.");
             return;
         }
+        logger.info("Took {} ms to create recovery state of {} shares", total, recoveryState.getShares().size());
         if (!iAmStateSender) {
             hashThread.setData(recoveryState.getCommonState());
             hashThread.start();
@@ -124,8 +129,6 @@ public class RecoveryStateSender extends Thread {
                 t1 = System.nanoTime();
                 out.write(Utils.toBytes(publicState.length));
                 out.write(publicState);
-                //logger.info("delete->>>>RecStSender>>>Public state hash {}",
-                //        TOMUtil.computeHash(publicState));
             } else {
                 byte[] publicStateHash = hashThread.getHash();
                 logger.info("Public state hash {}", publicStateHash);
@@ -151,7 +154,8 @@ public class RecoveryStateSender extends Thread {
                 throw new IllegalStateException("Private serialized state is null");
             }
             long t2 = System.nanoTime();
-            logger.debug("Took {} ms to serialize private state", (t2 - t1) / 1_000_000.0);
+            logger.debug("Took {} ms to serialize private state of {} bytes", (t2 - t1) / 1_000_000.0,
+                    serializePrivateState.length);
 
             t1 = System.nanoTime();
             out.write(Utils.toBytes(myProcessId));
