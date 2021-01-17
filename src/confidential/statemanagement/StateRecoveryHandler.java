@@ -535,13 +535,12 @@ public class StateRecoveryHandler extends Thread {
                         commitmentScheme.combineCommitments(allCommitments);
                 Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         combinedCommitment);
-                commitmentScheme.startVerification(verificationCommitments);
                 j = 0;
                 Set<Integer> invalidServers = new HashSet<>(threshold);
                 for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
-                    if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
+                    if (commitmentScheme.checkValidityWithoutPreComputation(entry.getValue(), verificationCommitments)) {
                         recoveringShares[j++] = entry.getValue();
                         //if (j == recoveringShares.length)
                             //break;
@@ -555,7 +554,6 @@ public class StateRecoveryHandler extends Thread {
                         invalidServers.add(server);
                     }
                 }
-                commitmentScheme.endVerification();
 
                 for (Integer server : invalidServers) {
                     allBlindedShares.remove(server);
@@ -586,11 +584,10 @@ public class StateRecoveryHandler extends Thread {
                 Commitment verificationCommitments = commitmentScheme.sumCommitments(transferPolynomialCommitments,
                         combinedCommitment);
                 validCommitments.clear();
-                commitmentScheme.startVerification(verificationCommitments);
                 for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
-                    if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitments)) {
+                    if (commitmentScheme.checkValidityWithoutPreComputation(entry.getValue(), verificationCommitments)) {
                         validCommitments.put(shareholder, allCommitments.get(shareholder));
                         if (validCommitments.size() == threshold)
                             break;
@@ -599,7 +596,6 @@ public class StateRecoveryHandler extends Thread {
                         this.corruptedServers.incrementAndGet();
                     }
                 }
-                commitmentScheme.endVerification();
                 commitment = commitmentScheme.recoverCommitment(shareholderId,
                         validCommitments);
             }

@@ -449,13 +449,12 @@ public abstract class BlindedStateHandler extends Thread {
             if (polynomial.getDegree() != oldThreshold) {
                 blindedShares = new Share[oldThreshold + 1];
                 validCommitments = new HashMap<>(oldThreshold + 1);
-                commitmentScheme.startVerification(verificationCommitment);
                 j = 0;
                 Set<Integer> invalidServers = new HashSet<>(oldThreshold);
                 for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
-                    if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
+                    if (commitmentScheme.checkValidityWithoutPreComputation(entry.getValue(), verificationCommitment)) {
                         blindedShares[j++] = entry.getValue();
                         if (validCommitments.size() <= oldThreshold) {
                             validCommitments.put(shareholder, allBlindedCommitments.get(shareholder));
@@ -468,7 +467,6 @@ public abstract class BlindedStateHandler extends Thread {
                         stillValidSenders.remove(server);
                     }
                 }
-                commitmentScheme.endVerification();
                 for (Integer server : invalidServers) {
                     allBlindedShares.remove(server);
                 }
@@ -489,11 +487,10 @@ public abstract class BlindedStateHandler extends Thread {
                 commitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
             } catch (SecretSharingException e) { //there is/are invalid witness(es)
                 validCommitments.clear();
-                commitmentScheme.startVerification(verificationCommitment);
                 for (Map.Entry<Integer, Share> entry : allBlindedShares.entrySet()) {
                     int server = entry.getKey();
                     BigInteger shareholder = confidentialityScheme.getShareholder(server);
-                    if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
+                    if (commitmentScheme.checkValidityWithoutPreComputation(entry.getValue(), verificationCommitment)) {
                         validCommitments.put(shareholder, allBlindedCommitments.get(shareholder));
                         if (validCommitments.size() == oldThreshold)
                             break;
@@ -503,7 +500,6 @@ public abstract class BlindedStateHandler extends Thread {
                         stillValidSenders.remove(server);
                     }
                 }
-                commitmentScheme.endVerification();
                 commitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
             }
 
