@@ -1,5 +1,5 @@
-set TEMP_DIR=C:\Users\robin\Desktop
-set SRC=C:\Users\robin\\Documents\IntelliJ\COBRA
+set TEMP_DIR=C:\Users\Home\Desktop
+set SRC=C:\Users\Home\\Documents\IntelliJ\COBRA
 set FOLDER_NAME=cobraQ
 set QUINTA_USER=rvassantlal
 
@@ -15,7 +15,7 @@ rem xcopy %SRC%\pairing\headers\* %DST%\pairing\headers\
 rem xcopy %SRC%\pairing\relic\*.zip %DST%\pairing\relic\
 rem xcopy %SRC%\pairing\src\* %DST%\pairing\src\
 rem xcopy %SRC%\pairing\*.sh %DST%\pairing\
-xcopy %SRC%\lib\BFT*.jar %DST%\lib\
+rem xcopy %SRC%\lib\BFT*.jar %DST%\lib\
 rem xcopy %SRC%\*.sh %DST%\
 rem xcopy /e /q %SRC%\config\* %DST%\config\
 rem xcopy %SRC%\scripts\*.sh %DST%\
