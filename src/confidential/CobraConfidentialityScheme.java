@@ -17,8 +17,8 @@ import java.security.*;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
-
-import static confidential.Configuration.*;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 /**
  * @author Robin
@@ -28,10 +28,12 @@ public abstract class CobraConfidentialityScheme {
     private final Map<Integer, BigInteger> serverToShareholder;
     private final Map<BigInteger, Integer> shareholderToServer;
     private final Cipher cipher;
+    private final Lock cipherLock;
     private final boolean isLinearCommitmentScheme;
     protected KeysManager keysManager;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
+        cipherLock = new ReentrantLock(true);
         int[] processes = view.getProcesses();
         serverToShareholder = new HashMap<>(processes.length);
         shareholderToServer = new HashMap<>(processes.length);
@@ -137,13 +139,23 @@ public abstract class CobraConfidentialityScheme {
 
     private byte[] encrypt(byte[] data, Key encryptionKey) throws InvalidKeyException,
             BadPaddingException, IllegalBlockSizeException {
-        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
-        return cipher.doFinal(data);
+        try {
+            cipherLock.lock();
+            cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
+            return cipher.doFinal(data);
+        } finally {
+            cipherLock.unlock();
+        }
     }
 
     private byte[] decrypt(byte[] data, Key decryptionKey) throws InvalidKeyException,
             BadPaddingException, IllegalBlockSizeException {
-        cipher.init(Cipher.DECRYPT_MODE, decryptionKey);
-        return cipher.doFinal(data);
+        try {
+            cipherLock.lock();
+            cipher.init(Cipher.DECRYPT_MODE, decryptionKey);
+            return cipher.doFinal(data);
+        } finally {
+            cipherLock.unlock();
+        }
     }
 }

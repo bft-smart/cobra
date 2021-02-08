@@ -10,13 +10,19 @@ import vss.secretsharing.Share;
 import java.math.BigInteger;
 import java.security.SecureRandom;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 
 public class ResharingPolynomialCreator extends PolynomialCreator {
     private final ViewStatus viewStatus;
 
-    ResharingPolynomialCreator(PolynomialCreationContext creationContext, int processId, SecureRandom rndGenerator, ServerConfidentialityScheme confidentialityScheme, InterServersCommunication serversCommunication, PolynomialCreationListener creationListener) {
+    ResharingPolynomialCreator(PolynomialCreationContext creationContext, int processId, SecureRandom rndGenerator,
+                               ServerConfidentialityScheme confidentialityScheme,
+                               InterServersCommunication serversCommunication,
+                               PolynomialCreationListener creationListener,
+                               DistributedPolynomial distributedPolynomial) {
         super(creationContext, processId, rndGenerator, confidentialityScheme, serversCommunication, creationListener,
-                creationContext.getContexts()[0].getMembers().length, creationContext.getContexts()[0].getF());
+                creationContext.getContexts()[0].getMembers().length, creationContext.getContexts()[0].getF(),
+                distributedPolynomial);
         if (creationContext == null)
             viewStatus = ViewStatus.IN_NEW;
         else {
@@ -36,30 +42,32 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
 
     @Override
     ProposalMessage computeProposalMessage() {
-        PolynomialContext qOldContext = creationContext.getContexts()[0];
-        PolynomialContext qNewContext = creationContext.getContexts()[1];
         BigInteger q = getRandomNumber();
+        Proposal[] proposals = new Proposal[2];
 
-        //generating polynomials
-        Polynomial qOld = new Polynomial(field, qOldContext.getF(), q, rndGenerator);
-        Polynomial qNew = new Polynomial(field, qNewContext.getF(), q, rndGenerator);
+        CountDownLatch latch = new CountDownLatch(2);
+        for (int i = 0; i < proposals.length; i++) {
+            PolynomialContext context = creationContext.getContexts()[i];
+            int finalI = i;
+            distributedPolynomial.submitJob(() -> {
+                Polynomial polynomial = new Polynomial(field, context.getF(), q, rndGenerator);
+                Commitment commitment = commitmentScheme.generateCommitments(polynomial, BigInteger.ZERO);
+                Map<Integer, byte[]> points = computeShares(polynomial, context.getMembers());
+                proposals[finalI] = new Proposal(points, commitment);
+                latch.countDown();
+            });
+        }
 
-        //generating commitments (BigInteger.Zero to create witness for (0,q) in Kate et al. scheme)
-        Commitment qOldCommitment = commitmentScheme.generateCommitments(qOld, BigInteger.ZERO);
-        Commitment qNewCommitment = commitmentScheme.generateCommitments(qNew, BigInteger.ZERO);
-
-        //generating shares
-        Map<Integer, byte[]> qOldPoints = computeShares(qOld, qOldContext.getMembers());
-        Map<Integer, byte[]> qNewPoints = computeShares(qNew, qNewContext.getMembers());
-
-        Proposal forOldView = new Proposal(qOldPoints, qOldCommitment);
-        Proposal forNewView = new Proposal(qNewPoints, qNewCommitment);
+        try {
+            latch.await();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
 
         return new ProposalMessage(
                 creationContext.getId(),
                 processId,
-                forOldView,
-                forNewView
+                proposals
         );
     }
 
@@ -71,14 +79,19 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
 
         BigInteger[] decryptedProposalPoints = null;
         Share oldViewShare, newViewShare;
+        boolean[] isValid;
 
         switch (viewStatus) {
             case IN_OLD:
                 oldViewShare = getDecryptedShare(proposalSender, oldViewProposal);
                 if (oldViewShare == null)
                     return false;
-                if (isValidShare(oldViewProposal.getCommitments(), oldViewShare)
-                        && doesEncodeSameSecret(oldViewProposal, newViewProposal)) {
+                isValid = new boolean[2];
+                isValid[0] = commitmentScheme.checkValidityWithoutPreComputation(oldViewShare,
+                        oldViewProposal.getCommitments());
+                isValid[1] = doesEncodeSameSecret(oldViewProposal, newViewProposal);
+
+                if (isValid[0] && isValid[1]) {
                     validProposals.add(proposalSender);
                     logger.debug("Proposal from {} is valid", proposalSender);
                 } else {
@@ -93,8 +106,12 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                 newViewShare = getDecryptedShare(proposalSender, newViewProposal);
                 if (newViewShare == null)
                     return false;
-                if (isValidShare(newViewProposal.getCommitments(), newViewShare)
-                        && doesEncodeSameSecret(oldViewProposal, newViewProposal)) {
+                isValid = new boolean[2];
+                isValid[0] = commitmentScheme.checkValidityWithoutPreComputation(newViewShare,
+                        newViewProposal.getCommitments());
+                isValid[1] = doesEncodeSameSecret(oldViewProposal, newViewProposal);
+
+                if (isValid[0] && isValid[1]) {
                     validProposals.add(proposalSender);
                     logger.debug("Proposal from {} is valid", proposalSender);
                 } else {
@@ -112,9 +129,14 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                 newViewShare = getDecryptedShare(proposalSender, newViewProposal);
                 if (newViewShare == null)
                     return false;
-                if (isValidShare(oldViewProposal.getCommitments(), oldViewShare)
-                        && isValidShare(newViewProposal.getCommitments(), newViewShare)
-                        && doesEncodeSameSecret(oldViewProposal, newViewProposal)) {
+                isValid = new boolean[3];
+                isValid[0] = commitmentScheme.checkValidityWithoutPreComputation(oldViewShare,
+                        oldViewProposal.getCommitments());
+                isValid[1] = commitmentScheme.checkValidityWithoutPreComputation(newViewShare,
+                        newViewProposal.getCommitments());
+                isValid[2] = doesEncodeSameSecret(oldViewProposal, newViewProposal);
+
+                if (isValid[0] && isValid[1] && isValid[2]) {
                     validProposals.add(proposalSender);
                     logger.debug("Proposal from {} is valid", proposalSender);
                 } else {

@@ -31,14 +31,14 @@ public class InterServersCommunication {
         return communicationSystem.getSecretKey(serverId);
     }
 
-    public void sendOrdered(InterServersMessageType type, byte[] metadata, byte[] request,
+    public synchronized void sendOrdered(InterServersMessageType type, byte[] metadata, byte[] request,
                             int... targets) {
         TOMMessage msg = tomMessageGenerator.getNextOrdered(metadata,
                 serializeRequest(type, request));
         communicationSystem.send(targets, new ForwardedMessage(msg.getSender(), msg));
     }
 
-    public void sendUnordered(InterServersMessageType type, byte[] request, int... targets) {
+    public synchronized void sendUnordered(InterServersMessageType type, byte[] request, int... targets) {
         TOMMessage msg = tomMessageGenerator.getNextUnordered(serializeRequest(type, request));
         communicationSystem.send(targets, new ForwardedMessage(msg.getSender(), msg));
     }

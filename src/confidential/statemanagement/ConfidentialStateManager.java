@@ -20,23 +20,21 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.secretsharing.VerifiableShare;
 
-import java.math.BigInteger;
 import java.util.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class ConfidentialStateManager extends StateManager implements PolynomialCreationListener, ReconstructionCompleted {
+public class ConfidentialStateManager extends StateManager implements ReconstructionCompleted,
+        RecoveryPolynomialListener, ResharingPolynomialListener {
     private final long RENEWAL_PERIOD;
     private final boolean RENEWAL;
     private final int SERVER_STATE_LISTENING_PORT;
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private final static long INIT_TIMEOUT = 60 * 60 * 1000;
-    private DistributedPolynomial distributedPolynomial;
+    private DistributedPolynomialManager distributedPolynomialManager;
     private ServerConfidentialityScheme confidentialityScheme;
     private Timer stateTimer;
     private long timeout = INIT_TIMEOUT;
     private final ReentrantLock lockTimer;
-    private final AtomicInteger sequenceNumber;
     private final Map<Integer, SMMessage> onGoingRecoveryRequests;
     private final HashMap<Integer, Integer> sequenceNumbers;
     private final Timer refreshTimer;
@@ -48,7 +46,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
-        sequenceNumber = new AtomicInteger();
         onGoingRecoveryRequests = new HashMap<>();
         sequenceNumbers = new HashMap<>();
         refreshTimer = new Timer("Refresh Timer");
@@ -59,9 +56,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     }
 
     public void setDistributedPolynomial(DistributedPolynomial distributedPolynomial) {
-        distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
-        distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
-        this.distributedPolynomial = distributedPolynomial;
+        this.distributedPolynomialManager = new DistributedPolynomialManager(distributedPolynomial,
+                this, this);
         if (RENEWAL) {
             setRefreshTimer();
             logger.info("Renewal is active");
@@ -145,7 +141,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 this,
                 SVController.getCurrentViewF(),
                 SVController,
-                distributedPolynomial.getField(),
+                confidentialityScheme.getField(),
                 confidentialityScheme,
                 stateSenderReplica,
                 SERVER_STATE_LISTENING_PORT
@@ -173,23 +169,13 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         if (msg instanceof DefaultSMMessage) {
             logger.debug("Received recovery request from {}", msg.getSender());
             if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null) {
-                int id = sequenceNumber.getAndIncrement();
-                onGoingRecoveryRequests.put(id, msg);
-                PolynomialContext context = new PolynomialContext(
-                        SVController.getCurrentViewF(),
+                int id = distributedPolynomialManager.createRecoveryPolynomialsFor(
                         confidentialityScheme.getShareholder(msg.getSender()),
-                        BigInteger.ZERO,
-                        SVController.getCurrentViewAcceptors()
+                        SVController.getCurrentViewF(),
+                        SVController.getCurrentViewAcceptors(),
+                        1
                 );
-                PolynomialCreationContext creationContext = new PolynomialCreationContext(
-                        id,
-                        msg.getLeader(),
-                        PolynomialCreationReason.RECOVERY,
-                        context
-                );
-                logger.debug("Starting creation of new polynomial with id {} to recover member {}", id, msg.getSender());
-                distributedPolynomial.createNewPolynomial(creationContext);
-
+                onGoingRecoveryRequests.put(id, msg);
             }
         } else
             logger.warn("Received unknown SM message type from {}", msg.getSender());
@@ -292,7 +278,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 return;
             }
 
-            sequenceNumber.set(seqNumber);
+            distributedPolynomialManager.setSequenceNumber(seqNumber);
 
             state = recoveredState;
 
@@ -360,59 +346,62 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
     }
 
     @Override
-    public void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
-                                            VerifiableShare... points) {
-        logger.debug("Received my point for {} with id {}", context.getReason(), context.getId());
-        if (sequenceNumber.get() <= context.getId())
-            sequenceNumber.set(context.getId() + 1);
-        if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null
-                && context.getReason() == PolynomialCreationReason.RECOVERY) {
-            VerifiableShare point = points[0];//TODO change to recover multiple servers
+    public void onRecoveryPolynomialsCreation(RecoveryPolynomialContext context, int lastCID) {
+        if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null) {
+            VerifiableShare point = context.getPoints()[0];//TODO change to recover multiple servers
             if (onGoingRecoveryRequests.containsKey(context.getId()))
                 sendRecoveryState((DefaultSMMessage)onGoingRecoveryRequests.remove(context.getId()), point);
             else
                 logger.debug("There is no recovery request for id {}", context.getId());
-        } else if (PolynomialCreationReason.RESHARING == context.getReason()) {
-            refreshTriggerTask.cancel();
-
-            isRefreshing = true;
-            int[] oldMembers = context.getContexts()[0].getMembers();
-            int[] newMembers = context.getContexts()[1].getMembers();
-            logger.info("Old members: {}", Arrays.toString(oldMembers));
-            logger.info("New members: {}", Arrays.toString(newMembers));
-            int processId = SVController.getStaticConf().getProcessId();
-            if (Utils.isIn(processId, newMembers)) {
-                BlindedStateHandler blindedStateHandler;
-                if (Configuration.getInstance().getVssScheme().equals("1"))
-                    blindedStateHandler = new LinearBlindedStateHandler(
-                            SVController,
-                            context,
-                            points[1],
-                            confidentialityScheme,
-                            context.getLeader(),
-                            SERVER_STATE_LISTENING_PORT,
-                            this
-                    );
-                else
-                    blindedStateHandler = new ConstantBlindedStateHandler(
-                            SVController,
-                            context,
-                            points[1],
-                            confidentialityScheme,
-                            context.getLeader(),
-                            SERVER_STATE_LISTENING_PORT,
-                            this
-                    );
-                blindedStateHandler.start();
-            }
-
-            if (Utils.isIn(processId, oldMembers)) {
-                sendingBlindedState(context, points[0], consensusId);
-            }
         }
     }
 
-    private void sendingBlindedState(PolynomialCreationContext creationContext, VerifiableShare blindingShare, int consensusId) {
+    @Override
+    public void onResharingPolynomialsCreation(ResharingPolynomialContext context, int lastCID) {
+        logger.info("Received {} polynomials for resharing", context.getNPolynomials());
+        System.exit(-1);
+        refreshTriggerTask.cancel();
+
+        isRefreshing = true;
+        int[] oldMembers = context.getOldMembers();
+        int[] newMembers = context.getNewMembers();
+        logger.info("Old members: {}", Arrays.toString(oldMembers));
+        logger.info("New members: {}", Arrays.toString(newMembers));
+        int leader = oldMembers[lastCID % oldMembers.length];
+        logger.info("Leader for resharing: {}", leader);
+        int processId = SVController.getStaticConf().getProcessId();
+        if (Utils.isIn(processId, newMembers)) {
+            BlindedStateHandler blindedStateHandler;
+            if (Configuration.getInstance().getVssScheme().equals("1"))
+                blindedStateHandler = new LinearBlindedStateHandler(
+                        SVController,
+                        context,
+                        context.getPointsForNewGroup()[0],
+                        confidentialityScheme,
+                        leader,
+                        SERVER_STATE_LISTENING_PORT,
+                        this
+                );
+            else
+                blindedStateHandler = new ConstantBlindedStateHandler(
+                        SVController,
+                        context,
+                        context.getPointsForNewGroup()[0],
+                        confidentialityScheme,
+                        leader,
+                        SERVER_STATE_LISTENING_PORT,
+                        this
+                );
+            blindedStateHandler.start();
+        }
+
+        if (Utils.isIn(processId, oldMembers)) {
+            sendingBlindedState(context, leader, context.getPointsForOldGroup()[0], lastCID);
+        }
+    }
+
+    private void sendingBlindedState(ResharingPolynomialContext creationContext, int leader,
+                                     VerifiableShare blindingShare, int consensusId) {
         try {
             dt.pauseDecisionDelivery();
 
@@ -423,8 +412,8 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 return;
             }
 
-            int[] receivers = creationContext.getContexts()[1].getMembers();
-            boolean iAmStateSender = creationContext.getLeader() == SVController.getStaticConf().getProcessId();
+            int[] receivers = creationContext.getNewMembers();
+            boolean iAmStateSender = leader == SVController.getStaticConf().getProcessId();
             new BlindedStateSender(SVController, confidentialityScheme.getField(), SERVER_STATE_LISTENING_PORT,
                     receivers, appState, blindingShare, confidentialityScheme, iAmStateSender)
                     .start();
@@ -445,39 +434,19 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
         isRefreshing = false;
         setRefreshTimer();
     }
-    @Override
-    public void onPolynomialCreationFailure(PolynomialCreationContext context, List<ProposalMessage> invalidProposals, int consensusId) {
-        logger.error("I received an invalid point");
-        System.exit(-1);
-    }
 
     private void setRefreshTimer() {
         refreshTriggerTask = new TimerTask() {
             @Override
             public void run() {
                 renewalStartTime = System.nanoTime();
-                int id = sequenceNumber.getAndIncrement();
-                PolynomialContext oldView = new PolynomialContext(
+                distributedPolynomialManager.createResharingPolynomials(
                         SVController.getCurrentViewF(),
-                        BigInteger.ZERO,
-                        null,
-                        SVController.getCurrentViewAcceptors()
-                );
-                PolynomialContext newView = new PolynomialContext(
+                        SVController.getCurrentViewAcceptors(),
                         SVController.getCurrentViewF(),
-                        BigInteger.ZERO,
-                        null,
-                        SVController.getCurrentViewAcceptors()
+                        SVController.getCurrentViewAcceptors(),
+                        1
                 );
-                PolynomialCreationContext context = new PolynomialCreationContext(
-                        id,
-                        tomLayer.execManager.getCurrentLeader(),
-                        PolynomialCreationReason.RESHARING,
-                        oldView,
-                        newView
-                );
-                logger.debug("Starting creation of new polynomial with id {} for resharing", id);
-                distributedPolynomial.createNewPolynomial(context);
             }
         };
 
@@ -493,7 +462,6 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
             return;
         }
 
-        logger.debug("Sending sequence number {} with the state", sequenceNumber.get());
         RecoveryStateServerSMMessage response = new RecoveryStateServerSMMessage(
                 SVController.getStaticConf().getProcessId(),
                 appState.getLastCID(),
@@ -501,7 +469,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                 SVController.getCurrentView(),
                 tomLayer.getSynchronizer().getLCManager().getLastReg(),
                 recoveryMessage.getLeader(),
-                sequenceNumber.get()
+                distributedPolynomialManager.getSequenceNumber()
         );
 
         try {
@@ -511,7 +479,7 @@ public class ConfidentialStateManager extends StateManager implements Polynomial
                     SVController.getCurrentView().getAddress(recoveryMessage.getSender()).getAddress().getHostAddress(),
                     appState,
                     recoveryPoint,
-                    distributedPolynomial.getField(),
+                    confidentialityScheme.getField(),
                     SVController,
                     recoveryMessage.getStateSenderReplica() == SVController.getStaticConf().getProcessId()
             ).start();

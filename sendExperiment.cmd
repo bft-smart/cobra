@@ -1,5 +1,5 @@
-set TEMP_DIR=C:\Users\Home\Desktop
-set SRC=C:\Users\Home\\Documents\IntelliJ\COBRA
+set TEMP_DIR=C:\Users\robin\Desktop
+set SRC=F:\IntelliJ\COBRA
 set FOLDER_NAME=cobraQ
 set QUINTA_USER=rvassantlal
 

@@ -10,7 +10,7 @@ import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.ConfidentialData;
 import confidential.Configuration;
-import confidential.polynomial.PolynomialCreationContext;
+import confidential.polynomial.ResharingPolynomialContext;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.ConfidentialSnapshot;
@@ -75,7 +75,7 @@ public abstract class BlindedStateHandler extends Thread {
     private final ReconstructionCompleted reconstructionListener;
 
     public BlindedStateHandler(ServerViewController svController,
-                               PolynomialCreationContext context,
+                               ResharingPolynomialContext context,
                                VerifiableShare refreshPoint,
                                ServerConfidentialityScheme confidentialityScheme,
                                int stateSenderReplica,
@@ -83,9 +83,9 @@ public abstract class BlindedStateHandler extends Thread {
                                ReconstructionCompleted reconstructionListener) {
         super("Blinded State Handler Thread");
         this.reconstructionListener = reconstructionListener;
-        this.oldThreshold = context.getContexts()[0].getF();
-        this.newThreshold = context.getContexts()[1].getF();
-        this.oldQuorum = context.getContexts()[0].getMembers().length - oldThreshold;
+        this.oldThreshold = context.getOldF();
+        this.newThreshold = context.getNewF();
+        this.oldQuorum = context.getOldMembers().length - oldThreshold;
         this.processId = svController.getStaticConf().getProcessId();
         this.refreshPoint = refreshPoint;
         this.confidentialityScheme = confidentialityScheme;
@@ -101,7 +101,7 @@ public abstract class BlindedStateHandler extends Thread {
         this.corruptedServers = new AtomicInteger(0);
 
         this.correctBlindedSharesSize = -1;
-        int[] receiversId = context.getContexts()[0].getMembers();
+        int[] receiversId = context.getOldMembers();
         try {
             int port = serverPort + processId;
             this.publicDataReceiver = new PublicDataReceiver(this, svController, port,

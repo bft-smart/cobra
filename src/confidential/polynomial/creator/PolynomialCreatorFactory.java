@@ -1,6 +1,7 @@
 package confidential.polynomial.creator;
 
 import confidential.interServersCommunication.InterServersCommunication;
+import confidential.polynomial.DistributedPolynomial;
 import confidential.polynomial.PolynomialCreationContext;
 import confidential.polynomial.PolynomialCreationListener;
 import confidential.server.ServerConfidentialityScheme;
@@ -20,7 +21,8 @@ public class PolynomialCreatorFactory {
     public PolynomialCreator getNewCreatorFor(PolynomialCreationContext context, int processId, SecureRandom rndGenerator,
                                               ServerConfidentialityScheme confidentialityScheme,
                                               InterServersCommunication serversCommunication,
-                                              PolynomialCreationListener creationListener) {
+                                              PolynomialCreationListener creationListener,
+                                              DistributedPolynomial distributedPolynomial) {
         switch (context.getReason()) {
             case RECOVERY:
                 return new RecoveryPolynomialCreator(
@@ -29,7 +31,8 @@ public class PolynomialCreatorFactory {
                         rndGenerator,
                         confidentialityScheme,
                         serversCommunication,
-                        creationListener
+                        creationListener,
+                        distributedPolynomial
                 );
             case RESHARING:
                 return new ResharingPolynomialCreator(
@@ -38,7 +41,8 @@ public class PolynomialCreatorFactory {
                         rndGenerator,
                         confidentialityScheme,
                         serversCommunication,
-                        creationListener
+                        creationListener,
+                        distributedPolynomial
                 );
             default:
                 logger.error("Unknown polynomial creation reason {}", context.getReason());

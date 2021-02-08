@@ -92,10 +92,9 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
             this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
             this.isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
-            distributedPolynomial =
-                    new DistributedPolynomial(replicaContext.getSVController(), interServersCommunication,
-                            confidentialityScheme);
-            new Thread(distributedPolynomial, "Distributed polynomial").start();
+            this.distributedPolynomial = new DistributedPolynomial(replicaContext.getSVController(), interServersCommunication,
+                    confidentialityScheme);
+            new Thread(distributedPolynomial, "Distributed polynomial Manager").start();
             stateManager.setDistributedPolynomial(distributedPolynomial);
             stateManager.setConfidentialityScheme(confidentialityScheme);
             log = getLog();
