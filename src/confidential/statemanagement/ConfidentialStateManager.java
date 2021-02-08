@@ -359,7 +359,6 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     @Override
     public void onResharingPolynomialsCreation(ResharingPolynomialContext context, int lastCID) {
         logger.info("Received {} polynomials for resharing", context.getNPolynomials());
-        System.exit(-1);
         refreshTriggerTask.cancel();
 
         isRefreshing = true;
