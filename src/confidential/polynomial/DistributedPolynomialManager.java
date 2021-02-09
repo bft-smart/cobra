@@ -50,13 +50,18 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         );
         logger.info("Starting creation of {} polynomial(s) with id {} to recover {}", nPolynomials,
                 internalId, shareholder);
-        for (int i = 0; i < nPolynomials; i++) {
+        int nExecutions = (int)((double) nPolynomials / (f + 1) + 0.5);
+        logger.info("Executing polynomial generation protocol {} times to generate {} polynomial(s)",
+                nExecutions, nPolynomials);
+        for (int i = 0; i < nExecutions; i++) {
             int id = sequenceNumber++;
             int leader = members[id % members.length];
             PolynomialCreationContext creationContext = new PolynomialCreationContext(
                     id,
                     internalId,
                     nPolynomials,
+                    false,
+                    true,
                     leader,
                     PolynomialCreationReason.RECOVERY,
                     context
@@ -96,6 +101,8 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
                     id,
                     internalId,
                     nPolynomials,
+                    false,
+                    false,
                     leader,
                     PolynomialCreationReason.RESHARING,
                     oldView,
@@ -137,11 +144,11 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
 
     @Override
     public synchronized void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
-                                            VerifiableShare... points) {
+                                            VerifiableShare[][] points) {
         if (context.getReason() == PolynomialCreationReason.RESHARING) {
             ResharingPolynomialContext polynomialContext = resharingPolynomialContexts.get(context.getInternalId());
             if (polynomialContext == null) {
-                logger.error("There is no resharing polynomial context. Creating one");
+                logger.debug("There is no resharing polynomial context. Creating one");
                 PolynomialContext oldContext = context.getContexts()[0];
                 PolynomialContext newContext = context.getContexts()[1];
                 ViewStatus viewStatus;
@@ -163,7 +170,16 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
                         viewStatus
                 );
             }
-            polynomialContext.addPolynomial(points);
+            int size = points[0].length;
+            if (points.length == 1) {
+                for (int i = 0; i < size; i++) {
+                    polynomialContext.addPolynomial(points[0][i]);
+                }
+            } else {
+                for (int i = 0; i < size; i++) {
+                    polynomialContext.addPolynomial(points[0][i], points[1][i]);
+                }
+            }
             if (polynomialContext.currentIndex % 25 == 0 && polynomialContext.currentIndex != polynomialContext.getNPolynomials())
                 logger.info("{} polynomial(s) created", polynomialContext.currentIndex);
 
@@ -176,18 +192,22 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         } else if (context.getReason() == PolynomialCreationReason.RECOVERY) {
             RecoveryPolynomialContext polynomialContext = recoveryPolynomialContexts.get(context.getInternalId());
             if (polynomialContext == null) {
-                logger.error("There is no recovery polynomial context. Creating one");
+                logger.debug("There is no recovery polynomial context. Creating one");
                 polynomialContext = new RecoveryPolynomialContext(
                         context.getInternalId(),
                         context.getNPolynomials(),
                         context.getContexts()[0].getF()
                 );
             }
-            polynomialContext.addPolynomial(points[0]);
-            if (polynomialContext.currentIndex % 25 == 0 && polynomialContext.currentIndex != polynomialContext.getNPolynomials())
+            for (VerifiableShare[] point : points) {
+                for (VerifiableShare share : point) {
+                    polynomialContext.addPolynomial(share);
+                }
+            }
+            if (polynomialContext.currentIndex % 25 == 0 && polynomialContext.currentIndex < polynomialContext.getNPolynomials())
                 logger.info("{} polynomial(s) created", polynomialContext.currentIndex);
 
-            if (polynomialContext.currentIndex == polynomialContext.getNPolynomials()) {
+            if (polynomialContext.currentIndex >= polynomialContext.getNPolynomials()) {
                 polynomialContext.endTime();
                 double delta = polynomialContext.getTime() / 1_000_000.0;
                 logger.info("Took {} ms to create {} polynomial(s) for recovery", delta, polynomialContext.getNPolynomials());

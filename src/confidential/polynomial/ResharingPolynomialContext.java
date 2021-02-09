@@ -65,7 +65,9 @@ public class ResharingPolynomialContext extends PolynomialManagerContext {
         return pointsForOldGroup;
     }
 
-    public void addPolynomial(VerifiableShare[] points) {
+    public void addPolynomial(VerifiableShare... points) {
+        if (currentIndex == getNPolynomials())
+            return;
         switch (viewStatus) {
             case IN_NEW:
                 if (pointsForNewGroup == null)

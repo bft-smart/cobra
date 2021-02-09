@@ -35,10 +35,10 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
     private final ConcurrentHashMap<Integer, PolynomialCreator> polynomialCreators;
     private final Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
     private final int processId;
-    //private int lastPolynomialCreationProcessed;
     private final BlockingQueue<InterServerMessageHolder> pendingMessages;
     private final Lock entryLock;
     private final ExecutorService jobsProcessor;
+    private final BigInteger[][] vandermondeMatrix;
 
     public DistributedPolynomial(ServerViewController svController, InterServersCommunication serversCommunication,
                                  ServerConfidentialityScheme confidentialityScheme) {
@@ -49,7 +49,6 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         this.polynomialCreators = new ConcurrentHashMap<>();
         this.processId = svController.getStaticConf().getProcessId();
         this.listeners = new HashMap<>();
-        //this.lastPolynomialCreationProcessed = -1;
         this.pendingMessages = new LinkedBlockingQueue<>();
         entryLock = new ReentrantLock(true);
         serversCommunication.registerListener(this,
@@ -61,6 +60,18 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
                 InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS,
                 InterServersMessageType.POLYNOMIAL_PROCESSED_VOTES
         );
+        int rows = svController.getCurrentViewF() + 1;// svController.getCurrentViewN() - svController.getCurrentViewF();
+        int columns = svController.getCurrentViewF() + 1;//svController.getCurrentViewN();
+        this.vandermondeMatrix = new BigInteger[rows][columns];
+        BigInteger[] matrixInitValues = Configuration.getInstance().getVandermondeMatrixInitializationValues();
+
+        for (int r = 0; r < rows; r++) {
+            BigInteger exponent = BigInteger.valueOf(r);
+            for (int c = 0; c < columns; c++) {
+                vandermondeMatrix[r][c] = matrixInitValues[c].modPow(exponent, field);
+            }
+        }
+
         jobsProcessor = Executors.newFixedThreadPool(Configuration.getInstance().getShareProcessingThreads());
     }
 
@@ -98,12 +109,11 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         }
     }
 
-    private PolynomialCreator createNewPolynomialCreator(PolynomialCreationContext context) {
-/*        if (context.getId() <= lastPolynomialCreationProcessed) {
-            logger.debug("Polynomial creation id {} is old", context.getId());
-            return null;
-        }*/
+    public BigInteger[][] getVandermondeMatrix() {
+        return vandermondeMatrix;
+    }
 
+    private PolynomialCreator createNewPolynomialCreator(PolynomialCreationContext context) {
         PolynomialCreator polynomialCreator = PolynomialCreatorFactory.getInstance().getNewCreatorFor(
                 context,
                 processId,
@@ -118,7 +128,6 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
             return null;
 
         polynomialCreators.put(context.getId(), polynomialCreator);
-        //lastPolynomialCreationProcessed = context.getId();
         return polynomialCreator;
     }
 

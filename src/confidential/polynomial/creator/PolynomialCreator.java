@@ -1,6 +1,7 @@
 package confidential.polynomial.creator;
 
 import bftsmart.tom.util.TOMUtil;
+import confidential.Configuration;
 import confidential.Metadata;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
@@ -10,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.linear.LinearCommitments;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
@@ -55,7 +57,7 @@ public abstract class PolynomialCreator {
     protected final DistributedPolynomial distributedPolynomial;
     private boolean iHaveSentNewPolyRequest;
     private final Lock lock;
-    private long startTime;
+    private final BigInteger p;
 
     PolynomialCreator(PolynomialCreationContext creationContext,
                       int processId, SecureRandom rndGenerator,
@@ -88,6 +90,7 @@ public abstract class PolynomialCreator {
         this.validProposals = ConcurrentHashMap.newKeySet(maxMessages);
         this.invalidProposals = ConcurrentHashMap.newKeySet(maxMessages);
         this.newPolynomialRequestsFrom = ConcurrentHashMap.newKeySet(maxMessages);
+        this.p = new BigInteger(Configuration.getInstance().getPrimeField(), 16);
     }
 
     private static int[] computeAllUniqueMembers(PolynomialCreationContext creationContext) {
@@ -180,7 +183,6 @@ public abstract class PolynomialCreator {
     }
 
     private void generateAndSendProposal() {
-        startTime = System.nanoTime();
         myProposal = computeProposalMessage();
 
         byte[] proposalHash = computeCryptographicHash(myProposal);
@@ -399,7 +401,8 @@ public abstract class PolynomialCreator {
     }
 
     public void deliverResult(int consensusId, ProposalSetMessage proposalSet) {
-        BigInteger[] finalPoint = null;
+        boolean useMatrix = creationContext.useVandermondeMatrix();
+        BigInteger[][] finalPoint = null;
         Commitment[][] allCommitments = null;
         int i = 0;
         List<ProposalMessage> invalidProposals = new LinkedList<>();
@@ -423,12 +426,22 @@ public abstract class PolynomialCreator {
             }
             if (finalPoint == null) {
                 int nPolynomials = points.length;
-                finalPoint = new BigInteger[nPolynomials];
-                Arrays.fill(finalPoint, BigInteger.ZERO);
+                if (useMatrix) {
+                    finalPoint = new BigInteger[nPolynomials][faultsThreshold + 1];
+                } else {
+                    finalPoint = new BigInteger[nPolynomials][1];
+                    for (int j = 0; j < finalPoint.length; j++) {
+                        finalPoint[j][0] = BigInteger.ZERO;
+                    }
+                }
                 allCommitments = new Commitment[nPolynomials][faultsThreshold + 1];
             }
             for (int j = 0; j < finalPoint.length; j++) {
-                finalPoint[j] = finalPoint[j].add(points[j]);
+                if (useMatrix) {
+                    finalPoint[j][i] = points[j];
+                } else {
+                    finalPoint[j][0] = finalPoint[j][0].add(points[j]);
+                }
                 allCommitments[j][i] = proposals.get(member).getProposals()[j].getCommitments();
             }
             i++;
@@ -437,22 +450,61 @@ public abstract class PolynomialCreator {
             logger.error("Something went wrong while computing final point");
             return;
         }
-        VerifiableShare[] result = new VerifiableShare[finalPoint.length];
-        for (int j = 0; j < finalPoint.length; j++) {
-            Share share = new Share(shareholderId, finalPoint[j]);
-            Commitment commitments = null;
-            try {
-                commitments = commitmentScheme.sumCommitments(allCommitments[j]);
-            } catch (SecretSharingException e) {
-                logger.error("Failed to combine commitments", e);
+        VerifiableShare[][] result;
+        if (useMatrix) {
+            result = new VerifiableShare[finalPoint.length][faultsThreshold + 1];
+            for (int j = 0; j < finalPoint.length; j++) {
+                result[j] = computeResultUsingVandermondeMatrix(finalPoint[j], allCommitments[j],
+                        creationContext.combineCommitments());
             }
-            result[j] =  new VerifiableShare(share,
-                    commitmentScheme.extractCommitment(shareholderId, commitments), null);
+        } else {
+            result = new VerifiableShare[finalPoint.length][1];
+            for (int j = 0; j < finalPoint.length; j++) {
+                Share share = new Share(shareholderId, finalPoint[j][0]);
+                Commitment commitments = null;
+                try {
+                    commitments = commitmentScheme.sumCommitments(allCommitments[j]);
+                } catch (SecretSharingException e) {
+                    logger.error("Failed to combine commitments", e);
+                }
+                result[j][0] =  new VerifiableShare(share,
+                        commitmentScheme.extractCommitment(shareholderId, commitments), null);
+            }
         }
-        long endTime = System.nanoTime();
-        double totalTime = (endTime - startTime) / 1_000_000.0;
-        logger.debug("{}: Polynomial {} creation time: {} ms", creationContext.getReason(), creationContext.getId(), totalTime);
         creationListener.onPolynomialCreationSuccess(creationContext, consensusId, result);
+    }
+
+    private VerifiableShare[] computeResultUsingVandermondeMatrix(BigInteger[] points, Commitment[] commitments,
+                                                        boolean combineCommitments) {
+        BigInteger[][] vandermondeMatrix = distributedPolynomial.getVandermondeMatrix();
+        int rows = vandermondeMatrix.length;
+        int columns = vandermondeMatrix[0].length;
+        VerifiableShare[] result = new VerifiableShare[vandermondeMatrix.length];
+        Commitment resultCommitment;
+        BigInteger[] linearCommitments;
+        for (int r = 0; r < rows; r++) {
+            BigInteger temp = BigInteger.ZERO;
+            linearCommitments = new BigInteger[faultsThreshold + 1];
+            Arrays.fill(linearCommitments, BigInteger.ONE);
+            for (int c = 0; c < columns; c++) {
+                temp = temp.add(vandermondeMatrix[r][c].multiply(points[c])).mod(field);
+                if (combineCommitments) {
+                    BigInteger x = vandermondeMatrix[r][c];
+                    BigInteger[] tempC = ((LinearCommitments) commitments[c]).getCommitments();
+                    for (int i = 0; i < tempC.length; i++) {
+                        linearCommitments[i] = linearCommitments[i].multiply(tempC[i].modPow(x, p)).mod(p);
+                    }
+                }
+            }
+            if (combineCommitments) {
+                resultCommitment = new LinearCommitments(linearCommitments);
+            } else {
+                resultCommitment = commitments[r];
+            }
+            result[r] = new VerifiableShare(new Share(shareholderId, temp), resultCommitment, null);
+        }
+
+        return result;
     }
 
     private byte[] serialize(PolynomialMessage message) {

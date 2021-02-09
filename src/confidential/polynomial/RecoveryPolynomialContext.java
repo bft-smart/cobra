@@ -21,6 +21,8 @@ public class RecoveryPolynomialContext extends PolynomialManagerContext {
     }
 
     public void addPolynomial(VerifiableShare point) {
+        if (currentIndex == getNPolynomials())
+            return;
         points[currentIndex++] = point;
     }
 }

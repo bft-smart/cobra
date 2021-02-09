@@ -14,14 +14,19 @@ public class PolynomialCreationContext implements Externalizable {
     private int leader;
     private PolynomialCreationReason reason;
     private int nPolynomials;
+    private boolean combineCommitments;
+    private boolean useVandermondeMatrix;
 
     public PolynomialCreationContext() {}
 
-    public PolynomialCreationContext(int id, int internalId, int nPolynomials,
-                                     int leader, PolynomialCreationReason reason, PolynomialContext... contexts) {
+    public PolynomialCreationContext(int id, int internalId, int nPolynomials, boolean combineCommitments,
+                                     boolean useVandermondeMatrix, int leader,
+                                     PolynomialCreationReason reason, PolynomialContext... contexts) {
         this.id = id;
         this.internalId = internalId;
         this.nPolynomials = nPolynomials;
+        this.combineCommitments = combineCommitments;
+        this.useVandermondeMatrix = useVandermondeMatrix;
         this.contexts = contexts;
         this.leader = leader;
         this.reason = reason;
@@ -74,6 +79,7 @@ public class PolynomialCreationContext implements Externalizable {
         out.writeInt(id);
         out.writeInt(internalId);
         out.writeInt(nPolynomials);
+        out.writeBoolean(combineCommitments);
         if (contexts == null)
             out.writeInt(-1);
         else {
@@ -92,6 +98,7 @@ public class PolynomialCreationContext implements Externalizable {
         id = in.readInt();
         internalId = in.readInt();
         nPolynomials = in.readInt();
+        combineCommitments = in.readBoolean();
         int len = in.readInt();
         if (len > -1) {
             contexts = new PolynomialContext[len];
@@ -103,5 +110,13 @@ public class PolynomialCreationContext implements Externalizable {
 
         leader = in.readInt();
         reason = PolynomialCreationReason.getReason(in.read());
+    }
+
+    public boolean combineCommitments() {
+        return combineCommitments;
+    }
+
+    public boolean useVandermondeMatrix() {
+        return useVandermondeMatrix;
     }
 }
