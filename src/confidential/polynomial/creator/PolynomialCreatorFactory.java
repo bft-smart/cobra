@@ -11,7 +11,7 @@ import org.slf4j.LoggerFactory;
 import java.security.SecureRandom;
 
 public class PolynomialCreatorFactory {
-    private final Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("polynomial_generation");
     private static final PolynomialCreatorFactory INSTANCE = new PolynomialCreatorFactory();
 
     public static PolynomialCreatorFactory getInstance() {

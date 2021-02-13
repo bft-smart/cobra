@@ -28,9 +28,6 @@ public class HashThread extends Thread {
     public HashThread() throws NoSuchAlgorithmException {
         super("Hash Thread");
         this.digest = TOMUtil.getHashEngine();
-        //this.digest = MessageDigest.getInstance(Configuration.DEFAULT_HASH,
-            //Security.getProvider(Configuration.DEFAULT_HASH_PROVIDER));
-        //this.digest = MessageDigest.getInstance("SHA-256");
         this.latch = new CountDownLatch(1);
         this.offsets = new LinkedBlockingDeque<>();
     }

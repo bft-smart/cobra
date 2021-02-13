@@ -80,6 +80,7 @@ public class PolynomialCreationContext implements Externalizable {
         out.writeInt(internalId);
         out.writeInt(nPolynomials);
         out.writeBoolean(combineCommitments);
+        out.writeBoolean(useVandermondeMatrix);
         if (contexts == null)
             out.writeInt(-1);
         else {
@@ -99,6 +100,7 @@ public class PolynomialCreationContext implements Externalizable {
         internalId = in.readInt();
         nPolynomials = in.readInt();
         combineCommitments = in.readBoolean();
+        useVandermondeMatrix = in.readBoolean();
         int len = in.readInt();
         if (len > -1) {
             contexts = new PolynomialContext[len];

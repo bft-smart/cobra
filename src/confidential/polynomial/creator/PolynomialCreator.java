@@ -33,7 +33,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public abstract class PolynomialCreator {
-    protected Logger logger = LoggerFactory.getLogger("confidential");
+    protected Logger logger = LoggerFactory.getLogger("polynomial_generation");
     protected final PolynomialCreationContext creationContext;
     private final int quorumThreshold;
     private final int faultsThreshold;
@@ -476,6 +476,7 @@ public abstract class PolynomialCreator {
 
     private VerifiableShare[] computeResultUsingVandermondeMatrix(BigInteger[] points, Commitment[] commitments,
                                                         boolean combineCommitments) {
+        logger.debug("Using vandermonde matrix for polynomial creation {}", creationContext.getId());
         BigInteger[][] vandermondeMatrix = distributedPolynomial.getVandermondeMatrix();
         int rows = vandermondeMatrix.length;
         int columns = vandermondeMatrix[0].length;

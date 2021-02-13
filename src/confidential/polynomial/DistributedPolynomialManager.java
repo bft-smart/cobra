@@ -13,7 +13,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class DistributedPolynomialManager implements PolynomialCreationListener {
-    private final Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("polynomial_generation");
     private int sequenceNumber;
     private int internalSequenceNumber;
     private final DistributedPolynomial distributedPolynomial;
@@ -142,9 +142,11 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         return internalSequenceNumber;
     }
 
+    //TODO check if all servers receive their points in same order
     @Override
     public synchronized void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
                                             VerifiableShare[][] points) {
+        logger.debug("Created new {} polynomial(s)", points[0].length);
         if (context.getReason() == PolynomialCreationReason.RESHARING) {
             ResharingPolynomialContext polynomialContext = resharingPolynomialContexts.get(context.getInternalId());
             if (polynomialContext == null) {
@@ -169,6 +171,7 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
                         newContext.getMembers(),
                         viewStatus
                 );
+                resharingPolynomialContexts.put(context.getInternalId(), polynomialContext);
             }
             int size = points[0].length;
             if (points.length == 1) {
@@ -198,6 +201,7 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
                         context.getNPolynomials(),
                         context.getContexts()[0].getF()
                 );
+                recoveryPolynomialContexts.put(context.getInternalId(), polynomialContext);
             }
             for (VerifiableShare[] point : points) {
                 for (VerifiableShare share : point) {

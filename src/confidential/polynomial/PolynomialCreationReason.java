@@ -4,7 +4,7 @@ public enum PolynomialCreationReason {
     RECOVERY,
     RESHARING;
 
-    private static PolynomialCreationReason[] values = values();
+    private static final PolynomialCreationReason[] values = values();
 
     public static PolynomialCreationReason getReason(int ordinal) {
         return values[ordinal];

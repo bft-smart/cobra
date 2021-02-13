@@ -25,7 +25,7 @@ import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
 public class DistributedPolynomial implements Runnable, InterServerMessageListener {
-    private final Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("polynomial_generation");
     private static final byte[] SEED = "confidential".getBytes();
 
     private final InterServersCommunication serversCommunication;
