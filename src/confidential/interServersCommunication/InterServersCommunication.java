@@ -9,26 +9,29 @@ import confidential.MessageType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.crypto.SecretKey;
-import java.io.*;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutput;
+import java.io.ObjectOutputStream;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
 public class InterServersCommunication {
-    private final Logger logger = LoggerFactory.getLogger("confidential");
+    private final Logger logger = LoggerFactory.getLogger("communication");
     private final TOMMessageGenerator tomMessageGenerator;
     private final ServerCommunicationSystem communicationSystem;
     private final Map<InterServersMessageType, InterServerMessageListener> listeners;
+    private final CommunicationManager communicationManager;
+    private final int pid;
 
     public InterServersCommunication(ServerCommunicationSystem communicationSystem, ServerViewController viewController) {
         this.tomMessageGenerator = new TOMMessageGenerator(viewController);
         this.communicationSystem = communicationSystem;
         this.listeners = new HashMap<>();
-    }
-
-    public SecretKey getSecretKey(int serverId) {
-        return communicationSystem.getSecretKey(serverId);
+        this.communicationManager = new CommunicationManager(viewController);
+        this.communicationManager.start();
+        this.pid = viewController.getStaticConf().getProcessId();
     }
 
     public synchronized void sendOrdered(InterServersMessageType type, byte[] metadata, byte[] request,
@@ -38,9 +41,14 @@ public class InterServersCommunication {
         communicationSystem.send(targets, new ForwardedMessage(msg.getSender(), msg));
     }
 
-    public synchronized void sendUnordered(InterServersMessageType type, byte[] request, int... targets) {
-        TOMMessage msg = tomMessageGenerator.getNextUnordered(serializeRequest(type, request));
-        communicationSystem.send(targets, new ForwardedMessage(msg.getSender(), msg));
+    public boolean registerListener(MessageListener listener) {
+        return communicationManager.registerMessageListener(listener);
+    }
+
+    public synchronized void sendUnordered(CommunicationTag tag, InterServersMessageType type,
+                                           byte[] request, int... targets) {
+        byte[] message = serializeInternalRequest(type, request);
+        communicationManager.send(tag, new InternalMessage(pid, tag, message), targets);
     }
 
     public void registerListener(InterServerMessageListener listener, InterServersMessageType messageType,
@@ -60,6 +68,13 @@ public class InterServersCommunication {
             InterServerMessageHolder holder = new InterServerMessageHolder(type, m, msgCtx);
             listener.messageReceived(holder);
         }
+    }
+
+    private byte[] serializeInternalRequest(InterServersMessageType type, byte[] request) {
+        byte[] result = new byte[request.length + 1];
+        result[0] = (byte) type.ordinal();
+        System.arraycopy(request, 0, result, 1, request.length);
+        return result;
     }
 
     private byte[] serializeRequest(InterServersMessageType type, byte[] request) {

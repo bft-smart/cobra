@@ -20,9 +20,14 @@ public class RecoveryPolynomialContext extends PolynomialManagerContext {
         return points;
     }
 
-    public void addPolynomial(VerifiableShare point) {
-        if (currentIndex == getNPolynomials())
+    public void addPolynomial(int id, VerifiableShare... shares) {
+        if (currentIndex == nPolynomials) {
             return;
-        points[currentIndex++] = point;
+        }
+        int index = (super.id == 0 ? id : id % super.id) * shares.length;
+        for (int i = 0; i < shares.length && index + i < nPolynomials; i++) {
+            points[index + i] = shares[i];
+            currentIndex++;
+        }
     }
 }

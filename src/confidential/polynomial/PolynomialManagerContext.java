@@ -1,15 +1,24 @@
 package confidential.polynomial;
 
 public abstract class PolynomialManagerContext {
-    private final int id;
-    private final int nPolynomials;
+    protected final int id;
+    protected final int nPolynomials;
     private long startTime;
     private long endTime;
     protected int currentIndex;
+    private int lastCID;
 
     public PolynomialManagerContext(int id, int nPolynomials) {
         this.id = id;
         this.nPolynomials = nPolynomials;
+    }
+
+    public void setCID(int cid) {
+        lastCID = Math.max(cid, lastCID);
+    }
+
+    public int getLastCID() {
+        return lastCID;
     }
 
     public int getId() {

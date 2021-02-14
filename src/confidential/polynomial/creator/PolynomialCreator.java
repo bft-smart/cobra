@@ -3,6 +3,7 @@ package confidential.polynomial.creator;
 import bftsmart.tom.util.TOMUtil;
 import confidential.Configuration;
 import confidential.Metadata;
+import confidential.interServersCommunication.CommunicationTag;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.interServersCommunication.InterServersMessageType;
 import confidential.polynomial.*;
@@ -29,6 +30,7 @@ import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -58,6 +60,8 @@ public abstract class PolynomialCreator {
     private boolean iHaveSentNewPolyRequest;
     private final Lock lock;
     private final BigInteger p;
+    private final Lock proposalSetLock = new ReentrantLock(true);
+    private final Condition waitingMissingProposalsCondition = proposalSetLock.newCondition();
 
     PolynomialCreator(PolynomialCreationContext creationContext,
                       int processId, SecureRandom rndGenerator,
@@ -148,8 +152,8 @@ public abstract class PolynomialCreator {
         int[] members = getMembers(true);
         logger.debug("Sending NewPolynomialMessage to {} with id {}", Arrays.toString(members),
                 creationContext.getId());
-        serversCommunication.sendUnordered(InterServersMessageType.NEW_POLYNOMIAL, serialize(newPolynomialMessage),
-                members);
+        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.NEW_POLYNOMIAL,
+                serialize(newPolynomialMessage), members);
         iHaveSentNewPolyRequest = true;
     }
 
@@ -193,7 +197,7 @@ public abstract class PolynomialCreator {
         int[] members = getMembers(false);
         logger.debug("Sending ProposalMessage to {} with id {}", Arrays.toString(members),
                 creationContext.getId());
-        serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_PROPOSAL,
+        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.POLYNOMIAL_PROPOSAL,
                 serialize(myProposal), members);
     }
 
@@ -323,34 +327,22 @@ public abstract class PolynomialCreator {
         int[] receivedNodes = message.getReceivedNodes();
         byte[][] receivedProposals = message.getReceivedProposals();
 
-        if (missingProposals == null)
-            missingProposals = new ConcurrentHashMap<>();
+        LinkedList<Integer> missingProposalIndexes = new LinkedList<>();
 
         AtomicBoolean isValid = new AtomicBoolean(true);
         CountDownLatch latch = new CountDownLatch(receivedNodes.length);
         for (int i = 0; i < receivedNodes.length; i++) {
-            int finalI = i;
-            distributedPolynomial.submitJob(() -> {
-                int proposalSender = receivedNodes[finalI];
-                ProposalMessage proposal = proposals.get(proposalSender);
-                if (proposal == null) {
-                    logger.debug("I don't have proposal of {} with id {}", proposalSender,
-                            creationContext.getId());
-                    missingProposals.put(proposalSender, receivedProposals[finalI]);
-                } else if (!Arrays.equals(proposal.getCryptographicHash(), receivedProposals[finalI])) {
-                    logger.warn("I received different proposal from {}", proposalSender);
-                    isValid.set(false);
-                } else {
-                    if (!validProposals.contains(proposalSender)) {
-                        if (invalidProposals.contains(proposalSender)) {
-                            isValid.set(false);
-                        } else if (!validateProposal(proposal)) {
-                            isValid.set(false);
-                        }
-                    }
-                }
+            int proposalSender = receivedNodes[i];
+            byte[] receivedProposalHash = receivedProposals[i];
+            ProposalMessage proposal = proposals.get(proposalSender);
+            if (proposal == null) {
+                logger.debug("I don't have proposal of {} with id {}", proposalSender,
+                        creationContext.getId());
+                missingProposalIndexes.add(i);
                 latch.countDown();
-            });
+                continue;
+            }
+            checkSelectedProposal(isValid, latch, proposalSender, receivedProposalHash, proposal);
         }
 
         try {
@@ -358,12 +350,66 @@ public abstract class PolynomialCreator {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-
-        if (!missingProposals.isEmpty()) {
-            requestMissingProposals();
+        if (!isValid.get()) {
             return false;
-        } else
-            return isValid.get();
+        }
+        if (!missingProposalIndexes.isEmpty()) {
+            if (missingProposals == null) {
+                missingProposals = new ConcurrentHashMap<>();
+            }
+            for (int proposalIndex : missingProposalIndexes) {
+                int proposalSender = receivedNodes[proposalIndex];
+                byte[] receivedProposalHash = receivedProposals[proposalIndex];
+                missingProposals.put(proposalSender, receivedProposalHash);
+            }
+
+            requestMissingProposals();
+            try {
+                proposalSetLock.lock();
+                waitingMissingProposalsCondition.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            } finally {
+                proposalSetLock.unlock();
+            }
+            CountDownLatch missingProposalsLatch = new CountDownLatch(missingProposalIndexes.size());
+            for (Integer missingProposalIndex : missingProposalIndexes) {
+                int proposalSender = receivedNodes[missingProposalIndex];
+                byte[] receivedProposalHash = receivedProposals[missingProposalIndex];
+                ProposalMessage proposal = proposals.get(proposalSender);
+                if (proposal == null) {
+                    logger.error("I still don't have proposal of {} with id {}. Responding false.", proposalSender,
+                            creationContext.getId());
+                    return false;
+                }
+                checkSelectedProposal(isValid, missingProposalsLatch, proposalSender, receivedProposalHash, proposal);
+            }
+            try {
+                missingProposalsLatch.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        return isValid.get();
+    }
+
+    private void checkSelectedProposal(AtomicBoolean isValid, CountDownLatch latch, int proposalSender,
+                                       byte[] receivedProposalHash, ProposalMessage proposal) {
+        distributedPolynomial.submitProposalVerificationJob(() -> {
+            if (!Arrays.equals(proposal.getCryptographicHash(), receivedProposalHash)) {
+                logger.warn("I received different proposal from {}", proposalSender);
+                isValid.set(false);
+            } else {
+                if (!validProposals.contains(proposalSender)) {
+                    if (invalidProposals.contains(proposalSender)) {
+                        isValid.set(false);
+                    } else if (!validateProposal(proposal)) {
+                        isValid.set(false);
+                    }
+                }
+            }
+            latch.countDown();
+        });
     }
 
     private void requestMissingProposals() {
@@ -373,8 +419,8 @@ public abstract class PolynomialCreator {
                     processId,
                     e.getValue()
             );
-            logger.info("Asking missing proposal to {} with id {}", e.getKey(), creationContext.getId());
-            serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
+            logger.debug("Asking missing proposal to {} with id {}", e.getKey(), creationContext.getId());
+            serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
                     serialize(missingProposalRequestMessage), e.getKey());
         }
     }
@@ -386,11 +432,12 @@ public abstract class PolynomialCreator {
                 myProposal
         );
         logger.debug("Sending missing proposals to {} with id {}", message.getSender(), creationContext.getId());
-        serversCommunication.sendUnordered(InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS,
+        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS,
                 serialize(missingProposalsMessage), message.getSender());
     }
 
     public void processMissingProposals(MissingProposalsMessage message) {
+        logger.debug("Received missing proposal from {} with id {}", message.getSender(), message.getId());
         ProposalMessage proposal = message.getMissingProposal();
         byte[] cryptHash = computeCryptographicHash(proposal);
         proposal.setCryptographicHash(cryptHash);
@@ -398,6 +445,11 @@ public abstract class PolynomialCreator {
 
         validateProposal(proposal);
         missingProposals.remove(proposal.getSender());
+        if (missingProposals.isEmpty()) {
+            proposalSetLock.lock();
+            waitingMissingProposalsCondition.signal();
+            proposalSetLock.unlock();
+        }
     }
 
     public void deliverResult(int consensusId, ProposalSetMessage proposalSet) {
@@ -483,6 +535,7 @@ public abstract class PolynomialCreator {
         VerifiableShare[] result = new VerifiableShare[vandermondeMatrix.length];
         Commitment resultCommitment;
         BigInteger[] linearCommitments;
+
         for (int r = 0; r < rows; r++) {
             BigInteger temp = BigInteger.ZERO;
             linearCommitments = new BigInteger[faultsThreshold + 1];

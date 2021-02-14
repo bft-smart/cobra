@@ -23,16 +23,14 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
         super(creationContext, processId, rndGenerator, confidentialityScheme, serversCommunication, creationListener,
                 creationContext.getContexts()[0].getMembers().length, creationContext.getContexts()[0].getF(),
                 distributedPolynomial);
-        if (creationContext == null)
+        boolean inOldView = isInView(processId, creationContext.getContexts()[0].getMembers());
+        boolean inNewView = isInView(processId, creationContext.getContexts()[1].getMembers());
+        if (inOldView && inNewView)
+            viewStatus = ViewStatus.IN_BOTH;
+        else if (inOldView)
+            viewStatus = ViewStatus.IN_OLD;
+        else
             viewStatus = ViewStatus.IN_NEW;
-        else {
-            boolean inOldView = isInView(processId, creationContext.getContexts()[0].getMembers());
-            boolean inNewView = isInView(processId, creationContext.getContexts()[1].getMembers());
-            if (inOldView && inNewView)
-                viewStatus = ViewStatus.IN_BOTH;
-            else
-                viewStatus = ViewStatus.IN_OLD;
-        }
     }
 
     @Override
@@ -93,10 +91,10 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
 
                 if (isValid[0] && isValid[1]) {
                     validProposals.add(proposalSender);
-                    logger.debug("Proposal from {} is valid", proposalSender);
+                    logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid", proposalSender);
+                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
                 decryptedProposalPoints = new BigInteger[1];
@@ -113,10 +111,10 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
 
                 if (isValid[0] && isValid[1]) {
                     validProposals.add(proposalSender);
-                    logger.debug("Proposal from {} is valid", proposalSender);
+                    logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid", proposalSender);
+                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
                 decryptedProposalPoints = new BigInteger[1];
@@ -138,10 +136,10 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
 
                 if (isValid[0] && isValid[1] && isValid[2]) {
                     validProposals.add(proposalSender);
-                    logger.debug("Proposal from {} is valid", proposalSender);
+                    logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid", proposalSender);
+                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
                 decryptedProposalPoints = new BigInteger[2];

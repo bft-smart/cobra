@@ -65,25 +65,28 @@ public class ResharingPolynomialContext extends PolynomialManagerContext {
         return pointsForOldGroup;
     }
 
-    public void addPolynomial(VerifiableShare... points) {
-        if (currentIndex == getNPolynomials())
+    public void addPolynomial(int id, VerifiableShare... points) {
+        int index = super.id == 0 ? id : id % super.id;
+        if (currentIndex == nPolynomials || index >= nPolynomials) {
             return;
+        }
+
         switch (viewStatus) {
             case IN_NEW:
                 if (pointsForNewGroup == null)
                     throw new IllegalStateException("Points holder for new group is null");
-                pointsForNewGroup[currentIndex] = points[0];
+                pointsForNewGroup[index] = points[0];
                 break;
             case IN_OLD:
                 if (pointsForOldGroup == null)
                     throw new IllegalStateException("Points holder for old group is null");
-                pointsForOldGroup[currentIndex] = points[0];
+                pointsForOldGroup[index] = points[0];
                 break;
             case IN_BOTH:
                 if (pointsForOldGroup == null || pointsForNewGroup == null)
                     throw new IllegalStateException("Points holder for old or new group is null");
-                pointsForOldGroup[currentIndex] = points[0];
-                pointsForNewGroup[currentIndex] = points[1];
+                pointsForOldGroup[index] = points[0];
+                pointsForNewGroup[index] = points[1];
                 break;
         }
         currentIndex++;

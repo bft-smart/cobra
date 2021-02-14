@@ -2,10 +2,7 @@ package confidential.polynomial;
 
 import bftsmart.reconfiguration.ServerViewController;
 import confidential.Configuration;
-import confidential.interServersCommunication.InterServerMessageHolder;
-import confidential.interServersCommunication.InterServerMessageListener;
-import confidential.interServersCommunication.InterServersCommunication;
-import confidential.interServersCommunication.InterServersMessageType;
+import confidential.interServersCommunication.*;
 import confidential.polynomial.creator.PolynomialCreator;
 import confidential.polynomial.creator.PolynomialCreatorFactory;
 import confidential.server.ServerConfidentialityScheme;
@@ -18,6 +15,7 @@ import java.io.ObjectInput;
 import java.io.ObjectInputStream;
 import java.math.BigInteger;
 import java.security.SecureRandom;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.*;
@@ -38,6 +36,7 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
     private final BlockingQueue<InterServerMessageHolder> pendingMessages;
     private final Lock entryLock;
     private final ExecutorService jobsProcessor;
+    private final ExecutorService proposalSetVerifierExecutor;
     private final BigInteger[][] vandermondeMatrix;
 
     public DistributedPolynomial(ServerViewController svController, InterServersCommunication serversCommunication,
@@ -52,14 +51,22 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         this.pendingMessages = new LinkedBlockingQueue<>();
         entryLock = new ReentrantLock(true);
         serversCommunication.registerListener(this,
-                InterServersMessageType.NEW_POLYNOMIAL,
-                InterServersMessageType.POLYNOMIAL_PROPOSAL,
-                InterServersMessageType.POLYNOMIAL_PROPOSAL_SET,
-                InterServersMessageType.POLYNOMIAL_VOTE,
-                InterServersMessageType.POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
-                InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS,
-                InterServersMessageType.POLYNOMIAL_PROCESSED_VOTES
+                InterServersMessageType.POLYNOMIAL_PROPOSAL_SET
         );
+        MessageListener polynomialMessageListener = new MessageListener(CommunicationTag.POLYNOMIAL) {
+            @Override
+            public void deliverMessage(InternalMessage message) {
+                InterServersMessageType type = InterServersMessageType.getType(message.getMessage()[0]);
+                byte[] m = Arrays.copyOfRange(message.getMessage(), 1, message.getMessage().length);
+                while (!pendingMessages.offer(new InterServerMessageHolder(type, m, null))){
+                    logger.debug("Distributed polynomial pending message queue is full");
+                }
+            }
+        };
+        polynomialMessageListener.start();
+        boolean isRegistered = serversCommunication.registerListener(polynomialMessageListener);
+        if (!isRegistered)
+            throw new IllegalStateException("Could not register polynomial message listener");
         int rows = svController.getCurrentViewF() + 1;// svController.getCurrentViewN() - svController.getCurrentViewF();
         int columns = svController.getCurrentViewF() + 1;//svController.getCurrentViewN();
         this.vandermondeMatrix = new BigInteger[rows][columns];
@@ -73,6 +80,8 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         }
 
         jobsProcessor = Executors.newFixedThreadPool(Configuration.getInstance().getShareProcessingThreads());
+        proposalSetVerifierExecutor = Executors.newFixedThreadPool(Configuration.getInstance()
+                .getShareProcessingThreads());
     }
 
     public int getProcessId() {
@@ -81,6 +90,10 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
 
     public void submitJob(Runnable job) {
         jobsProcessor.execute(job);
+    }
+
+    public void submitProposalVerificationJob(Runnable job) {
+        proposalSetVerifierExecutor.execute(job);
     }
 
     public void registerCreationListener(PolynomialCreationListener listener, PolynomialCreationReason reason) {
@@ -185,8 +198,9 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
 
                     PolynomialCreator finalPolynomialCreator = polynomialCreator;
                     PolynomialMessage finalPolynomialMessage = polynomialMessage;
-                    executorService.execute(() -> finalPolynomialCreator.messageReceived(message.getType(), finalPolynomialMessage,
-                            message.getMessageContext().getConsensusId()));
+                    int cid = message.getMessageContext() == null ? -1 : message.getMessageContext().getConsensusId();
+                    executorService.execute(() -> finalPolynomialCreator.messageReceived(message.getType(),
+                            finalPolynomialMessage, cid));
                 } catch (IOException | ClassNotFoundException e) {
                     logger.error("Failed to deserialize polynomial message of type {}", message.getType(), e);
                 }
@@ -201,13 +215,22 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
     }
 
     public boolean isValidProposalSet(ProposalSetMessage message) {
-        logger.debug("Received proposal set from {} for polynomial creation id {}", message.getSender(), message.getId());
+        logger.debug("Received proposal set from {} for polynomial creation id {}", message.getSender(),
+                message.getId());
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
         if (polynomialCreator == null) {
             logger.error("There is no active polynomial creation with id {}", message.getId());
             return false;
         }
-        return polynomialCreator.isValidProposalSet(message);
+        boolean isValid = polynomialCreator.isValidProposalSet(message);
+        if (isValid) {
+            logger.debug("Accepting proposal set from {} for polynomial creation id {}", message.getSender(),
+                    message.getId());
+        } else {
+            logger.info("Rejecting proposal set from {} for polynomial creation id {}", message.getSender(),
+                    message.getId());
+        }
+        return isValid;
     }
 
     public BigInteger getField() {

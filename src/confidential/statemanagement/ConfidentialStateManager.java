@@ -372,7 +372,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     }
 
     @Override
-    public void onRecoveryPolynomialsCreation(RecoveryPolynomialContext context, int lastCID) {
+    public void onRecoveryPolynomialsCreation(RecoveryPolynomialContext context) {
         if (SVController.getStaticConf().isStateTransferEnabled() && dt.getRecoverer() != null) {
 
             if (onGoingRecoveryRequests.containsKey(context.getId())) {
@@ -397,10 +397,10 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     }
 
     @Override
-    public void onResharingPolynomialsCreation(ResharingPolynomialContext context, int lastCID) {
+    public void onResharingPolynomialsCreation(ResharingPolynomialContext context) {
         logger.info("Received {} polynomials for resharing", context.getNPolynomials());
         refreshTriggerTask.cancel();
-
+        int lastCID = context.getLastCID();
         isRefreshing = true;
         int[] oldMembers = context.getOldMembers();
         int[] newMembers = context.getNewMembers();
@@ -485,7 +485,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                         SVController.getCurrentViewAcceptors(),
                         SVController.getCurrentViewF(),
                         SVController.getCurrentViewAcceptors(),
-                        3
+                        500000
                 );
             }
         };
