@@ -49,7 +49,7 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         );
         logger.info("Starting creation of {} polynomial(s) with id {} to recover {}", nPolynomials,
                 internalId, shareholder);
-        int nExecutions = (int)((double) nPolynomials / (f + 1) + 0.5);
+        int nExecutions = (int)Math.ceil((double) nPolynomials / (f + 1));
         logger.info("Executing polynomial generation protocol {} times to generate {} polynomial(s)",
                 nExecutions, nPolynomials);
         for (int i = 0; i < nExecutions; i++) {
