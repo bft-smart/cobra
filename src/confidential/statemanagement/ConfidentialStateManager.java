@@ -485,7 +485,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                         SVController.getCurrentViewAcceptors(),
                         SVController.getCurrentViewF(),
                         SVController.getCurrentViewAcceptors(),
-                        500000
+                        100000
                 );
             }
         };
