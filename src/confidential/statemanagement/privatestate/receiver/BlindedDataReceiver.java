@@ -69,9 +69,9 @@ public class BlindedDataReceiver extends Thread {
                         continue;
                     }
 
-                    long t1Total, t1CommonState, t1Commitments, t1BlindedShares;
-                    long t2Total, t2CommonState, t2Commitments, t2BlindedShares;
-                    long elapsedTotal = 0, elapsedCommonState = 0, elapsedCommitments = 0, elapsedBlindedShares = 0;
+                    long t1CommonState, t1Commitments, t1BlindedShares;
+                    long t2CommonState, t2Commitments, t2BlindedShares;
+                    long elapsedTotal, elapsedCommonState = 0, elapsedCommitments = 0, elapsedBlindedShares = 0;
 
                     byte[] commonState = null;
                     byte[] commonStateHash = null;
@@ -79,10 +79,7 @@ public class BlindedDataReceiver extends Thread {
                     Commitment[] commitments = null;
                     byte[] commitmentsHash = null;
 
-                    t1Total = System.nanoTime();
                     int pid = in.readInt();
-                    t2Total = System.nanoTime();
-                    elapsedTotal += t2Total - t1Total;
 
                     logger.debug("Going to receive blinded data from {}", pid);
 
@@ -152,10 +149,7 @@ public class BlindedDataReceiver extends Thread {
                             commitmentsHashThread.update(-1, -1);
                         }
                     } else {
-                        t1Commitments = System.nanoTime();
                         int nCommitments = in.readInt();
-                        t2Commitments = System.nanoTime();
-                        elapsedCommitments += t2Commitments - t1Commitments;
                         commitments = new Commitment[nCommitments];
                         for (int i = 0; i < nCommitments; i++) {
                             t1Commitments = System.nanoTime();
@@ -185,11 +179,7 @@ public class BlindedDataReceiver extends Thread {
 
                     //Reading commitments
                     if (commitments == null) {
-                        t1Commitments = System.nanoTime();
                         size = in.readInt();
-                        t2Commitments = System.nanoTime();
-                        elapsedCommitments += t2Commitments - t1Commitments;
-
                         commitmentsHash = new byte[size];
 
                         t1Commitments = System.nanoTime();
@@ -203,7 +193,7 @@ public class BlindedDataReceiver extends Thread {
                         commonStateHash = commonStateHashThread.getHash();
                     }
 
-                    elapsedTotal += elapsedCommonState + elapsedCommitments + elapsedBlindedShares;
+                    elapsedTotal = elapsedCommonState + elapsedCommitments + elapsedBlindedShares;
 
                     logger.info("Took {} ms to receive common state from {}", elapsedCommonState / 1_000_000.0, pid);
                     logger.info("Took {} ms to receive commitments from {}", elapsedCommitments / 1_000_000.0, pid);
