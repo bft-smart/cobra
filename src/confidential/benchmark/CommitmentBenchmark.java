@@ -7,6 +7,7 @@ import vss.commitment.constant.KateCommitmentScheme;
 import vss.commitment.linear.FeldmanCommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
+import vss.secretsharing.Share;
 
 import java.math.BigInteger;
 import java.security.SecureRandom;
@@ -79,12 +80,38 @@ public class CommitmentBenchmark {
         Commitment c1Extracted = commitmentScheme.extractCommitment(shareholder, c1);
         Commitment c2Extracted = commitmentScheme.extractCommitment(shareholder, c2);
 
+
         long start, end;
+        long[] commitmentCreationTimes = new long[nTests];
+        long[] singleVerificationTimes = new long[nTests];
         long[] sumTimes = new long[nTests];
         long[] subtractTimes = new long[nTests];
         long[] sumExtractedTimes = new long[nTests];
         long[] subtractExtractedTimes = new long[nTests];
         for (int nT = 0; nT < nTests; nT++) {
+            Polynomial polynomial = new Polynomial(field, threshold, num, rndGenerator);
+            Share share = new Share(shareholder, polynomial.evaluateAt(shareholder));
+
+            Commitment commitment = null;
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                commitment = commitmentScheme.generateCommitments(polynomial);
+            }
+            end = System.nanoTime();
+            commitmentCreationTimes[nT] = end - start;
+
+            Commitment extractedCommitment = commitmentScheme.extractCommitment(shareholder, commitment);
+
+            start = System.nanoTime();
+            for (int nS = 0; nS < nSecrets; nS++) {
+                commitmentScheme.checkValidityWithoutPreComputation(share, extractedCommitment);
+                /*if (!commitmentScheme.checkValidityWithoutPreComputation(share, extractedCommitment)) {
+                    throw new IllegalStateException("Invalid share");
+                }*/
+            }
+            end = System.nanoTime();
+            singleVerificationTimes[nT] = end - start;
+
             start = System.nanoTime();
             for (int nS = 0; nS < nSecrets; nS++) {
                 commitmentScheme.sumCommitments(c1, c2);
@@ -115,11 +142,15 @@ public class CommitmentBenchmark {
         }
 
         if (printResults) {
+            double creationAvg = computeAverage(commitmentCreationTimes);
+            double singleVerificationAvg = computeAverage(singleVerificationTimes);
             double sumAvg = computeAverage(sumTimes);
             double subtractAvg = computeAverage(subtractTimes);
             double sumExtractedAvg = computeAverage(sumExtractedTimes);
             double subtractExtractedAvg = computeAverage(subtractExtractedTimes);
 
+            System.out.println("Creation: " + creationAvg + " ms");
+            System.out.println("Single verification: " + singleVerificationAvg + " ms");
             System.out.println("Sum: " + sumAvg + " ms");
             System.out.println("Subtract: " + subtractAvg + " ms");
             System.out.println("Sum extracted: " + sumExtractedAvg + " ms");

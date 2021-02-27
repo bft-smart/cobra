@@ -24,8 +24,8 @@ void initialize(int threshold) {
 	ep_param_print();
 
 	int embed = ep_param_embed();
-	printf("\n-- Embed: %d\n", embed);
-
+	printf("-- Embed: %d\n", embed);
+    printf("-- OAte Pairing\n\n");
 	//fp_param_print();
 
 	//pre-computing public data of commitment scheme
@@ -80,7 +80,7 @@ void initialize(int threshold) {
 
 	ep_curve_get_gen(g1);
 	ep2_curve_get_gen(g2);
-	pp_map_tatep_k12(gPairing, g1, g2);
+	pp_map_oatep_k12(gPairing, g1, g2);
 
 	ep2_mul_gen(gAlpha, alpha);
 
@@ -281,8 +281,8 @@ JNIEXPORT jbyteArray JNICALL Java_vss_commitment_constant_Pairing_computePartial
     ep2_mul_gen(gI, *i);
     ep2_sub_basic(gAlphaI, gAlpha, gI);
 
-    pp_map_tatep_k12(eWitness, *witness, gAlphaI);
-    pp_map_tatep_k12(eCommitment, *commitment, g2);
+    pp_map_oatep_k12(eWitness, *witness, gAlphaI);
+    pp_map_oatep_k12(eCommitment, *commitment, g2);
 
     fp12_inv(eWitnessInv, eWitness);
 
@@ -339,7 +339,7 @@ JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verify(JNIEnv *e
 	ep2_mul_gen(gI, *i);
 	ep2_sub_basic(gAlphaI, gAlpha, gI);
 
-	pp_map_tatep_k12(witnessPairing, *witness, gAlphaI);
+	pp_map_oatep_k12(witnessPairing, *witness, gAlphaI);
 	fp12_exp(sharePairing, gPairing, *share);
 
 	fp12_mul_basic(righSide, witnessPairing, sharePairing);
@@ -392,8 +392,8 @@ JNIEXPORT jboolean JNICALL Java_vss_commitment_constant_Pairing_verifyWithoutPre
     ep2_mul_gen(gI, *i);
     ep2_sub_basic(gAlphaI, gAlpha, gI);
 
-    pp_map_tatep_k12(commitmentP, *commitment, g2);
-    pp_map_tatep_k12(witnessPairing, *witness, gAlphaI);
+    pp_map_oatep_k12(commitmentP, *commitment, g2);
+    pp_map_oatep_k12(witnessPairing, *witness, gAlphaI);
 
     fp12_exp(sharePairing, gPairing, *share);
 
@@ -437,7 +437,7 @@ JNIEXPORT void JNICALL Java_vss_commitment_constant_Pairing_startVerification(JN
 	fp12_null(*commitmentPairing);
 	fp12_new(*commitmentPairing);
 
-	pp_map_tatep_k12(*commitmentPairing, *commitment, g2);
+	pp_map_oatep_k12(*commitmentPairing, *commitment, g2);
 
 	ep_free(*commitment);
 	free(commitment);
