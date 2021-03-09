@@ -72,6 +72,8 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         this.vandermondeMatrix = new BigInteger[rows][columns];
         BigInteger[] matrixInitValues = Configuration.getInstance().getVandermondeMatrixInitializationValues();
 
+
+        //TODO invert the matrix before using it
         for (int r = 0; r < rows; r++) {
             BigInteger exponent = BigInteger.valueOf(r);
             for (int c = 0; c < columns; c++) {
