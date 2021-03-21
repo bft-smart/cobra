@@ -122,22 +122,30 @@ public class FullResharingBenchmark {
         BigInteger[][][] qNewProposalPoints = new BigInteger[nSecrets][newShareholders.length][];
         Commitment[][] qOldProposalCommitments = new Commitment[nSecrets][oldShareholders.length];
         Commitment[][] qNewProposalCommitments = new Commitment[nSecrets][newShareholders.length];
+        ExecutorService executor = Executors.newFixedThreadPool(nProcessingThreads);
+        CountDownLatch preComputationLatch = new CountDownLatch(nSecrets);
         for (int j = 0; j < nSecrets; j++) {
-            for (int i = 0; i < oldShareholders.length; i++) {
-                Polynomial qOld = new Polynomial(field, oldThreshold, q, rndGenerator);
-                Commitment qOldCommitment = commitmentScheme.generateCommitments(qOld, BigInteger.ZERO);
-                BigInteger[] qOldPoints = generateShares(oldShareholders, qOld);
-                qOldProposalPoints[j][i] = qOldPoints;
-                qOldProposalCommitments[j][i] = qOldCommitment;
-            }
-            for (int i = 0; i < newShareholders.length; i++) {
-                Polynomial qNew = new Polynomial(field, oldThreshold, q, rndGenerator);
-                Commitment qNewCommitment = commitmentScheme.generateCommitments(qNew, BigInteger.ZERO);
-                BigInteger[] qNewPoints = generateShares(newShareholders, qNew);
-                qNewProposalPoints[j][i] = qNewPoints;
-                qNewProposalCommitments[j][i] = qNewCommitment;
-            }
+            int finalJ = j;
+            executor.execute(() -> {
+                for (int i = 0; i < oldShareholders.length; i++) {
+                    Polynomial qOld = new Polynomial(field, oldThreshold, q, rndGenerator);
+                    Commitment qOldCommitment = commitmentScheme.generateCommitments(qOld, BigInteger.ZERO);
+                    BigInteger[] qOldPoints = generateShares(oldShareholders, qOld);
+                    qOldProposalPoints[finalJ][i] = qOldPoints;
+                    qOldProposalCommitments[finalJ][i] = qOldCommitment;
+                }
+                for (int i = 0; i < newShareholders.length; i++) {
+                    Polynomial qNew = new Polynomial(field, oldThreshold, q, rndGenerator);
+                    Commitment qNewCommitment = commitmentScheme.generateCommitments(qNew, BigInteger.ZERO);
+                    BigInteger[] qNewPoints = generateShares(newShareholders, qNew);
+                    qNewProposalPoints[finalJ][i] = qNewPoints;
+                    qNewProposalCommitments[finalJ][i] = qNewCommitment;
+                }
+                preComputationLatch.countDown();
+            });
         }
+
+        preComputationLatch.await();
 
         for (int i = 0; i < nSecrets; i++) {
             for (int j = 1; j < oldShareholders.length; j++) {
@@ -173,7 +181,6 @@ public class FullResharingBenchmark {
         long[] finalCommitmentsComputationTimes = new long[nTests];
         long[] refreshTimes = new long[nTests];
         long[] allTimes = new long[nTests];
-        ExecutorService executor = Executors.newFixedThreadPool(nProcessingThreads);
 
         for (int nT = 0; nT < nTests; nT++) {
             corruptedShareholders.clear();
