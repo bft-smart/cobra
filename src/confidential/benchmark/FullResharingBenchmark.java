@@ -222,19 +222,25 @@ public class FullResharingBenchmark {
 
             //Proposal selection/verification
             start = System.nanoTime();
+            CountDownLatch verificationLatch = new CountDownLatch(nSecrets);
             for (int i = 0; i < nSecrets; i++) {
-                for (int j = 0; j <= oldThreshold; j++) {
-                    Share oldShare = new Share(oldShareholders[0], qOldProposalPoints[i][j][0]);
-                    Share newShare = new Share(newShareholders[0], qNewProposalPoints[i][j][0]);
-                    Commitment oldCommitment = qOldProposalCommitments[i][j];
-                    Commitment newCommitment = qNewProposalCommitments[i][j];
-                    if (!commitmentScheme.checkValidityWithoutPreComputation(oldShare, oldCommitment)
-                            || !commitmentScheme.checkValidityWithoutPreComputation(newShare, newCommitment)
-                            || !commitmentScheme.checkValidityOfPolynomialsProperty(BigInteger.ZERO,
-                            oldCommitment, newCommitment))
-                        throw new IllegalStateException("Invalid point");
-                }
+                int finalI = i;
+                executor.execute(() -> {
+                    for (int j = 0; j <= oldThreshold; j++) {
+                        Share oldShare = new Share(oldShareholders[0], qOldProposalPoints[finalI][j][0]);
+                        Share newShare = new Share(newShareholders[0], qNewProposalPoints[finalI][j][0]);
+                        Commitment oldCommitment = qOldProposalCommitments[finalI][j];
+                        Commitment newCommitment = qNewProposalCommitments[finalI][j];
+                        if (!commitmentScheme.checkValidityWithoutPreComputation(oldShare, oldCommitment)
+                                || !commitmentScheme.checkValidityWithoutPreComputation(newShare, newCommitment)
+                                || !commitmentScheme.checkValidityOfPolynomialsProperty(BigInteger.ZERO,
+                                oldCommitment, newCommitment))
+                            throw new IllegalStateException("Invalid point");
+                    }
+                    verificationLatch.countDown();
+                });
             }
+            verificationLatch.await();
             end = System.nanoTime();
             proposalSelectionTime += end - start;
 

@@ -217,19 +217,26 @@ public class FullRecoveryBenchmark {
             recoveryPolynomialsLatch.await();
             end = System.nanoTime();
             proposalCreationTime += end - start;
+
             //Proposal selection/verification
             start = System.nanoTime();
+            CountDownLatch verificationLatch = new CountDownLatch(nExecutions);
             for (int i = 0; i < nExecutions; i++) {
-                for (int j = 0; j <= threshold; j++) {
-                    BigInteger point = proposalPoints[i][j][recoveryShareholderIndex];
-                    Commitment commitment = proposalCommitments[i][j];
-                    Share share = new Share(shareholders[recoveryShareholderIndex], point);
-                    Share propertyShare = new Share(shareholders[recoveryShareholderIndex], BigInteger.ZERO);
-                    if (!commitmentScheme.checkValidityWithoutPreComputation(share, commitment)
-                    || !commitmentScheme.checkValidityWithoutPreComputation(propertyShare, commitment))
-                        throw new IllegalStateException("Invalid point");
-                }
+                int finalI = i;
+                executor.execute(() -> {
+                    for (int j = 0; j <= threshold; j++) {
+                        BigInteger point = proposalPoints[finalI][j][recoveryShareholderIndex];
+                        Commitment commitment = proposalCommitments[finalI][j];
+                        Share share = new Share(shareholders[recoveryShareholderIndex], point);
+                        Share propertyShare = new Share(shareholders[recoveryShareholderIndex], BigInteger.ZERO);
+                        if (!commitmentScheme.checkValidityWithoutPreComputation(share, commitment)
+                                || !commitmentScheme.checkValidityWithoutPreComputation(propertyShare, commitment))
+                            throw new IllegalStateException("Invalid point");
+                    }
+                    verificationLatch.countDown();
+                });
             }
+            verificationLatch.await();
             end = System.nanoTime();
             proposalSelectionTime += end - start;
 
