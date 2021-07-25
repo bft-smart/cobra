@@ -58,7 +58,7 @@ public class PreComputedKVStoreClient {
                 privateData.put(server, b);
             }
 
-            byte[] unorderedCommonData = generatorProxy.serializeCommonData(plainReadData, shares);
+            byte[] unorderedCommonData = generatorProxy.serializeCommonData(plainReadData, null);
 
             for (int i = 0; i < numClients; i++) {
                 int sleepTime = random.nextInt(50);

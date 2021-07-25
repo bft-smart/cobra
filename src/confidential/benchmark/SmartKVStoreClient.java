@@ -128,7 +128,7 @@ public class SmartKVStoreClient {
                     if (write)
                         proxy.invokeOrdered(writeRequest, null, (byte) -1);
                     else {
-                        response = proxy.invokeUnordered(readRequest, null, (byte) -1);
+                        response = proxy.invokeOrdered(readRequest, null, (byte) -1);
                         if (!Arrays.equals(response, data))
                             throw new RuntimeException("Wrong response");
                     }
@@ -145,7 +145,7 @@ public class SmartKVStoreClient {
                     if (write) {
                         proxy.invokeOrdered(writeRequest, null, (byte) -1);
                     } else {
-                        proxy.invokeUnordered(readRequest, null, (byte) -1);
+                        proxy.invokeOrdered(readRequest, null, (byte) -1);
                     }
                     t2 = System.nanoTime();
                     long latency = t2 - t1;
