@@ -1,17 +1,17 @@
 package confidential.facade.server;
 
 import bftsmart.tom.MessageContext;
-import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.statemanagement.ConfidentialSnapshot;
+import vss.secretsharing.VerifiableShare;
 
 /**
  * @author Robin
  */
 public interface ConfidentialSingleExecutable {
-    ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
+    ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
 
-    ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx);
+    ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx);
 
     ConfidentialSnapshot getConfidentialSnapshot();
 

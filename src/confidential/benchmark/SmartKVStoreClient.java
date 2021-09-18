@@ -23,9 +23,9 @@ public class SmartKVStoreClient {
     private static int initialId;
 
     public static void main(String[] args) {
-        if (args.length != 5) {
+        if (args.length != 6) {
             System.out.println("USAGE: ... SmartKVStoreClient <initial client id> " +
-                    "<num clients> <number of ops> <request size> <write?>");
+                    "<num clients> <number of ops> <request size> <write?> <measurement leader?>");
             System.exit(-1);
         }
 
@@ -34,7 +34,7 @@ public class SmartKVStoreClient {
         int numOperations = Integer.parseInt(args[2]);
         int requestSize = Integer.parseInt(args[3]);
         boolean write = Boolean.parseBoolean(args[4]);
-
+        boolean measurementLeader = Boolean.parseBoolean(args[5]);
 
         Client[] clients = new Client[numClients];
         Random random = new Random(1L);
@@ -46,7 +46,7 @@ public class SmartKVStoreClient {
 
         for (int i = 0; i < numClients; i++) {
             clients[i] = new Client(initialId + i, writeRequest, readRequest,
-                    numOperations, data, write);
+                    numOperations, data, write, measurementLeader);
         }
 
         ExecutorService executorService = Executors.newFixedThreadPool(numClients);
@@ -99,13 +99,14 @@ public class SmartKVStoreClient {
         private final int numOperations;
         private final boolean write;
         private final ServiceProxy proxy;
+        private final boolean measurementLeader;
         private int rampup = 1000;
         private final byte[] writeRequest;
         private final byte[] readRequest;
         private final byte[] data;
 
         Client(int id, byte[] writeRequest, byte[] readRequest, int numOperations,
-               byte[] data, boolean write) {
+               byte[] data, boolean write, boolean measurementLeader) {
             super("Client " + id);
             this.id = id;
             this.numOperations = numOperations;
@@ -115,28 +116,23 @@ public class SmartKVStoreClient {
             this.data = data;
 
             this.proxy = new ServiceProxy(id);
+            this.measurementLeader = measurementLeader;
         }
 
         @Override
         public void run() {
-            if (id == initialId)
-                System.out.println("Warming up...");
-            byte[] response;
+            if (id == initialId) {
+                if (measurementLeader)
+                    System.out.println("I'm measurement leader");
+                System.out.println("Sending test data...");
+            }
+            proxy.invokeOrdered(writeRequest, null, (byte) -1);
+            byte[] response = proxy.invokeOrdered(readRequest, null, (byte) -1);
+            if (!Arrays.equals(response, data)) {
+                throw new RuntimeException("Wrong response");
+            }
             try {
-                proxy.invokeOrdered(writeRequest, null, (byte) -1);
-                for (int i = 0; i < 50; i++) {
-                    if (write)
-                        proxy.invokeOrdered(writeRequest, null, (byte) -1);
-                    else {
-                        response = proxy.invokeOrdered(readRequest, null, (byte) -1);
-                        if (!Arrays.equals(response, data))
-                            throw new RuntimeException("Wrong response");
-                    }
-                }
-                //Storage st = new Storage(numOperations);
-                long[] latencies = null;
                 if (id == initialId) {
-                    latencies = new long[numOperations];
                     System.out.println("Executing experiment for " + numOperations + " ops");
                 }
                 for (int i = 0; i < numOperations; i++) {
@@ -149,10 +145,8 @@ public class SmartKVStoreClient {
                     }
                     t2 = System.nanoTime();
                     long latency = t2 - t1;
-                    //st.store(latency);
-                    if (latencies != null) {
-                        latencies[i] = latency;
-                    }
+                    if (id == initialId && measurementLeader)
+                        System.out.println("M: " + latency);
                     try {
                         if (rampup > 0) {
                             Thread.sleep(rampup);
@@ -162,21 +156,6 @@ public class SmartKVStoreClient {
                         e.printStackTrace();
                     }
                 }
-
-                if (latencies != null) {
-                    StringBuilder sb = new StringBuilder();
-                    for (long latency : latencies) {
-                        sb.append(latency);
-                        sb.append(" ");
-                    }
-                    System.out.println("M: " + sb.toString().trim());
-                    //System.out.println("Average time for " + numOperations + " executions (-10%) = " + st.getAverage(true) / 1000 + " us ");
-                    //System.out.println("Standard deviation for " + numOperations + " executions (-10%) = " + st.getDP(true) / 1000 + " us ");
-                    //System.out.println("Average time for " + numOperations + " executions (all samples) = " + st.getAverage(false) / 1000 + " us ");
-                    //System.out.println("Standard deviation for " + numOperations + " executions (all samples) = " + st.getDP(false) / 1000 + " us ");
-                    //System.out.println("Maximum time for " + numOperations + " executions (all samples) = " + st.getMax(false) / 1000 + " us ");
-                }
-
             } finally {
                 proxy.close();
             }

@@ -22,9 +22,9 @@ public class PreComputedKVStoreClient {
     private static int initialId;
 
     public static void main(String[] args) throws SecretSharingException, InterruptedException {
-        if (args.length != 6) {
+        if (args.length != 7) {
             System.out.println("USAGE: ... PreComputedKVStoreClient <initial client id> " +
-                    "<num clients> <number of ops> <request size> <write?> <precomputed?>");
+                    "<num clients> <number of ops> <request size> <write?> <precomputed?> <measurement leader?>");
             System.exit(-1);
         }
 
@@ -34,6 +34,7 @@ public class PreComputedKVStoreClient {
         int requestSize = Integer.parseInt(args[3]);
         boolean write = Boolean.parseBoolean(args[4]);
         boolean precomputed = Boolean.parseBoolean(args[5]);
+        boolean measurementLeader = Boolean.parseBoolean(args[6]);
 
         Random random = new Random(1L);
         byte[] data = new byte[requestSize];
@@ -66,7 +67,7 @@ public class PreComputedKVStoreClient {
                 PreComputedProxy proxy = new PreComputedProxy(initialId + i, unorderedCommonData,
                         orderedCommonData, privateData);
                 clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
-                        plainReadData, data, write);
+                        plainReadData, data, write, measurementLeader);
             }
             generatorProxy.close();
         } else {
@@ -75,7 +76,7 @@ public class PreComputedKVStoreClient {
                 Thread.sleep(sleepTime);
                 PreComputedProxy proxy = new PreComputedProxy(initialId + i);
                 clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
-                        plainReadData, data, write);
+                        plainReadData, data, write, measurementLeader);
             }
         }
 
@@ -128,11 +129,13 @@ public class PreComputedKVStoreClient {
         private final byte[] data;
         private final boolean write;
         private final PreComputedProxy proxy;
+        private final boolean measurementLeader;
         private final boolean preComputed;
         private int rampup = 1000;
 
         Client(int id, PreComputedProxy proxy, boolean precomputed, int numOperations,
-               byte[] plainWriteData, byte[] plainReadData, byte[] data, boolean write) {
+               byte[] plainWriteData, byte[] plainReadData, byte[] data, boolean write,
+               boolean measurementLeader) {
             super("Client " + id);
             this.id = id;
             this.numOperations = numOperations;
@@ -142,28 +145,23 @@ public class PreComputedKVStoreClient {
             this.write = write;
             this.preComputed = precomputed;
             this.proxy = proxy;
+            this.measurementLeader = measurementLeader;
         }
 
         @Override
         public void run() {
-            if (id == initialId)
-                System.out.println("Warming up...");
             try {
-                proxy.invokeOrdered(plainWriteData, data);
-                Response response;
-                for (int i = 0; i < 50; i++) {
-                    if (write)
-                        proxy.invokeOrdered(plainWriteData, data);
-                    else {
-                        response = proxy.invokeUnordered(plainReadData);
-                        if (!preComputed && !Arrays.equals(response.getConfidentialData()[0], data))
-                            throw new RuntimeException("Wrong response");
-                    }
-                }
-                //Storage st = new Storage(numOperations);
-                long[] latencies = null;
                 if (id == initialId) {
-                    latencies = new long[numOperations];
+                    if (measurementLeader)
+                        System.out.println("I'm measurement leader");
+                    System.out.println("Sending test data...");
+                }
+                proxy.invokeOrdered(plainWriteData, data);
+                Response response = proxy.invokeUnordered(plainReadData);
+                if (!preComputed && !Arrays.equals(response.getConfidentialData()[0], data))
+                    throw new RuntimeException("Wrong response");
+
+                if (id == initialId) {
                     System.out.println("Executing experiment for " + numOperations + " ops");
                 }
                 for (int i = 0; i < numOperations; i++) {
@@ -176,9 +174,10 @@ public class PreComputedKVStoreClient {
                     }
                     t2 = System.nanoTime();
                     long latency = t2 - t1;
-                    if (latencies != null) {
-                        latencies[i] = latency;
-                    }
+
+                    if (id == initialId && measurementLeader)
+                        System.out.println("M: " + latency);
+
                     try {
                         if (rampup > 0) {
                             Thread.sleep(rampup);
@@ -187,20 +186,6 @@ public class PreComputedKVStoreClient {
                     } catch (InterruptedException e) {
                         e.printStackTrace();
                     }
-                }
-
-                if (latencies != null) {
-                    StringBuilder sb = new StringBuilder();
-                    for (long latency : latencies) {
-                        sb.append(latency);
-                        sb.append(" ");
-                    }
-                    System.out.println("M: " + sb.toString().trim());
-                    //System.out.println("Average time for " + numOperations + " executions (-10%) = " + st.getAverage(true) / 1000 + " us ");
-                    //System.out.println("Standard deviation for " + numOperations + " executions (-10%) = " + st.getDP(true) / 1000 + " us ");
-                    //System.out.println("Average time for " + numOperations + " executions (all samples) = " + st.getAverage(false) / 1000 + " us ");
-                    //System.out.println("Standard deviation for " + numOperations + " executions (all samples) = " + st.getDP(false) / 1000 + " us ");
-                    //System.out.println("Maximum time for " + numOperations + " executions (all samples) = " + st.getMax(false) / 1000 + " us ");
                 }
 
             } catch (SecretSharingException e) {

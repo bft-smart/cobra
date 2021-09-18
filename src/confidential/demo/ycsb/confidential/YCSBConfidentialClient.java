@@ -17,7 +17,6 @@ package confidential.demo.ycsb.confidential;
 
 import com.yahoo.ycsb.ByteIterator;
 import com.yahoo.ycsb.DB;
-import confidential.ConfidentialData;
 import confidential.client.ConfidentialServiceProxy;
 import confidential.client.Response;
 import vss.facade.SecretSharingException;

@@ -6,7 +6,6 @@ import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
-import confidential.ConfidentialData;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.ConfidentialSnapshot;
@@ -246,17 +245,17 @@ public abstract class BlindedStateSender extends Thread {
         }
     }
 
-    private void separateShares(ConfidentialData[] shares, ObjectOutput outCommonState,
+    private void separateShares(VerifiableShare[] shares, ObjectOutput outCommonState,
                                 LinkedList<Share> sharesToSend, LinkedList<Commitment> commitmentsToSend) throws IOException {
         byte[] b;
-        for (ConfidentialData share : shares) {
-            b = share.getShare().getSharedData();
+        for (VerifiableShare share : shares) {
+            b = share.getSharedData();
             outCommonState.writeInt(b == null ? -1 : b.length);
             if (b != null) {
                 outCommonState.write(b);
             }
-            sharesToSend.add(share.getShare().getShare());
-            commitmentsToSend.add(share.getShare().getCommitments());
+            sharesToSend.add(share.getShare());
+            commitmentsToSend.add(share.getCommitments());
         }
     }
 

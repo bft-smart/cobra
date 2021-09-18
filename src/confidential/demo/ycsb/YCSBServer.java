@@ -16,11 +16,11 @@
 package confidential.demo.ycsb;
 
 import bftsmart.tom.MessageContext;
-import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.facade.server.ConfidentialServerFacade;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.TreeMap;
@@ -51,7 +51,7 @@ public class YCSBServer implements ConfidentialSingleExecutable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         if (msgCtx != null && msgCtx.getConsensusId() % 1000 == 0 && !logPrinted) {
             System.out.println("YCSBConfidentialServer executing CID: " + msgCtx.getConsensusId());
             logPrinted = true;
@@ -69,33 +69,27 @@ public class YCSBServer implements ConfidentialSingleExecutable {
         }
         switch (aRequest.getType()) {
             case CREATE: { // ##### operation: create #####
-                switch (aRequest.getEntity()) {
-                    case RECORD: // ##### entity: record #####
-                        if (!mTables.containsKey(aRequest.getTable())) {
-                            mTables.put(aRequest.getTable(), new YCSBTable());
-                        }
-                        if (!mTables.get(aRequest.getTable()).containsKey(aRequest.getKey())) {
-                            mTables.get(aRequest.getTable()).put(aRequest.getKey(), aRequest.getValues());
-                            reply = YCSBMessage.newInsertResponse(0);
-                        }
-                        break;
-                    default: // Only create records
-                        break;
+                // Only create records
+                if (aRequest.getEntity() == YCSBMessage.Entity.RECORD) { // ##### entity: record #####
+                    if (!mTables.containsKey(aRequest.getTable())) {
+                        mTables.put(aRequest.getTable(), new YCSBTable());
+                    }
+                    if (!mTables.get(aRequest.getTable()).containsKey(aRequest.getKey())) {
+                        mTables.get(aRequest.getTable()).put(aRequest.getKey(), aRequest.getValues());
+                        reply = YCSBMessage.newInsertResponse(0);
+                    }
                 }
                 break;
             }
 
             case UPDATE: { // ##### operation: update #####
-                switch (aRequest.getEntity()) {
-                    case RECORD: // ##### entity: record #####
-                        if (!mTables.containsKey(aRequest.getTable())) {
-                            mTables.put((String) aRequest.getTable(), new YCSBTable());
-                        }
-                        mTables.get(aRequest.getTable()).put(aRequest.getKey(), aRequest.getValues());
-                        reply = YCSBMessage.newUpdateResponse(1);
-                        break;
-                    default: // Only update records
-                        break;
+                // Only update records
+                if (aRequest.getEntity() == YCSBMessage.Entity.RECORD) { // ##### entity: record #####
+                    if (!mTables.containsKey(aRequest.getTable())) {
+                        mTables.put((String) aRequest.getTable(), new YCSBTable());
+                    }
+                    mTables.get(aRequest.getTable()).put(aRequest.getKey(), aRequest.getValues());
+                    reply = YCSBMessage.newUpdateResponse(1);
                 }
                 break;
             }
@@ -107,7 +101,7 @@ public class YCSBServer implements ConfidentialSingleExecutable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         YCSBMessage aRequest = YCSBMessage.getObject(plainData);
         YCSBMessage reply = YCSBMessage.newErrorMessage("");
         if (aRequest == null) {

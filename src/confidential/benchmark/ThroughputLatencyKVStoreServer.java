@@ -1,7 +1,6 @@
 package confidential.benchmark;
 
 import bftsmart.tom.MessageContext;
-import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.demo.map.client.Operation;
 import confidential.facade.server.ConfidentialServerFacade;
@@ -9,6 +8,7 @@ import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.HashSet;
@@ -17,25 +17,28 @@ import java.util.Set;
 import java.util.TreeMap;
 
 public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecutable {
-    private Logger logger = LoggerFactory.getLogger("demo");
-    private Map<String, ConfidentialData> map;
+    private final Logger logger = LoggerFactory.getLogger("demo");
+    private Map<String, VerifiableShare> map;
     private long startTime;
     private long numRequests;
-    private Set<Integer> senders;
+    private final Set<Integer> senders;
     private double maxThroughput;
 
     public static void main(String[] args) throws NumberFormatException {
-        new ThroughputLatencyKVStoreServer(Integer.parseInt(args[0]));
+        boolean measurementLeader = args.length != 1 && Boolean.parseBoolean(args[1]);
+        new ThroughputLatencyKVStoreServer(Integer.parseInt(args[0]), measurementLeader);
     }
 
-    ThroughputLatencyKVStoreServer(int processId) {
+    ThroughputLatencyKVStoreServer(int processId, boolean measurementLeader) {
+        if (measurementLeader)
+            System.out.println("I'm measurement leader");
         map = new TreeMap<>();
         senders = new HashSet<>(1000);
         new ConfidentialServerFacade(processId, this);
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         numRequests++;
         senders.add(msgCtx.getSender());
 
@@ -43,7 +46,7 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
             String str;
-            ConfidentialData value;
+            VerifiableShare value;
             switch (op) {
                 case GET:
                     str = in.readUTF();
@@ -67,9 +70,9 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
                 case GET_ALL:
                     if (map.isEmpty())
                         return new ConfidentialMessage();
-                    ConfidentialData[] allValues = new ConfidentialData[map.size()];
+                    VerifiableShare[] allValues = new VerifiableShare[map.size()];
                     int i = 0;
-                    for (ConfidentialData share : map.values())
+                    for (VerifiableShare share : map.values())
                         allValues[i++] = share;
                     return new ConfidentialMessage(null, allValues);
             }
@@ -100,7 +103,7 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         numRequests++;
         senders.add(msgCtx.getSender());
 
@@ -108,7 +111,7 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
             String str;
-            ConfidentialData value;
+            VerifiableShare value;
             switch (op) {
                 case GET:
                     str = in.readUTF();
@@ -121,7 +124,7 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
                 case GET_ALL:
                     if (map.isEmpty())
                         return new ConfidentialMessage();
-                    ConfidentialData[] allValues = (ConfidentialData[]) map.values().toArray();
+                    VerifiableShare[] allValues = (VerifiableShare[]) map.values().toArray();
                     return new ConfidentialMessage(null, allValues);
             }
         } catch (IOException e) {
@@ -137,9 +140,9 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
             out.writeInt(map.size());
-            ConfidentialData[] shares = new ConfidentialData[map.size()];
+            VerifiableShare[] shares = new VerifiableShare[map.size()];
             int i = 0;
-            for (Map.Entry<String, ConfidentialData> e : map.entrySet()) {
+            for (Map.Entry<String, VerifiableShare> e : map.entrySet()) {
                 out.writeUTF(e.getKey());
                 shares[i++] = e.getValue();
             }
@@ -158,7 +161,7 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
              ObjectInput in = new ObjectInputStream(bis)) {
             int size = in.readInt();
             map = new TreeMap<>();
-            ConfidentialData[] shares = snapshot.getShares();
+            VerifiableShare[] shares = snapshot.getShares();
             for (int i = 0; i < size; i++) {
                 map.put(in.readUTF(), shares[i]);
             }

@@ -1,18 +1,18 @@
 package confidential.demo.counter.server;
 
 import bftsmart.tom.MessageContext;
-import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.facade.server.ConfidentialServerFacade;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.secretsharing.VerifiableShare;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class CounterServer implements ConfidentialSingleExecutable {
-    private Logger logger = LoggerFactory.getLogger("demo");
+    private final Logger logger = LoggerFactory.getLogger("demo");
     private AtomicInteger counter;
 
 
@@ -22,7 +22,7 @@ public class CounterServer implements ConfidentialSingleExecutable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         int i = counter.incrementAndGet();
         logger.debug("Ordered - Counter: {} Client: {} CID: {} OpId: {}", i, msgCtx.getSender(),
                 msgCtx.getConsensusId(), msgCtx.getOperationId());
@@ -30,7 +30,7 @@ public class CounterServer implements ConfidentialSingleExecutable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         int i = counter.incrementAndGet();
         logger.debug("Unordered - Counter: {} Client: {} - CID: {} OpId: {}", i, msgCtx.getSender(),
                 msgCtx.getConsensusId(), msgCtx.getOperationId());

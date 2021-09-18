@@ -1,18 +1,20 @@
 package confidential;
 
+import vss.secretsharing.VerifiableShare;
+
 import java.io.*;
 import java.util.Arrays;
 
 public class ConfidentialMessage {
     private final byte[] plainData;
-    private final ConfidentialData[] shares;
+    private final VerifiableShare[] shares;
 
     public ConfidentialMessage() {
         plainData = null;
         shares = null;
     }
 
-    public ConfidentialMessage(byte[] plainData, ConfidentialData... shares) {
+    public ConfidentialMessage(byte[] plainData, VerifiableShare... shares) {
         this.plainData = plainData;
         this.shares = shares;
     }
@@ -21,7 +23,7 @@ public class ConfidentialMessage {
         return plainData;
     }
 
-    public ConfidentialData[] getShares() {
+    public VerifiableShare[] getShares() {
         return shares;
     }
 
@@ -33,7 +35,7 @@ public class ConfidentialMessage {
                 out.write(plainData);
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
-                for (ConfidentialData share : shares)
+                for (VerifiableShare share : shares)
                     share.writeExternal(out);
             }
             out.flush();
@@ -54,11 +56,11 @@ public class ConfidentialMessage {
                 in.readFully(plainData);
 
             len = in.readInt();
-            ConfidentialData[] shares = len == -1 ? null : new ConfidentialData[len];
+            VerifiableShare[] shares = len == -1 ? null : new VerifiableShare[len];
             if (len != -1) {
-                ConfidentialData share;
+                VerifiableShare share;
                 for (int i = 0; i < shares.length; i++) {
-                    share = new ConfidentialData();
+                    share = new VerifiableShare();
                     share.readExternal(in);
                     shares[i] = share;
                 }
@@ -94,7 +96,7 @@ public class ConfidentialMessage {
     public int hashCode() {
         int result = Arrays.hashCode(plainData);
         if (shares != null) {
-            for (ConfidentialData share : shares) {
+            for (VerifiableShare share : shares) {
                 result = 31 * result + share.hashCode();
             }
         }

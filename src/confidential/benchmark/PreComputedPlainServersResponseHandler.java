@@ -1,7 +1,6 @@
 package confidential.benchmark;
 
 import bftsmart.tom.core.messages.TOMMessage;
-import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import confidential.client.ServersResponseHandler;
@@ -67,13 +66,10 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
                     confidentialData = new byte[numSecrets][];
 
                     for (ConfidentialMessage confidentialMessage : msgList) {
-                        ConfidentialData[] sharesI =
+                        VerifiableShare[] sharesI =
                                 confidentialMessage.getShares();
                         for (int i = 0; i < numSecrets; i++) {
-                            verifiableShares.get(i).add(sharesI[i].getShare());
-                            if (sharesI[i].getPublicShares() != null) {
-                                verifiableShares.get(i).addAll(sharesI[i].getPublicShares());
-                            }
+                            verifiableShares.get(i).add(sharesI[i]);
                         }
                     }
 

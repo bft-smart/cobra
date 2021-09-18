@@ -73,9 +73,6 @@ public class PreComputedEncryptedServersResponseHandler extends ServersResponseH
                                 confidentialMessage.getShares();
                         for (int i = 0; i < numSecrets; i++) {
                             verifiableShares.get(i).add(sharesI[i].getShare());
-                            if (sharesI[i].getPublicShares() != null) {
-                                verifiableShares.get(i).addAll(sharesI[i].getPublicShares());
-                            }
                         }
                     }
 

@@ -1,14 +1,14 @@
 package confidential.statemanagement;
 
-import confidential.ConfidentialData;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 
 public class ConfidentialSnapshot {
-    private byte[] plainData;
-    private ConfidentialData[] shares;
+    private final byte[] plainData;
+    private final VerifiableShare[] shares;
 
-    public ConfidentialSnapshot(byte[] plainData, ConfidentialData... shares) {
+    public ConfidentialSnapshot(byte[] plainData, VerifiableShare... shares) {
         this.plainData = plainData;
         this.shares = shares;
     }
@@ -17,7 +17,7 @@ public class ConfidentialSnapshot {
         return plainData;
     }
 
-    public ConfidentialData[] getShares() {
+    public VerifiableShare[] getShares() {
         return shares;
     }
 
@@ -32,12 +32,12 @@ public class ConfidentialSnapshot {
             }
 
             len = in.readInt();
-            ConfidentialData[] shares = null;
+            VerifiableShare[] shares = null;
             if (len > -1) {
-                shares = new ConfidentialData[len];
-                ConfidentialData share;
+                shares = new VerifiableShare[len];
+                VerifiableShare share;
                 for (int i = 0; i < len; i++) {
-                    share = new ConfidentialData();
+                    share = new VerifiableShare();
                     share.readExternal(in);
                     shares[i] = share;
                 }
@@ -58,7 +58,7 @@ public class ConfidentialSnapshot {
 
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
-                for (ConfidentialData share : shares)
+                for (VerifiableShare share : shares)
                     share.writeExternal(out);
             }
             out.flush();

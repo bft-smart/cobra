@@ -1,7 +1,6 @@
 package confidential.demo.statechecker;
 
 import bftsmart.tom.MessageContext;
-import confidential.ConfidentialData;
 import confidential.ConfidentialMessage;
 import confidential.demo.map.client.Operation;
 import confidential.facade.server.ConfidentialServerFacade;
@@ -9,6 +8,7 @@ import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.Map;
@@ -23,7 +23,7 @@ public class Server implements ConfidentialSingleExecutable {
     }
 
     private final Logger logger = LoggerFactory.getLogger("demo");
-    private Map<String, ConfidentialData> map;
+    private Map<String, VerifiableShare> map;
 
     public Server(int processId) {
         map = new TreeMap<>();
@@ -31,12 +31,12 @@ public class Server implements ConfidentialSingleExecutable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteOrdered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(plainData);
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
             String str;
-            ConfidentialData value;
+            VerifiableShare value;
             switch (op) {
                 case GET:
                     str = in.readUTF();
@@ -60,12 +60,12 @@ public class Server implements ConfidentialSingleExecutable {
     }
 
     @Override
-    public ConfidentialMessage appExecuteUnordered(byte[] plainData, ConfidentialData[] shares, MessageContext msgCtx) {
+    public ConfidentialMessage appExecuteUnordered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(plainData);
              ObjectInput in = new ObjectInputStream(bis)) {
             Operation op = Operation.getOperation(in.read());
             String str;
-            ConfidentialData value;
+            VerifiableShare value;
             if (op == Operation.GET) {
                 str = in.readUTF();
                 value = map.get(str);
@@ -85,9 +85,9 @@ public class Server implements ConfidentialSingleExecutable {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
             out.writeInt(map.size());
-            ConfidentialData[] shares = new ConfidentialData[map.size()];
+            VerifiableShare[] shares = new VerifiableShare[map.size()];
             int i = 0;
-            for (Map.Entry<String, ConfidentialData> e : map.entrySet()) {
+            for (Map.Entry<String, VerifiableShare> e : map.entrySet()) {
                 out.writeUTF(e.getKey());
                 shares[i++] = e.getValue();
             }
@@ -106,7 +106,7 @@ public class Server implements ConfidentialSingleExecutable {
              ObjectInput in = new ObjectInputStream(bis)) {
             int size = in.readInt();
             map = new TreeMap<>();
-            ConfidentialData[] shares = snapshot.getShares();
+            VerifiableShare[] shares = snapshot.getShares();
             for (int i = 0; i < size; i++) {
                 map.put(in.readUTF(), shares[i]);
             }

@@ -1,16 +1,16 @@
 package confidential.server;
 
-import confidential.ConfidentialData;
 import confidential.MessageType;
+import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 
 public final class Request {
-    private MessageType type;
-    private byte[] plainData;
-    private ConfidentialData[] shares;
+    private final MessageType type;
+    private final byte[] plainData;
+    private VerifiableShare[] shares;
 
-    public Request(MessageType type, byte[] plainData, ConfidentialData... shares) {
+    public Request(MessageType type, byte[] plainData, VerifiableShare... shares) {
         this.type = type;
         this.plainData = plainData;
         this.shares = shares;
@@ -24,11 +24,11 @@ public final class Request {
         return plainData;
     }
 
-    public ConfidentialData[] getShares() {
+    public VerifiableShare[] getShares() {
         return shares;
     }
 
-    public void setShares(ConfidentialData[] shares) {
+    public void setShares(VerifiableShare[] shares) {
         this.shares = shares;
     }
 
@@ -41,7 +41,7 @@ public final class Request {
                 out.write(plainData);
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
-                for (ConfidentialData share : shares)
+                for (VerifiableShare share : shares)
                     share.writeExternal(out);
             }
             out.flush();
@@ -63,11 +63,11 @@ public final class Request {
                 in.readFully(plainData);
 
             len = in.readInt();
-            ConfidentialData[] shares = len == -1 ? null : new ConfidentialData[len];
+            VerifiableShare[] shares = len == -1 ? null : new VerifiableShare[len];
             if (len != -1) {
-                ConfidentialData share;
+                VerifiableShare share;
                 for (int i = 0; i < shares.length; i++) {
-                    share = new ConfidentialData();
+                    share = new VerifiableShare();
                     share.readExternal(in);
                     shares[i] = share;
                 }

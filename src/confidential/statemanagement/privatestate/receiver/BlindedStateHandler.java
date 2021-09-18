@@ -8,7 +8,6 @@ import bftsmart.tom.core.messages.TOMMessageType;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import confidential.ConfidentialData;
 import confidential.Configuration;
 import confidential.server.Request;
 import confidential.server.ServerConfidentialityScheme;
@@ -260,7 +259,7 @@ public abstract class BlindedStateHandler extends Thread {
         }
 
         int nShares = commonStateStream.readInt();
-        ConfidentialData[] snapshotShares = null;
+        VerifiableShare[] snapshotShares = null;
         if (nShares > -1) {
             snapshotShares = getRefreshedShares(nShares, reconstructedShares);
         }
@@ -284,7 +283,7 @@ public abstract class BlindedStateHandler extends Thread {
                     command = new byte[commonStateStream.readInt()];
                     commonStateStream.readFully(command);
                 } else {
-                    ConfidentialData[] shares = getRefreshedShares(nShares, reconstructedShares);
+                    VerifiableShare[] shares = getRefreshedShares(nShares, reconstructedShares);
 
                     byte[] b = new byte[commonStateStream.readInt()];
                     commonStateStream.readFully(b);
@@ -307,9 +306,9 @@ public abstract class BlindedStateHandler extends Thread {
         return log;
     }
 
-    private ConfidentialData[] getRefreshedShares(int nShares, Iterator<VerifiableShare> reconstructedShares)
+    private VerifiableShare[] getRefreshedShares(int nShares, Iterator<VerifiableShare> reconstructedShares)
             throws IOException {
-        ConfidentialData[] shares = new ConfidentialData[nShares];
+        VerifiableShare[] shares = new VerifiableShare[nShares];
         for (int i = 0; i < nShares; i++) {
             int shareDataSize = commonStateStream.readInt();
             byte[] sharedData = null;
@@ -320,7 +319,7 @@ public abstract class BlindedStateHandler extends Thread {
             VerifiableShare vs = reconstructedShares.next();
             reconstructedShares.remove();
             vs.setSharedData(sharedData);
-            shares[i] = new ConfidentialData(vs);
+            shares[i] = vs;
         }
         return shares;
     }

@@ -13,7 +13,10 @@ import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
-import confidential.*;
+import confidential.ConfidentialMessage;
+import confidential.Configuration;
+import confidential.MessageType;
+import confidential.Metadata;
 import confidential.encrypted.EncryptedConfidentialData;
 import confidential.encrypted.EncryptedConfidentialMessage;
 import confidential.encrypted.EncryptedVerifiableShare;
@@ -139,8 +142,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                 return false;
             }
             deserializedRequests.put(hashRequest(request.getSender(), request.getSession(), request.getSequence()), req);
-            for (ConfidentialData share : req.getShares()) {
-                VerifiableShare vs = share.getShare();
+            for (VerifiableShare vs : req.getShares()) {
                 boolean isValid = commitmentScheme.checkValidityWithoutPreComputation(vs.getShare(), vs.getCommitments());
                 if (!isValid) {
                     logger.warn("Client {} sent me an invalid share", request.getSender());
@@ -350,26 +352,18 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     }
 
     private EncryptedConfidentialMessage encryptResponse(ConfidentialMessage clearResponse, MessageContext msgCtx) {
-        ConfidentialData[] clearShares = clearResponse.getShares();
+        VerifiableShare[] clearShares = clearResponse.getShares();
         if (clearShares == null)
             return new EncryptedConfidentialMessage(clearResponse.getPlainData());
 
         EncryptedConfidentialData[] shares = new EncryptedConfidentialData[clearShares.length];
 
         for (int i = 0; i < clearShares.length; i++) {
-            ConfidentialData clearCD = clearShares[i];
+            VerifiableShare clearCD = clearShares[i];
             EncryptedVerifiableShare encryptedVS =
-                    encryptShare(msgCtx.getSender(), clearCD.getShare());
-            LinkedList<EncryptedVerifiableShare> publicVS =
-                    clearCD.getPublicShares() == null ? null : new LinkedList<>();
+                    encryptShare(msgCtx.getSender(), clearCD);
 
-            if (publicVS != null) {
-                for (VerifiableShare vs : clearCD.getPublicShares()) {
-                    publicVS.add(encryptShare(msgCtx.getSender(), vs));
-                }
-            }
-
-            shares[i] = new EncryptedConfidentialData(encryptedVS, publicVS);
+            shares[i] = new EncryptedConfidentialData(encryptedVS);
         }
 
         return new EncryptedConfidentialMessage(clearResponse.getPlainData(), shares);
@@ -402,9 +396,9 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                         in.readFully(plainData);
                     }
                     len = in.readInt();
-                    ConfidentialData[] shares = null;
+                    VerifiableShare[] shares = null;
                     if (len != -1) {
-                        shares = new ConfidentialData[len];
+                        shares = new VerifiableShare[len];
                         if (len > 0) {
                             BigInteger shareholder = confidentialityScheme.getMyShareholderId();
                             try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
@@ -439,7 +433,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                                     publishedShares = new PrivatePublishedShares(
                                             new EncryptedShare[]{encryptedShare}, commitment, sharedData);
                                     VerifiableShare vs = confidentialityScheme.extractShare(publishedShares);
-                                    shares[i] = new ConfidentialData(vs);
+                                    shares[i] = vs;
                                 }
                             }
                         }
