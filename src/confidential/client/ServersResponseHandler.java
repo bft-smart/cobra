@@ -14,10 +14,15 @@ public abstract class ServersResponseHandler implements Comparator<byte[]>, Extr
     protected final Logger logger = LoggerFactory.getLogger("confidential");
     protected CommitmentScheme commitmentScheme;
     protected ClientConfidentialityScheme confidentialityScheme;
+    protected int threshold;
 
     public void setClientConfidentialityScheme(ClientConfidentialityScheme confidentialityScheme) {
         this.confidentialityScheme = confidentialityScheme;
         this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
+    }
+
+    public void setThreshold(int threshold) {
+        this.threshold = threshold;
     }
 
     public abstract void reset();

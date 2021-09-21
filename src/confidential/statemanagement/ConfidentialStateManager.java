@@ -66,6 +66,10 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             logger.info("Renewal is deactivated");
     }
 
+    public DistributedPolynomialManager getDistributedPolynomialManager() {
+        return distributedPolynomialManager;
+    }
+
     public void setConfidentialityScheme(ServerConfidentialityScheme confidentialityScheme) {
         this.confidentialityScheme = confidentialityScheme;
     }

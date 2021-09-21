@@ -1,6 +1,7 @@
 package confidential.polynomial;
 
 public enum PolynomialCreationReason {
+    RANDOM,
     RECOVERY,
     RESHARING;
 

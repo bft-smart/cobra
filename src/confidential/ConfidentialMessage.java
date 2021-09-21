@@ -97,7 +97,8 @@ public class ConfidentialMessage {
         int result = Arrays.hashCode(plainData);
         if (shares != null) {
             for (VerifiableShare share : shares) {
-                result = 31 * result + share.hashCode();
+                result = 31 * result + Arrays.hashCode(share.getSharedData());
+                result = 31 * result + share.getCommitments().consistentHash();
             }
         }
         return result;

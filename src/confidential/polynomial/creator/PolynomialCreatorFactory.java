@@ -44,6 +44,16 @@ public class PolynomialCreatorFactory {
                         creationListener,
                         distributedPolynomial
                 );
+            case RANDOM:
+                return new RandomPolynomialCreator(
+                        context,
+                        processId,
+                        rndGenerator,
+                        confidentialityScheme,
+                        serversCommunication,
+                        creationListener,
+                        distributedPolynomial
+                );
             default:
                 logger.error("Unknown polynomial creation reason {}", context.getReason());
                 return null;

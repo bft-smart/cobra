@@ -30,15 +30,24 @@ public class ConfidentialServiceProxy {
     private final boolean isLinearCommitmentScheme;
 
     public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
-        if (Configuration.getInstance().useTLSEncryption()) {
-            serversResponseHandler = new PlainServersResponseHandler();
+        this(clientId, null);
+    }
+
+    public ConfidentialServiceProxy(int clientId, ServersResponseHandler serversResponseHandler) throws SecretSharingException {
+        if (serversResponseHandler == null) {
+            if (Configuration.getInstance().useTLSEncryption()) {
+                this.serversResponseHandler = new PlainServersResponseHandler();
+            } else {
+                this.serversResponseHandler = new EncryptedServersResponseHandler(clientId);
+            }
         } else {
-            serversResponseHandler = new EncryptedServersResponseHandler(clientId);
+            this.serversResponseHandler = serversResponseHandler;
         }
-        this.service = new ServiceProxy(clientId, null, serversResponseHandler,
-                serversResponseHandler, null);
+        this.service = new ServiceProxy(clientId, null, this.serversResponseHandler,
+                this.serversResponseHandler, null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
-        serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
+        this.serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
+        this.serversResponseHandler.setThreshold(service.getViewManager().getCurrentViewF());
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
     }
 

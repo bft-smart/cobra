@@ -23,6 +23,7 @@ import confidential.encrypted.EncryptedVerifiableShare;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
+import confidential.polynomial.DistributedPolynomialManager;
 import confidential.polynomial.ProposalSetMessage;
 import confidential.statemanagement.ConfidentialSnapshot;
 import confidential.statemanagement.ConfidentialStateLog;
@@ -105,6 +106,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         } catch (SecretSharingException e) {
             logger.error("Failed to initialize ServerConfidentialityScheme", e);
         }
+    }
+
+    public DistributedPolynomialManager getDistributedPolynomialManager() {
+        return stateManager.getDistributedPolynomialManager();
     }
 
     @Override
@@ -318,7 +323,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         byte[] preprocessedCommand = request.serialize();
         byte[] response;
         if (request.getType() == MessageType.APPLICATION) {
-            logger.debug("Received application ordered message of {} in CID {}. Regency: {}", msgCtx.getSender(),
+            logger.info("Received application ordered message of {} in CID {}. Regency: {}", msgCtx.getSender(),
                     msgCtx.getConsensusId(), msgCtx.getRegency());
             interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             response = new byte[0];
@@ -326,8 +331,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             stateLock.lock();
             ConfidentialMessage r = confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(),
                     msgCtx);
-            response = useTLSEncryption ? r.serialize() :
-                    encryptResponse(r, msgCtx).serialize();
+            response = r == null ? null : (useTLSEncryption ? r.serialize() :
+                    encryptResponse(r, msgCtx).serialize());
             stateLock.unlock();
         }
         logRequest(preprocessedCommand, msgCtx);
@@ -347,8 +352,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         }
         ConfidentialMessage r = confidentialExecutor.appExecuteUnordered(request.getPlainData(), request.getShares(),
                 msgCtx);
-        return useTLSEncryption ? r.serialize() :
-                encryptResponse(r, msgCtx).serialize();
+        return r == null ? null : (useTLSEncryption ? r.serialize() : encryptResponse(r, msgCtx).serialize());
     }
 
     private EncryptedConfidentialMessage encryptResponse(ConfidentialMessage clearResponse, MessageContext msgCtx) {
