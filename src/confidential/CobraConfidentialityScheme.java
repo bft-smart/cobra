@@ -5,7 +5,6 @@ import vss.Constants;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
-import vss.secretsharing.EncryptedShare;
 import vss.secretsharing.Share;
 
 import javax.crypto.BadPaddingException;
@@ -31,6 +30,7 @@ public abstract class CobraConfidentialityScheme {
     private final Lock cipherLock;
     private final boolean isLinearCommitmentScheme;
     protected KeysManager keysManager;
+    protected int threshold;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
         cipherLock = new ReentrantLock(true);
@@ -46,13 +46,12 @@ public abstract class CobraConfidentialityScheme {
             shareholders[i] = shareholder;
         }
 
-        int threshold = view.getF();
+        threshold = view.getF();
         Configuration configuration = Configuration.getInstance();
 
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, configuration.getShareEncryptionAlgorithm());
         properties.put(Constants.TAG_COMMITMENT_SCHEME, configuration.getVssScheme());
         if (configuration.getVssScheme().equals("1")) {
             properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
@@ -89,17 +88,6 @@ public abstract class CobraConfidentialityScheme {
         throw new UnsupportedOperationException("Not implemented");
     }
 
-    public EncryptedShare encryptShareFor(int id, Share clearShare) throws SecretSharingException {
-        Key encryptionKey = keysManager.getEncryptionKeyFor(id);
-
-        try {
-            return new EncryptedShare(clearShare.getShareholder(),
-                    encrypt(clearShare.getShare().toByteArray(), encryptionKey));
-        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
-            throw new SecretSharingException("Failed to encrypt share", e);
-        }
-    }
-
     public PublicKey getSigningPublicKeyFor(int id) {
         return keysManager.getSigningPublicKeyFor(id);
     }
@@ -118,11 +106,20 @@ public abstract class CobraConfidentialityScheme {
         }
     }
 
-    public Share decryptShare(int id, EncryptedShare encryptedShare) throws SecretSharingException {
+    public byte[] encryptShareFor(int id, Share clearShare) throws SecretSharingException {
+        Key encryptionKey = keysManager.getEncryptionKeyFor(id);
+
+        try {
+            return encrypt(clearShare.getShare().toByteArray(), encryptionKey);
+        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+            throw new SecretSharingException("Failed to encrypt share", e);
+        }
+    }
+
+    public BigInteger decryptShareFor(int id, byte[] encryptedShare) throws SecretSharingException {
         Key decryptionKey = keysManager.getDecryptionKeyFor(id);
         try {
-            return new Share(encryptedShare.getShareholder(),
-                    new BigInteger(decrypt(encryptedShare.getEncryptedShare(), decryptionKey)));
+            return new BigInteger(decrypt(encryptedShare, decryptionKey));
         } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
             throw new SecretSharingException("Failed to decrypt share", e);
         }
@@ -137,7 +134,7 @@ public abstract class CobraConfidentialityScheme {
         }
     }
 
-    private byte[] encrypt(byte[] data, Key encryptionKey) throws InvalidKeyException,
+    protected byte[] encrypt(byte[] data, Key encryptionKey) throws InvalidKeyException,
             BadPaddingException, IllegalBlockSizeException {
         try {
             cipherLock.lock();
@@ -148,7 +145,7 @@ public abstract class CobraConfidentialityScheme {
         }
     }
 
-    private byte[] decrypt(byte[] data, Key decryptionKey) throws InvalidKeyException,
+    protected byte[] decrypt(byte[] data, Key decryptionKey) throws InvalidKeyException,
             BadPaddingException, IllegalBlockSizeException {
         try {
             cipherLock.lock();

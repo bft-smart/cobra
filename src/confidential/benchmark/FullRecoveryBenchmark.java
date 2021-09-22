@@ -4,17 +4,15 @@ import confidential.Configuration;
 import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.OpenPublishedShares;
-import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
-import java.security.Key;
 import java.security.SecureRandom;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -26,12 +24,10 @@ import java.util.concurrent.atomic.AtomicLong;
  * @author Robin
  */
 public class FullRecoveryBenchmark {
-    private static final BigInteger keyNumber = new BigInteger("937810634060551071826485204471949219646466658841719067506");
     private static SecureRandom rndGenerator;
     private static int threshold;
     private static BigInteger[] shareholders;
     private static int n;
-    private static Map<BigInteger, Key> keys;
     private static boolean verifyCorrectness;
     private static int nProcessingThreads;
     private static BigInteger[][] vandermondeMatrix;
@@ -63,11 +59,9 @@ public class FullRecoveryBenchmark {
         System.out.println();
 
         shareholders = new BigInteger[n];
-        keys = new HashMap<>(n);
         for (int i = 0; i < n; i++) {
             BigInteger shareholder = BigInteger.valueOf(i + 1);
             shareholders[i] = shareholder;
-            keys.put(shareholder, new SecretKeySpec(keyNumber.toByteArray(), "AES"));
         }
 
         Configuration configuration = Configuration.getInstance();
@@ -75,7 +69,6 @@ public class FullRecoveryBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, configuration.getShareEncryptionAlgorithm());
         properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
         properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
         properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
@@ -122,7 +115,7 @@ public class FullRecoveryBenchmark {
 
         byte[] secret = new byte[1024];
         rndGenerator.nextBytes(secret);
-        PrivatePublishedShares privateShares = vssFacade.share(secret, keys);
+        OpenPublishedShares privateShares = vssFacade.share(secret, Mode.LARGE_SECRET, threshold);
 
         BigInteger[][] allRPoints = new BigInteger[nSecrets][shareholders.length];
         //Commitment[] rCommitments = new Commitment[nSecrets];
@@ -272,8 +265,11 @@ public class FullRecoveryBenchmark {
                     if (i == recoveryShareholderIndex) {
                         continue;
                     }
-                    verifiableShares[i] = vssFacade.extractShare(privateShares, shareholders[i],
-                            keys.get(shareholders[i]));
+                    verifiableShares[i] = new VerifiableShare(
+                            privateShares.getShareOf(shareholders[i]),
+                            privateShares.getCommitments(),
+                            privateShares.getSharedData()
+                    );
                 }
                 allVerifiableShares[nS] = verifiableShares;
             }
@@ -423,7 +419,7 @@ public class FullRecoveryBenchmark {
                     Commitment commitment = commitmentScheme.combineCommitments(commitments);
                     OpenPublishedShares openShares = new OpenPublishedShares(shares,
                             commitment, sharedData);
-                    byte[] recoveredSecret = vssFacade.combine(openShares);
+                    byte[] recoveredSecret = vssFacade.combine(openShares, Mode.LARGE_SECRET, threshold);
                     if (!Arrays.equals(secret, recoveredSecret))
                         throw new IllegalStateException("Secret is different");
                 }

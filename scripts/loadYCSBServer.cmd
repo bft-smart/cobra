@@ -1,1 +1,0 @@
-java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -cp "lib/*;bin/*" com.yahoo.ycsb.Client -load -P config/workloads/workloada -db %1 -s > ycsbLog.txt 2>&1

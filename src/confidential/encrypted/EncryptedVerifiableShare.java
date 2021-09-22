@@ -2,12 +2,12 @@ package confidential.encrypted;
 
 import vss.Utils;
 import vss.commitment.Commitment;
-import vss.secretsharing.EncryptedShare;
 
 import java.io.Externalizable;
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
+import java.math.BigInteger;
 import java.util.Arrays;
 import java.util.Objects;
 
@@ -18,19 +18,25 @@ import java.util.Objects;
  * @author Robin
  */
 public class EncryptedVerifiableShare implements Externalizable {
-    private EncryptedShare share;
+    private BigInteger shareholder;
+    private byte[] share;
     private Commitment commitments;
     private byte[] sharedData;
 
     public EncryptedVerifiableShare() {}
 
-    public EncryptedVerifiableShare(EncryptedShare share, Commitment commitments, byte[] sharedData) {
+    public EncryptedVerifiableShare(BigInteger shareholder, byte[] share, Commitment commitments, byte[] sharedData) {
+        this.shareholder = shareholder;
         this.share = share;
         this.commitments = commitments;
         this.sharedData = sharedData;
     }
 
-    public EncryptedShare getShare() {
+    public BigInteger getShareholder() {
+        return shareholder;
+    }
+
+    public byte[] getShare() {
         return share;
     }
 
@@ -42,7 +48,7 @@ public class EncryptedVerifiableShare implements Externalizable {
         return sharedData;
     }
 
-    public void setShare(EncryptedShare share) {
+    public void setShare(byte[] share) {
         this.share = share;
     }
 
@@ -56,7 +62,7 @@ public class EncryptedVerifiableShare implements Externalizable {
 
     @Override
     public String toString() {
-        return String.format("(\n%s\n%s\n%s\n)", share.toString(), commitments.toString(), Arrays.toString(sharedData));
+        return String.format("(\n%s\n%s\n%s\n)", Arrays.toString(share), commitments.toString(), Arrays.toString(sharedData));
     }
 
     @Override
@@ -64,21 +70,24 @@ public class EncryptedVerifiableShare implements Externalizable {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
         EncryptedVerifiableShare that = (EncryptedVerifiableShare) o;
-        return Objects.equals(share, that.share) &&
-                Objects.equals(commitments, that.commitments) &&
+        return Objects.equals(commitments, that.commitments) &&
+                Arrays.equals(share, that.share) &&
                 Arrays.equals(sharedData, that.sharedData);
     }
 
     @Override
     public int hashCode() {
-        int result = Objects.hash(share, commitments);
+        int result = Objects.hash(commitments);
+        result = 31 * result + Arrays.hashCode(share);
         result = 31 * result + Arrays.hashCode(sharedData);
         return result;
     }
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
-        share.writeExternal(out);
+        out.writeInt(share == null ? -1 : share.length);
+        if (share != null)
+            out.write(share);
         Utils.writeCommitment(commitments, out);
         out.writeInt(sharedData == null ? -1 : sharedData.length);
         if (sharedData != null)
@@ -87,11 +96,14 @@ public class EncryptedVerifiableShare implements Externalizable {
 
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
-        share = new EncryptedShare();
-        share.readExternal(in);
+        int len = in.readInt();
+        if (len != -1) {
+            share = new byte[len];
+            in.readFully(share);
+        }
 
         commitments = Utils.readCommitment(in);
-        int len = in.readInt();
+        len = in.readInt();
         if (len != -1) {
             sharedData = new byte[len];
             in.readFully(sharedData);

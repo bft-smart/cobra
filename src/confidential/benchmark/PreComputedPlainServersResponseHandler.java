@@ -5,6 +5,7 @@ import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import confidential.client.ServersResponseHandler;
 import vss.commitment.Commitment;
+import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
@@ -93,7 +94,8 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
                                 commitmentScheme.combineCommitments(commitmentsToCombine);
                         OpenPublishedShares secret = new OpenPublishedShares(shares, commitment, shareData);
                         try {
-                            confidentialData[i] = confidentialityScheme.combine(secret);
+                            confidentialData[i] = confidentialityScheme.combine(secret,
+                                    shareData == null ? Mode.SMALL_SECRET : Mode.LARGE_SECRET);
                         } catch (SecretSharingException e) {
                             ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData, e);
                             TOMMessage lastMsg = replies[lastReceived];

@@ -8,14 +8,14 @@ import confidential.Metadata;
 import confidential.client.ClientConfidentialityScheme;
 import confidential.client.Response;
 import confidential.client.ServersResponseHandler;
+import confidential.encrypted.EncryptedPublishedShares;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.constant.ConstantCommitment;
+import vss.facade.Mode;
 import vss.facade.SecretSharingException;
-import vss.secretsharing.EncryptedShare;
-import vss.secretsharing.PrivatePublishedShares;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -81,7 +81,7 @@ public class PreComputedProxy {
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
             response = service.invokeOrdered(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData, confidentialData.length == 0 ? null : privateData, metadata);
         } else {
-            PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
+            EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData.length != 0 && shares == null)
                 return null;
             byte[] commonData = serializeCommonData(plainData, shares);
@@ -110,7 +110,7 @@ public class PreComputedProxy {
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
             response = service.invokeUnordered(unorderedCommonData, null, metadata);
         } else {
-            PrivatePublishedShares[] shares = sharePrivateData(confidentialData);
+            EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData.length != 0 && shares == null)
                 return null;
 
@@ -149,19 +149,18 @@ public class PreComputedProxy {
         return new Response(extractedResponse.getPlainData(), extractedResponse.getConfidentialData());
     }
 
-    byte[] serializePrivateDataFor(int server, PrivatePublishedShares[] shares) {
+    byte[] serializePrivateDataFor(int server, EncryptedPublishedShares[] shares) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
             if (shares != null) {
                 BigInteger shareholder = confidentialityScheme.getShareholder(server);
-                for (PrivatePublishedShares share : shares) {
-                    EncryptedShare encryptedShare = share.getShareOf(shareholder);
-                    byte[] encryptedShareBytes = encryptedShare.getEncryptedShare();
+                for (EncryptedPublishedShares share : shares) {
+                    byte[] encryptedShareBytes = share.getShareOf(server);
                     out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
                     if (encryptedShareBytes != null)
                         out.write(encryptedShareBytes);
                     if (!isLinearCommitmentScheme) {
-                        ConstantCommitment commitment = (ConstantCommitment)share.getCommitments();
+                        ConstantCommitment commitment = (ConstantCommitment)share.getCommitment();
                         byte[] witness = commitment.getWitness(shareholder);
                         out.writeInt(witness.length);
                         out.write(witness);
@@ -178,7 +177,7 @@ public class PreComputedProxy {
         }
     }
 
-    byte[] serializeCommonData(byte[] plainData, PrivatePublishedShares[] shares) {
+    byte[] serializeCommonData(byte[] plainData, EncryptedPublishedShares[] shares) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
 
@@ -190,9 +189,9 @@ public class PreComputedProxy {
 
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
-                for (PrivatePublishedShares share : shares) {
+                for (EncryptedPublishedShares share : shares) {
                     byte[] sharedData = share.getSharedData();
-                    Commitment commitment = share.getCommitments();
+                    Commitment commitment = share.getCommitment();
                     out.writeInt(sharedData == null ? -1 : sharedData.length);
                     if (sharedData != null)
                         out.write(sharedData);
@@ -215,12 +214,12 @@ public class PreComputedProxy {
         }
     }
 
-    PrivatePublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
+    EncryptedPublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
         if (privateData == null)
             return null;
-        PrivatePublishedShares[] result = new PrivatePublishedShares[privateData.length];
+        EncryptedPublishedShares[] result = new EncryptedPublishedShares[privateData.length];
         for (int i = 0; i < privateData.length; i++) {
-            result[i] = confidentialityScheme.share(privateData[i]);
+            result[i] = confidentialityScheme.share(privateData[i], Mode.LARGE_SECRET);
         }
         return result;
     }

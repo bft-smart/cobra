@@ -19,6 +19,7 @@ import confidential.MessageType;
 import confidential.Metadata;
 import confidential.encrypted.EncryptedConfidentialData;
 import confidential.encrypted.EncryptedConfidentialMessage;
+import confidential.encrypted.EncryptedPublishedShares;
 import confidential.encrypted.EncryptedVerifiableShare;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.interServersCommunication.InterServersCommunication;
@@ -34,8 +35,6 @@ import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
-import vss.secretsharing.EncryptedShare;
-import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.VerifiableShare;
 
 import java.io.ByteArrayInputStream;
@@ -371,10 +370,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 
     private EncryptedVerifiableShare encryptShare(int id, VerifiableShare clearShare) {
         try {
-            EncryptedShare encryptedShare = confidentialityScheme.encryptShareFor(id,
+            byte[] encryptedShare = confidentialityScheme.encryptShareFor(id,
                     clearShare.getShare());
-            return new EncryptedVerifiableShare(encryptedShare,
-                    clearShare.getCommitments(), clearShare.getSharedData());
+            return new EncryptedVerifiableShare(clearShare.getShare().getShareholder(), encryptedShare, clearShare.getCommitments(),
+                    clearShare.getSharedData());
         } catch (SecretSharingException e) {
             logger.error("Failed to encrypt share for client {}", id, e);
             return null;
@@ -403,7 +402,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                             BigInteger shareholder = confidentialityScheme.getMyShareholderId();
                             try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
                                  ObjectInput privateIn = new ObjectInputStream(privateBis)) {
-                                PrivatePublishedShares publishedShares;
+                                EncryptedPublishedShares publishedShares;
                                 for (int i = 0; i < len; i++) {
                                     int l = in.readInt();
                                     byte[] sharedData = null;
@@ -429,9 +428,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                                         witnesses.put(shareholder.hashCode(), witness);
                                         commitment = new ConstantCommitment(c, witnesses);
                                     }
-                                    EncryptedShare encryptedShare = new EncryptedShare(shareholder, encShare);
-                                    publishedShares = new PrivatePublishedShares(
-                                            new EncryptedShare[]{encryptedShare}, commitment, sharedData);
+                                    Map<Integer, byte[]> encryptedShares = new HashMap<>(1);
+                                    encryptedShares.put(processId, encShare);
+                                    publishedShares = new EncryptedPublishedShares(
+                                            encryptedShares, commitment, sharedData);
                                     VerifiableShare vs = confidentialityScheme.extractShare(publishedShares);
                                     shares[i] = vs;
                                 }
