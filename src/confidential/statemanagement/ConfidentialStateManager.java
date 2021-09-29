@@ -388,11 +388,13 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                         distributedPolynomialManager.getSequenceNumber()
                 );
                 recoveryStateSender = null;
-                logger.info("Sending recovery state sender server info to {}", recoveryMessage.getSender());
+                logger.info("Sending recovery state sender server info (reg: {}, leader: {}, vid: {}) to {}",
+                        response.getRegency(), response.getLeader(), response.getView().getId(),
+                        recoveryMessage.getSender());
                 tomLayer.getCommunication().send(new int[]{recoveryMessage.getSender()}, response);
-                logger.info("Recovery state sender server info sent");
+                logger.debug("Recovery state sender server info sent");
             } else
-                logger.debug("There is no recovery request for id {}", context.getId());
+                logger.warn("There is no recovery request for id {}", context.getId());
         }
     }
 
