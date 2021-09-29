@@ -24,6 +24,7 @@ public final class Configuration {
 	private final BigInteger[] vandermondeMatrixInitializationValues;
 
 	private static Configuration INSTANT;
+	private boolean sendAllSharesTogether;
 
 	public static void setConfigurationFilePath(String configurationFilePath) {
 		Configuration.configurationFilePath = configurationFilePath;
@@ -108,6 +109,9 @@ public final class Configuration {
 					case "cobra.verify.requests":
 						verifyClientRequests = Boolean.parseBoolean(value);
 						break;
+					case "cobra.send_all_shares_together":
+						sendAllSharesTogether = Boolean.parseBoolean(value);
+						break;
 					default:
 						throw new IllegalArgumentException("Unknown property name");
 				}
@@ -165,5 +169,9 @@ public final class Configuration {
 
 	public boolean useTLSEncryption() {
 		return useTLSEncryption;
+	}
+
+	public boolean isSendAllSharesTogether() {
+		return sendAllSharesTogether;
 	}
 }

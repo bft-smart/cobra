@@ -2,8 +2,8 @@ package confidential.benchmark;
 
 import confidential.client.Response;
 import confidential.demo.map.client.Operation;
+import confidential.encrypted.EncryptedPublishedShares;
 import vss.facade.SecretSharingException;
-import vss.secretsharing.PrivatePublishedShares;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -46,7 +46,7 @@ public class PreComputedKVStoreClient {
         Client[] clients = new Client[numClients];
         if (precomputed) {
             PreComputedProxy generatorProxy = new PreComputedProxy(initialId - 1);
-            PrivatePublishedShares[] shares = generatorProxy.sharePrivateData(data);
+            EncryptedPublishedShares[] shares = generatorProxy.sharePrivateData(data);
             byte[] orderedCommonData = generatorProxy.serializeCommonData(plainWriteData, shares);
             if (orderedCommonData == null) {
                 throw new RuntimeException("Failed to serialize common data");

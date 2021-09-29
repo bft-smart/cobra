@@ -4,23 +4,23 @@ import confidential.Configuration;
 import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.OpenPublishedShares;
-import vss.secretsharing.PrivatePublishedShares;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
-import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
-import java.security.Key;
 import java.security.SecureRandom;
 import java.util.*;
-import java.util.concurrent.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ResharingBenchmark {
-    private static final BigInteger keyNumber = new BigInteger("937810634060551071826485204471949219646466658841719067506");
     private static int oldThreshold;
     private static int newThreshold;
     private static int oldN;
@@ -28,7 +28,6 @@ public class ResharingBenchmark {
     private static SecureRandom rndGenerator;
     private static BigInteger[] oldShareholders;
     private static BigInteger[] newShareholders;
-    private static Map<BigInteger, Key> keys;
     private static boolean verifyCorrectness;
     private static int nProcessingThreads;
 
@@ -59,18 +58,15 @@ public class ResharingBenchmark {
         System.out.println();
 
         oldShareholders = new BigInteger[oldN];
-        keys = new HashMap<>(oldN + newN);
         for (int i = 0; i < oldN; i++) {
             BigInteger shareholder = BigInteger.valueOf(i + 1);
             oldShareholders[i] = shareholder;
-            keys.put(shareholder, new SecretKeySpec(keyNumber.toByteArray(), "AES"));
         }
 
         newShareholders = new BigInteger[newN];
         for (int i = 0; i < newN; i++) {
             BigInteger shareholder = BigInteger.valueOf(i + 1);
             newShareholders[i] = shareholder;
-            keys.put(shareholder, new SecretKeySpec(keyNumber.toByteArray(), "AES"));
         }
 
         Configuration configuration = Configuration.getInstance();
@@ -78,7 +74,6 @@ public class ResharingBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(oldThreshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_SHARE_ENCRYPTION_ALGORITHM, configuration.getShareEncryptionAlgorithm());
         properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
         properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
         properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
@@ -102,7 +97,7 @@ public class ResharingBenchmark {
     }
 
     private static void runTests(int nTests, boolean printResults, int nSecrets,
-                                 VSSFacade vssFacade) throws SecretSharingException, InterruptedException, ExecutionException {
+                                 VSSFacade vssFacade) throws SecretSharingException, InterruptedException {
         BigInteger field = vssFacade.getField();
         CommitmentScheme commitmentScheme = vssFacade.getCommitmentScheme();
         BigInteger q = getRandomNumber(field.bitLength() - 1);
@@ -118,7 +113,7 @@ public class ResharingBenchmark {
 
         byte[] secret = new byte[1024];
         rndGenerator.nextBytes(secret);
-        PrivatePublishedShares privateShares = vssFacade.share(secret, keys);
+        OpenPublishedShares privateShares = vssFacade.share(secret, Mode.LARGE_SECRET, oldThreshold);
 
         Set<BigInteger> corruptedShareholders = new HashSet<>(oldN);
 
@@ -147,13 +142,19 @@ public class ResharingBenchmark {
             for (int nS = 0; nS < nSecrets; nS++) {
                 VerifiableShare[] verifiableShares = new VerifiableShare[oldN];
                 start = System.nanoTime();
-                verifiableShares[0] = vssFacade.extractShare(privateShares, oldShareholders[0],
-                        keys.get(oldShareholders[0]));
+                verifiableShares[0] = new VerifiableShare(
+                        privateShares.getShareOf(oldShareholders[0]),
+                        privateShares.getCommitments(),
+                        privateShares.getSharedData()
+                );
                 end = System.nanoTime();
                 sharingTime += end - start;
                 for (int i = 1; i < oldN; i++) {
-                    verifiableShares[i] = vssFacade.extractShare(privateShares, oldShareholders[i],
-                            keys.get(oldShareholders[i]));
+                    verifiableShares[i] = new VerifiableShare(
+                            privateShares.getShareOf(oldShareholders[i]),
+                            privateShares.getCommitments(),
+                            privateShares.getSharedData()
+                    );
                 }
                 allVerifiableShares[nS] = verifiableShares;
             }
@@ -214,7 +215,7 @@ public class ResharingBenchmark {
                     }
                 });
             }
-            executor.shutdown();;
+            executor.shutdown();
             blindedSecretCounter.await();
             end = System.nanoTime();
             secretBlindingTime += end - start;
@@ -339,7 +340,7 @@ public class ResharingBenchmark {
                     Commitment commitment = commitmentScheme.combineCommitments(commitments);
                     OpenPublishedShares openShares = new OpenPublishedShares(shares,
                             commitment, sharedData);
-                    byte[] recoveredSecret = vssFacade.combine(openShares);
+                    byte[] recoveredSecret = vssFacade.combine(openShares, Mode.LARGE_SECRET, newThreshold);
                     if (!Arrays.equals(secret, recoveredSecret))
                         throw new IllegalStateException("Secret is different");
                 }

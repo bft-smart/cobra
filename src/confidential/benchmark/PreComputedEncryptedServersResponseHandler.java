@@ -7,6 +7,7 @@ import confidential.encrypted.EncryptedConfidentialData;
 import confidential.encrypted.EncryptedConfidentialMessage;
 import confidential.encrypted.EncryptedVerifiableShare;
 import vss.commitment.Commitment;
+import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
@@ -83,19 +84,18 @@ public class PreComputedEncryptedServersResponseHandler extends ServersResponseH
                         shares = new Share[secretI.size()];
                         Map<BigInteger, Commitment> commitmentsToCombine =
                                 new HashMap<>(secretI.size());
-                        shareData = secretI.getFirst().getSharedData();
+                        shareData = secretI.getFirst().getSharedData();//check if the majority of servers sent the same shared data
                         int k = 0;
                         for (EncryptedVerifiableShare verifiableShare : secretI) {
                             try {
-                                shares[k] =
-                                        confidentialityScheme.decryptShare(clientId,
-                                                verifiableShare.getShare());
+                                shares[k] = new Share(verifiableShare.getShareholder(),
+                                        confidentialityScheme.decryptShareFor(clientId, verifiableShare.getShare()));
                             } catch (SecretSharingException e) {
                                 logger.error("Failed to decrypt share of {}",
-                                        verifiableShare.getShare().getShareholder(), e);
+                                        verifiableShare.getShareholder(), e);
                             }
                             commitmentsToCombine.put(
-                                    verifiableShare.getShare().getShareholder(),
+                                    verifiableShare.getShareholder(),
                                     verifiableShare.getCommitments());
                             k++;
                         }
@@ -103,7 +103,8 @@ public class PreComputedEncryptedServersResponseHandler extends ServersResponseH
                                 commitmentScheme.combineCommitments(commitmentsToCombine);
                         OpenPublishedShares secret = new OpenPublishedShares(shares, commitment, shareData);
                         try {
-                            confidentialData[i] = confidentialityScheme.combine(secret);
+                            confidentialData[i] = confidentialityScheme.combine(secret,
+                                    shareData == null ? Mode.SMALL_SECRET : Mode.LARGE_SECRET);
                         } catch (SecretSharingException e) {
                             ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData, e);
                             TOMMessage lastMsg = replies[lastReceived];
