@@ -28,6 +28,7 @@ public class ConfidentialServiceProxy {
     private final ClientConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
     private final boolean isLinearCommitmentScheme;
+    private final boolean isSendAllSharesTogether;
 
     public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
         if (Configuration.getInstance().useTLSEncryption()) {
@@ -40,6 +41,7 @@ public class ConfidentialServiceProxy {
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
+        isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
 
     public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
@@ -52,7 +54,7 @@ public class ConfidentialServiceProxy {
             return null;
 
         Map<Integer, byte[]> privateData = null;
-        if (confidentialData.length != 0){
+        if (!isSendAllSharesTogether && confidentialData.length != 0) {
             int[] servers = service.getViewManager().getCurrentViewProcesses();
             privateData = new HashMap<>(servers.length);
             for (int server : servers) {
@@ -60,7 +62,7 @@ public class ConfidentialServiceProxy {
                 privateData.put(server, b);
             }
         }
-        byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+        byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
         byte[] response = service.invokeOrdered(commonData, privateData, metadata);
 
         return composeResponse(response);
@@ -76,7 +78,7 @@ public class ConfidentialServiceProxy {
             return null;
 
         Map<Integer, byte[]> privateData = null;
-        if (confidentialData.length != 0){
+        if (!isSendAllSharesTogether && confidentialData.length != 0) {
             int[] servers = service.getViewManager().getCurrentViewProcesses();
             privateData = new HashMap<>(servers.length);
             for (int server : servers) {
@@ -84,7 +86,7 @@ public class ConfidentialServiceProxy {
                 privateData.put(server, b);
             }
         }
-        byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+        byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
         byte[] response = service.invokeUnordered(commonData, privateData, metadata);
 
         return composeResponse(response);
@@ -146,17 +148,21 @@ public class ConfidentialServiceProxy {
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
                 for (EncryptedPublishedShares share : shares) {
-                    byte[] sharedData = share.getSharedData();
-                    Commitment commitment = share.getCommitment();
-                    out.writeInt(sharedData == null ? -1 : sharedData.length);
-                    if (sharedData != null)
-                        out.write(sharedData);
-                    if (isLinearCommitmentScheme)
-                        Utils.writeCommitment(commitment, out);
-                    else {
-                        byte[] c = ((ConstantCommitment)commitment).getCommitment();
-                        out.writeInt(c.length);
-                        out.write(c);
+                    if (isSendAllSharesTogether) {
+                        share.writeExternal(out);
+                    } else {
+                        byte[] sharedData = share.getSharedData();
+                        Commitment commitment = share.getCommitment();
+                        out.writeInt(sharedData == null ? -1 : sharedData.length);
+                        if (sharedData != null)
+                            out.write(sharedData);
+                        if (isLinearCommitmentScheme)
+                            Utils.writeCommitment(commitment, out);
+                        else {
+                            byte[] c = ((ConstantCommitment) commitment).getCommitment();
+                            out.writeInt(c.length);
+                            out.write(c);
+                        }
                     }
 
                 }

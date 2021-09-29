@@ -85,6 +85,9 @@ public class EncryptedVerifiableShare implements Externalizable {
 
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
+        byte[] shareholderBytes = shareholder.toByteArray();
+        out.writeInt(shareholderBytes.length);
+        out.write(shareholderBytes);
         out.writeInt(share == null ? -1 : share.length);
         if (share != null)
             out.write(share);
@@ -97,6 +100,11 @@ public class EncryptedVerifiableShare implements Externalizable {
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         int len = in.readInt();
+        byte[] shareholderBytes = new byte[len];
+        in.readFully(shareholderBytes);
+        shareholder = new BigInteger(shareholderBytes);
+
+        len = in.readInt();
         if (len != -1) {
             share = new byte[len];
             in.readFully(share);

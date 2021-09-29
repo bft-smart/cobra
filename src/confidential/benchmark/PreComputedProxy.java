@@ -39,6 +39,7 @@ public class PreComputedProxy {
     Map<Integer, byte[]> privateData;
     private final boolean preComputed;
     private final boolean isLinearCommitmentScheme;
+    private final boolean isSendAllSharesTogether;
 
     PreComputedProxy(int clientId) throws SecretSharingException {
         this.preComputed = false;
@@ -53,6 +54,7 @@ public class PreComputedProxy {
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
+        isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
 
     PreComputedProxy(int clientId, byte[] unorderedCommonData, byte[] orderedCommonData,
@@ -72,6 +74,7 @@ public class PreComputedProxy {
         this.unorderedCommonData = unorderedCommonData;
         this.orderedCommonData = orderedCommonData;
         this.privateData = privateData;
+        this.isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
 
     Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
@@ -79,7 +82,8 @@ public class PreComputedProxy {
         byte[] response;
         if (preComputed) {
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-            response = service.invokeOrdered(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData, confidentialData.length == 0 ? null : privateData, metadata);
+            response = service.invokeOrdered(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData,
+                    confidentialData.length == 0 || isSendAllSharesTogether ? null : privateData, metadata);
         } else {
             EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData.length != 0 && shares == null)
@@ -89,7 +93,7 @@ public class PreComputedProxy {
                 return null;
 
             Map<Integer, byte[]> privateData = null;
-            if (confidentialData.length != 0){
+            if (!isSendAllSharesTogether && confidentialData.length != 0) {
                 int[] servers = service.getViewManager().getCurrentViewProcesses();
                 privateData = new HashMap<>(servers.length);
                 for (int server : servers) {
@@ -97,7 +101,7 @@ public class PreComputedProxy {
                     privateData.put(server, b);
                 }
             }
-            byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+            byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
             response = service.invokeOrdered(commonData, privateData, metadata);
         }
         return preComputed ? null : composeResponse(response);
@@ -119,7 +123,7 @@ public class PreComputedProxy {
                 return null;
 
             Map<Integer, byte[]> privateData = null;
-            if (confidentialData.length != 0){
+            if (!isSendAllSharesTogether && confidentialData.length != 0) {
                 int[] servers = service.getViewManager().getCurrentViewProcesses();
                 privateData = new HashMap<>(servers.length);
                 for (int server : servers) {
@@ -127,7 +131,7 @@ public class PreComputedProxy {
                     privateData.put(server, b);
                 }
             }
-            byte metadata = (byte)(privateData == null ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+            byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
             response = service.invokeUnordered(commonData, privateData, metadata);
         }
 
@@ -190,17 +194,21 @@ public class PreComputedProxy {
             out.writeInt(shares == null ? -1 : shares.length);
             if (shares != null) {
                 for (EncryptedPublishedShares share : shares) {
-                    byte[] sharedData = share.getSharedData();
-                    Commitment commitment = share.getCommitment();
-                    out.writeInt(sharedData == null ? -1 : sharedData.length);
-                    if (sharedData != null)
-                        out.write(sharedData);
-                    if (isLinearCommitmentScheme)
-                        Utils.writeCommitment(commitment, out);
-                    else {
-                        byte[] c = ((ConstantCommitment)commitment).getCommitment();
-                        out.writeInt(c.length);
-                        out.write(c);
+                    if (isSendAllSharesTogether) {
+                        share.writeExternal(out);
+                    } else {
+                        byte[] sharedData = share.getSharedData();
+                        Commitment commitment = share.getCommitment();
+                        out.writeInt(sharedData == null ? -1 : sharedData.length);
+                        if (sharedData != null)
+                            out.write(sharedData);
+                        if (isLinearCommitmentScheme)
+                            Utils.writeCommitment(commitment, out);
+                        else {
+                            byte[] c = ((ConstantCommitment) commitment).getCommitment();
+                            out.writeInt(c.length);
+                            out.write(c);
+                        }
                     }
                 }
             }

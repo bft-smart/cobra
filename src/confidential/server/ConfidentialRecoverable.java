@@ -66,6 +66,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     private final ConfidentialSingleExecutable confidentialExecutor;
     private DistributedPolynomial distributedPolynomial;
     private boolean isLinearCommitmentScheme;
+    private final boolean isCombinePrivateAndCommonData;
     // Not the best solution. Requests failed during consensus, will not be removed from this map
     private final Map<Integer, Request> deserializedRequests;
     private final boolean verifyClientsRequests;
@@ -79,6 +80,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         this.useTLSEncryption = Configuration.getInstance().useTLSEncryption();
         this.deserializedRequests = new ConcurrentHashMap<>();
         this.verifyClientsRequests = Configuration.getInstance().isVerifyClientRequests();
+        this.isCombinePrivateAndCommonData = Configuration.getInstance().isSendAllSharesTogether();
     }
 
     @Override
@@ -397,45 +399,19 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                     len = in.readInt();
                     VerifiableShare[] shares = null;
                     if (len != -1) {
-                        shares = new VerifiableShare[len];
-                        if (len > 0) {
-                            BigInteger shareholder = confidentialityScheme.getMyShareholderId();
-                            try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
-                                 ObjectInput privateIn = new ObjectInputStream(privateBis)) {
-                                EncryptedPublishedShares publishedShares;
-                                for (int i = 0; i < len; i++) {
-                                    int l = in.readInt();
-                                    byte[] sharedData = null;
-                                    if (l != -1) {
-                                        sharedData = new byte[l];
-                                        in.readFully(sharedData);
-                                    }
-                                    l = privateIn.readInt();
-                                    byte[] encShare = null;
-                                    if (l != -1) {
-                                        encShare = new byte[l];
-                                        privateIn.readFully(encShare);
-                                    }
-                                    Commitment commitment;
-                                    if (isLinearCommitmentScheme)
-                                        commitment = Utils.readCommitment(in);
-                                    else {
-                                        byte[] c = new byte[in.readInt()];
-                                        in.readFully(c);
-                                        byte[] witness = new byte[privateIn.readInt()];
-                                        privateIn.readFully(witness);
-                                        TreeMap<Integer, byte[]> witnesses = new TreeMap<>();
-                                        witnesses.put(shareholder.hashCode(), witness);
-                                        commitment = new ConstantCommitment(c, witnesses);
-                                    }
-                                    Map<Integer, byte[]> encryptedShares = new HashMap<>(1);
-                                    encryptedShares.put(processId, encShare);
-                                    publishedShares = new EncryptedPublishedShares(
-                                            encryptedShares, commitment, sharedData);
-                                    VerifiableShare vs = confidentialityScheme.extractShare(publishedShares);
-                                    shares[i] = vs;
-                                }
+                        if (len == 0) {
+                            shares = new VerifiableShare[0];
+                        } else if (isCombinePrivateAndCommonData) {
+                            shares = new VerifiableShare[len];
+                            EncryptedPublishedShares publishedShares;
+                            for (int i = 0; i < len; i++) {
+                                publishedShares = new EncryptedPublishedShares();
+                                publishedShares.readExternal(in);
+                                VerifiableShare vs = confidentialityScheme.extractShare(publishedShares);
+                                shares[i] = vs;
                             }
+                        } else {
+                            shares = readSharesFromPrivateData(len, in, privateData);
                         }
                     }
                     result = new Request(type, plainData, shares);
@@ -452,6 +428,51 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
             logger.warn("Failed to decompose request from {}", sender, e);
             return null;
         }
+    }
+
+    private VerifiableShare[] readSharesFromPrivateData(int size, ObjectInput commonDataStream, byte[] privateData) throws IOException,
+            SecretSharingException, ClassNotFoundException {
+        VerifiableShare[] shares = new VerifiableShare[size];
+
+        BigInteger shareholder = confidentialityScheme.getMyShareholderId();
+
+        try (ByteArrayInputStream privateBis = new ByteArrayInputStream(privateData);
+             ObjectInput privateIn = new ObjectInputStream(privateBis)) {
+            EncryptedPublishedShares publishedShares;
+            for (int i = 0; i < size; i++) {
+                int l = commonDataStream.readInt();
+                byte[] sharedData = null;
+                if (l != -1) {
+                    sharedData = new byte[l];
+                    commonDataStream.readFully(sharedData);
+                }
+                l = privateIn.readInt();
+                byte[] encShare = null;
+                if (l != -1) {
+                    encShare = new byte[l];
+                    privateIn.readFully(encShare);
+                }
+                Commitment commitment;
+                if (isLinearCommitmentScheme)
+                    commitment = Utils.readCommitment(commonDataStream);
+                else {
+                    byte[] c = new byte[commonDataStream.readInt()];
+                    commonDataStream.readFully(c);
+                    byte[] witness = new byte[privateIn.readInt()];
+                    privateIn.readFully(witness);
+                    TreeMap<Integer, byte[]> witnesses = new TreeMap<>();
+                    witnesses.put(shareholder.hashCode(), witness);
+                    commitment = new ConstantCommitment(c, witnesses);
+                }
+                Map<Integer, byte[]> encryptedShares = new HashMap<>(1);
+                encryptedShares.put(processId, encShare);
+                publishedShares = new EncryptedPublishedShares(
+                        encryptedShares, commitment, sharedData);
+                VerifiableShare vs = confidentialityScheme.extractShare(publishedShares);
+                shares[i] = vs;
+            }
+        }
+        return shares;
     }
 
     private void saveState(byte[] snapshot, int lastCID) {
