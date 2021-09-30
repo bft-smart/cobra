@@ -17,4 +17,4 @@ RELIC=$(pwd)/pairing/relic/relic-target
 
 export LD_LIBRARY_PATH=$RELIC/lib:$LD_LIBRARY_PATH
 
-java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -Djava.library.path=$C_PROJECT/lib -cp bin/*:lib/* $@
+java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -Djava.library.path=$C_PROJECT/lib -cp lib/* $@
