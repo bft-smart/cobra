@@ -1,6 +1,7 @@
 plugins {
     id 'java'
     id 'distribution'
+    id 'org.hidetake.ssh' version '2.10.1'
 }
 
 group 'org.example'
@@ -29,6 +30,18 @@ distributions {
     }
 }
 
+remotes {
+    master {
+        host = '192.168.10.100'
+        user = 'testbed'
+        password = 'root'
+    }
+}
+
+ssh.settings {
+    fileTransfer = 'scp'
+}
+
 task localDeploy {
     int[] replicas = new int[]{0, 1, 2, 3}
     int[] clients = new int[]{0}
@@ -52,6 +65,16 @@ task localDeploy {
         copy {
             from "build/install/${project.name}"
             into target
+        }
+    }
+}
+
+task remoteDeploy(dependsOn: installDist) {
+    doLast {
+        ssh.run {
+            session(remotes.master) {
+                put from: "build/install/${project.name}", into: '~/'
+            }
         }
     }
 }
