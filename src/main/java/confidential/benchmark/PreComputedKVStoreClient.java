@@ -102,8 +102,8 @@ public class PreComputedKVStoreClient {
                 System.exit(-1);
             }
         }
-
         executorService.shutdown();
+        System.out.println("Experiment ended");
     }
 
     private static byte[] serialize(Operation op, String str) {
@@ -164,7 +164,7 @@ public class PreComputedKVStoreClient {
                 if (id == initialId) {
                     System.out.println("Executing experiment for " + numOperations + " ops");
                 }
-                for (int i = 0; i < numOperations; i++) {
+                for (int i = 0; i < numOperations - 1; i++) {
                     long t2;
                     long t1 = System.nanoTime();
                     if (write) {
