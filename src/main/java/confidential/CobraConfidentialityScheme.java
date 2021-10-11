@@ -1,16 +1,28 @@
 package confidential;
 
 import bftsmart.reconfiguration.views.View;
+import confidential.polynomial.MissingProposalsMessage;
+import confidential.polynomial.Proposal;
+import confidential.polynomial.ProposalMessage;
 import vss.Constants;
+import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentUtils;
+import vss.commitment.ellipticCurve.EllipticCurveCommitment;
+import vss.commitment.ellipticCurve.EllipticCurveCommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
+import vss.interpolation.InterpolationStrategy;
+import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 
 import javax.crypto.BadPaddingException;
 import javax.crypto.Cipher;
 import javax.crypto.IllegalBlockSizeException;
 import javax.crypto.NoSuchPaddingException;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
 import java.math.BigInteger;
 import java.security.*;
 import java.util.HashMap;
@@ -31,6 +43,8 @@ public abstract class CobraConfidentialityScheme {
     private final boolean isLinearCommitmentScheme;
     protected KeysManager keysManager;
     protected int threshold;
+    private final EllipticCurveCommitmentScheme ellipticCurveCommitmentScheme;
+    private final BigInteger ellipticCurveField;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
         cipherLock = new ReentrantLock(true);
@@ -66,6 +80,24 @@ public abstract class CobraConfidentialityScheme {
         vss = new VSSFacade(properties, shareholders);
         keysManager = new KeysManager();
         isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
+
+
+        BigInteger prime = new BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF000000000000000000000001", 16);
+        BigInteger order = new BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFF16A2E0B8F03E13DD29455C5C2A3D", 16);
+        BigInteger a = new BigInteger("FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFEFFFFFFFFFFFFFFFFFFFFFFFE", 16);
+        BigInteger b = new BigInteger("B4050A850C04B3ABF54132565044B0B7D7BFD8BA270B39432355FFB4", 16);
+        BigInteger generatorX = new BigInteger("B70E0CBD6BB4BF7F321390B94A03C1D356C21122343280D6115C1D21", 16);
+        BigInteger generatorY = new BigInteger("BD376388B5F723FB4C22DFE6CD4375A05A07476444D5819985007E34", 16);
+        ellipticCurveField = order;
+        ellipticCurveCommitmentScheme = new EllipticCurveCommitmentScheme(prime, order, a, b, generatorX, generatorY);
+    }
+
+    public BigInteger getField() {
+        return vss.getField();
+    }
+
+    public InterpolationStrategy getInterpolationStrategy() {
+        return vss.getInterpolationStrategy();
     }
 
     public boolean isLinearCommitmentScheme() {
@@ -154,5 +186,126 @@ public abstract class CobraConfidentialityScheme {
         } finally {
             cipherLock.unlock();
         }
+    }
+
+    public BigInteger getEllipticCurveField() {
+        return ellipticCurveField;
+    }
+
+    public Commitment generateEllipticCurveCommitment(Polynomial polynomial) {
+        return ellipticCurveCommitmentScheme.generateCommitments(polynomial);
+    }
+
+    public boolean checkEllipticCurveCommitment(Share share, Commitment commitment) {
+        return ellipticCurveCommitmentScheme.checkValidity(share, commitment);
+    }
+
+    public Commitment sumEllipticCurveCommitments(Commitment... commitments) throws SecretSharingException {
+        return ellipticCurveCommitmentScheme.sumCommitments(commitments);
+    }
+
+    public void serializeProposalMessage(ProposalMessage message, ObjectOutput out) throws IOException {
+        int id = message.getId();
+        int sender = message.getSender();
+        Proposal[] proposals = message.getProposals();
+        byte[] signature = message.getSignature();
+
+        out.writeInt(id);
+        out.writeInt(sender);
+        out.writeInt(proposals == null ? -1 : proposals.length);
+        if (proposals != null) {
+            for (Proposal proposal : proposals) {
+                writeProposal(proposal, out);
+            }
+        }
+        out.writeInt(signature == null ? -1 : signature.length);
+        if (signature != null)
+            out.write(signature);
+    }
+
+    public void serializeMissingProposalMessage(MissingProposalsMessage message, ObjectOutput out) throws IOException {
+        int id = message.getId();
+        int sender = message.getSender();
+        ProposalMessage proposal = message.getMissingProposal();
+        out.writeInt(id);
+        out.writeInt(sender);
+        serializeProposalMessage(proposal, out);
+    }
+
+    public ProposalMessage deserializeProposalMessage(ObjectInput in) throws IOException, ClassNotFoundException {
+        int id = in.readInt();
+        int sender = in.readInt();
+        Proposal[] proposals = null;
+        byte[] signature = null;
+
+        int len = in.readInt();
+        if (len != -1) {
+            proposals = new Proposal[len];
+            for (int i = 0; i < len; i++) {
+                proposals[i] = readProposal(in);
+            }
+        }
+        len = in.readInt();
+        if (len != -1) {
+            signature = new byte[len];
+            in.readFully(signature);
+        }
+        ProposalMessage proposalMessage = new ProposalMessage(id, sender, proposals);
+        proposalMessage.setSignature(signature);
+        return proposalMessage;
+    }
+
+    public MissingProposalsMessage deserializeMissingProposalMessage(ObjectInput in) throws IOException, ClassNotFoundException {
+        int id = in.readInt();
+        int sender = in.readInt();
+        ProposalMessage proposal = deserializeProposalMessage(in);
+        return new MissingProposalsMessage(id, sender, proposal);
+    }
+
+    private void writeProposal(Proposal proposal, ObjectOutput out) throws IOException {
+        Map<Integer, byte[]> points = proposal.getPoints();
+        Commitment commitments = proposal.getCommitments();
+        out.writeInt(points == null ? -1 : points.size());
+        if (points != null) {
+            for (Map.Entry<Integer, byte[]> entry : points.entrySet()) {
+                out.writeInt(entry.getKey());
+                byte[] b = entry.getValue();
+                out.writeInt(b.length);
+                out.write(b);
+
+            }
+        }
+        out.writeBoolean(commitments != null);
+        if (commitments != null) {
+            out.writeBoolean(commitments instanceof EllipticCurveCommitment);
+            if (commitments instanceof EllipticCurveCommitment)
+                ellipticCurveCommitmentScheme.writeCommitment(commitments, out);
+            else
+                CommitmentUtils.getInstance().writeCommitment(commitments, out);
+        }
+    }
+
+    private Proposal readProposal(ObjectInput in) throws IOException, ClassNotFoundException {
+        Map<Integer, byte[]> points = null;
+        int size = in.readInt();
+        if (size != -1) {
+            points = new HashMap<>(size);
+            byte[] b;
+            while (size-- > 0) {
+                int shareholder = in.readInt();
+                b = new byte[in.readInt()];
+                in.readFully(b);
+                points.put(shareholder, b);
+            }
+        }
+        Commitment commitment = null;
+        if (in.readBoolean()) {
+            if (in.readBoolean()) {
+                commitment = ellipticCurveCommitmentScheme.readCommitment(in);
+            } else {
+                commitment = CommitmentUtils.getInstance().readCommitment(in);
+            }
+        }
+        return new Proposal(points, commitment);
     }
 }

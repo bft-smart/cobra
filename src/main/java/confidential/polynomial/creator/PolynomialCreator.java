@@ -38,7 +38,7 @@ public abstract class PolynomialCreator {
     protected Logger logger = LoggerFactory.getLogger("polynomial_generation");
     protected final PolynomialCreationContext creationContext;
     private final int quorumThreshold;
-    private final int faultsThreshold;
+    protected final int faultsThreshold;
     protected final BigInteger field;
     protected final SecureRandom rndGenerator;
     protected final CommitmentScheme commitmentScheme;
@@ -46,14 +46,14 @@ public abstract class PolynomialCreator {
     protected final int processId;
     protected final BigInteger shareholderId;
     private ProposalMessage myProposal;
-    private final ConcurrentHashMap<Integer, ProposalMessage> proposals;
+    protected final ConcurrentHashMap<Integer, ProposalMessage> proposals;
     protected final ConcurrentHashMap<Integer, BigInteger[]> decryptedPoints;
     private ConcurrentHashMap<Integer, byte[]> missingProposals;
     private boolean proposalSetProposed;
     protected final Set<Integer> validProposals;
     protected final Set<Integer> invalidProposals;
     protected final ServerConfidentialityScheme confidentialityScheme;
-    private final PolynomialCreationListener creationListener;
+    protected final PolynomialCreationListener creationListener;
     private final Set<Integer> newPolynomialRequestsFrom;
     protected final int[] allMembers;
     protected final DistributedPolynomial distributedPolynomial;
@@ -564,7 +564,12 @@ public abstract class PolynomialCreator {
     private byte[] serialize(PolynomialMessage message) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-            message.writeExternal(out);
+            if (message instanceof ProposalMessage)
+                confidentialityScheme.serializeProposalMessage((ProposalMessage) message, out);
+            else if (message instanceof MissingProposalsMessage)
+                confidentialityScheme.serializeMissingProposalMessage((MissingProposalsMessage)message, out);
+            else
+                message.writeExternal(out);
             out.flush();
             bos.flush();
             return bos.toByteArray();

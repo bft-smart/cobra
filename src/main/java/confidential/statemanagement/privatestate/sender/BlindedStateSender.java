@@ -96,7 +96,8 @@ public abstract class BlindedStateSender extends Thread {
                 String receiverIp = svController.getCurrentView().getAddress(blindedStateReceiver)
                         .getAddress().getHostAddress();
                 int port = blindedStateReceiverPort + blindedStateReceiver;
-                BlindedDataSender stateSender = new BlindedDataSender(pid, receiverIp, port, iAmStateSender);
+                BlindedDataSender stateSender = new BlindedDataSender(pid, receiverIp, port, iAmStateSender,
+                        confidentialityScheme.getCommitmentScheme());
                 stateSender.start();
                 stateSenders[i] = stateSender;
             }

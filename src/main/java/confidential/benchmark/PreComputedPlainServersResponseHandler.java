@@ -1,8 +1,9 @@
 package confidential.benchmark;
 
 import bftsmart.tom.core.messages.TOMMessage;
+import bftsmart.tom.util.ExtractedResponse;
+import confidential.ConfidentialExtractedResponse;
 import confidential.ConfidentialMessage;
-import confidential.ExtractedResponse;
 import confidential.client.ServersResponseHandler;
 import vss.commitment.Commitment;
 import vss.facade.Mode;
@@ -32,9 +33,10 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
     }
 
     @Override
-    public TOMMessage extractResponse(TOMMessage[] replies, int sameContent, int lastReceived) {
+    public ExtractedResponse extractResponse(TOMMessage[] replies, int sameContent, int lastReceived) {
+        TOMMessage lastMsg = replies[lastReceived];
         if (preComputed)
-            return replies[lastReceived];
+            return new ConfidentialExtractedResponse(lastMsg.getViewID(), lastMsg.getContent());
         ConfidentialMessage response;
         Map<Integer, LinkedList<ConfidentialMessage>> msgs = new HashMap<>();
         for (TOMMessage msg : replies) {
@@ -97,22 +99,12 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
                             confidentialData[i] = confidentialityScheme.combine(secret,
                                     shareData == null ? Mode.SMALL_SECRET : Mode.LARGE_SECRET);
                         } catch (SecretSharingException e) {
-                            ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData, e);
-                            TOMMessage lastMsg = replies[lastReceived];
-                            return new TOMMessage(lastMsg.getSender(),
-                                    lastMsg.getSession(), lastMsg.getSequence(),
-                                    lastMsg.getOperationId(), extractedResponse.serialize(), new byte[0],
-                                    lastMsg.getViewID(), lastMsg.getReqType());
+                            return new ConfidentialExtractedResponse(lastMsg.getViewID(), plainData,
+                                    confidentialData, e);
                         }
                     }
                 }
-                ExtractedResponse extractedResponse = new ExtractedResponse(plainData, confidentialData);
-                TOMMessage lastMsg = replies[lastReceived];
-                return new TOMMessage(lastMsg.getSender(),
-                        lastMsg.getSession(), lastMsg.getSequence(),
-                        lastMsg.getOperationId(), extractedResponse.serialize(), new byte[0],
-                        lastMsg.getViewID(), lastMsg.getReqType());
-
+                return new ConfidentialExtractedResponse(lastMsg.getViewID(), plainData, confidentialData);
             }
         }
         logger.error("This should not happen. Did not found {} equivalent responses", sameContent);

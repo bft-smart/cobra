@@ -2,6 +2,7 @@ package confidential.polynomial;
 
 public enum PolynomialCreationReason {
     RANDOM,
+    RANDOM_KEY,
     RECOVERY,
     RESHARING;
 

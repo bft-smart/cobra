@@ -1,7 +1,7 @@
 package confidential.polynomial;
 
-import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentUtils;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -39,8 +39,9 @@ public class Proposal implements Externalizable {
             out.write(b);
 
         }
-
-        Utils.writeCommitment(commitments, out);
+        out.writeBoolean(commitments != null);
+        if (commitments != null)
+            CommitmentUtils.getInstance().writeCommitment(commitments, out);
     }
 
     @Override
@@ -56,6 +57,7 @@ public class Proposal implements Externalizable {
                 points.put(shareholder, b);
             }
         }
-        commitments = Utils.readCommitment(in);
+        if (in.readBoolean())
+            commitments = CommitmentUtils.getInstance().readCommitment(in);
     }
 }

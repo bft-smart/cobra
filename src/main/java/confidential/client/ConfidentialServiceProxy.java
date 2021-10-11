@@ -2,13 +2,12 @@ package confidential.client;
 
 import bftsmart.tom.ServiceProxy;
 import confidential.Configuration;
-import confidential.ExtractedResponse;
+import confidential.ConfidentialExtractedResponse;
 import confidential.MessageType;
 import confidential.Metadata;
 import confidential.encrypted.EncryptedPublishedShares;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.Mode;
@@ -53,31 +52,16 @@ public class ConfidentialServiceProxy {
         isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
 
+    public ClientConfidentialityScheme getConfidentialityScheme() {
+        return confidentialityScheme;
+    }
+
     public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-        serversResponseHandler.reset();
-        EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
-        if (confidentialData.length != 0 && shares == null)
-            return null;
-        byte[] commonData = serializeCommonData(plainData, shares);
-        if (commonData == null)
-            return null;
-
-        Map<Integer, byte[]> privateData = null;
-        if (!isSendAllSharesTogether && confidentialData.length != 0) {
-            int[] servers = service.getViewManager().getCurrentViewProcesses();
-            privateData = new HashMap<>(servers.length);
-            for (int server : servers) {
-                byte[] b = serializePrivateDataFor(server, shares);
-                privateData.put(server, b);
-            }
-        }
-        byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-        byte[] response = service.invokeOrdered(commonData, privateData, metadata);
-
+        ConfidentialExtractedResponse response = invokeOrdered2(plainData, confidentialData);
         return composeResponse(response);
     }
 
-    public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+    public ConfidentialExtractedResponse invokeOrdered2(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
         EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
         if (confidentialData.length != 0 && shares == null)
@@ -96,19 +80,41 @@ public class ConfidentialServiceProxy {
             }
         }
         byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-        byte[] response = service.invokeUnordered(commonData, privateData, metadata);
+        return (ConfidentialExtractedResponse) service.invokeOrdered2(commonData, privateData, metadata);
+    }
 
+    public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        ConfidentialExtractedResponse response = invokeUnordered2(plainData, confidentialData);
         return composeResponse(response);
+    }
+
+    public ConfidentialExtractedResponse invokeUnordered2(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        serversResponseHandler.reset();
+        EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
+        if (confidentialData.length != 0 && shares == null)
+            return null;
+        byte[] commonData = serializeCommonData(plainData, shares);
+        if (commonData == null)
+            return null;
+
+        Map<Integer, byte[]> privateData = null;
+        if (!isSendAllSharesTogether && confidentialData.length != 0) {
+            int[] servers = service.getViewManager().getCurrentViewProcesses();
+            privateData = new HashMap<>(servers.length);
+            for (int server : servers) {
+                byte[] b = serializePrivateDataFor(server, shares);
+                privateData.put(server, b);
+            }
+        }
+        byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+        return (ConfidentialExtractedResponse) service.invokeUnordered2(commonData, privateData, metadata);
     }
 
     public void close() {
         service.close();
     }
 
-    private Response composeResponse(byte[] response) throws SecretSharingException {
-        if (response == null)
-            return null;
-        ExtractedResponse extractedResponse = ExtractedResponse.deserialize(response);
+    private Response composeResponse(ConfidentialExtractedResponse extractedResponse) throws SecretSharingException {
         if (extractedResponse == null)
             return null;
         if (extractedResponse.getThrowable() != null)
@@ -166,7 +172,7 @@ public class ConfidentialServiceProxy {
                         if (sharedData != null)
                             out.write(sharedData);
                         if (isLinearCommitmentScheme)
-                            Utils.writeCommitment(commitment, out);
+                            confidentialityScheme.getCommitmentScheme().writeCommitment(commitment, out);
                         else {
                             byte[] c = ((ConstantCommitment) commitment).getCommitment();
                             out.writeInt(c.length);

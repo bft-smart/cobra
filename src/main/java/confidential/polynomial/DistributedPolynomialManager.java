@@ -19,9 +19,11 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
     private final ResharingPolynomialListener resharingListener;
     private final RecoveryPolynomialListener recoveryListener;
     private RandomPolynomialListener randomPolynomialListener;
+    private RandomKeyPolynomialListener randomKeyPolynomialListener;
     private final ConcurrentMap<Integer, ResharingPolynomialContext> resharingPolynomialContexts;
     private final ConcurrentMap<Integer, RecoveryPolynomialContext> recoveryPolynomialContexts;
     private final ConcurrentMap<Integer, RandomPolynomialContext> randomPolynomialContexts;
+    private final ConcurrentMap<Integer, RandomPolynomialContext> randomKeyPolynomialContexts;
     private final Lock lock;
     private final int processId;
 
@@ -34,15 +36,21 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         this.resharingPolynomialContexts = new ConcurrentHashMap<>();
         this.recoveryPolynomialContexts = new ConcurrentHashMap<>();
         this.randomPolynomialContexts = new ConcurrentHashMap<>();
+        this.randomKeyPolynomialContexts = new ConcurrentHashMap<>();
         this.lock = new ReentrantLock(true);
         this.processId = distributedPolynomial.getProcessId();
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RECOVERY);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RANDOM);
+        distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RANDOM_KEY);
     }
 
     public void setRandomPolynomialListener(RandomPolynomialListener randomPolynomialListener) {
         this.randomPolynomialListener = randomPolynomialListener;
+    }
+
+    public void setRandomKeyPolynomialListener(RandomKeyPolynomialListener randomKeyPolynomialListener) {
+        this.randomKeyPolynomialListener = randomKeyPolynomialListener;
     }
 
     public int createRecoveryPolynomialsFor(BigInteger shareholder, int f, int[] members,
@@ -190,6 +198,45 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         return internalId;
     }
 
+    public int createRandomKeyPolynomial(int f, int[] members) {
+        if (randomKeyPolynomialListener == null)
+            throw new IllegalStateException("RandomKeyPolynomialListener is not set in DistributedPolynomialManager");
+        lock.lock();
+        int internalId = internalSequenceNumber++;
+        PolynomialContext context = new PolynomialContext(
+                f,
+                BigInteger.ZERO,
+                null,
+                members
+        );
+        logger.info("Starting creation of a polynomial with id {}", internalId);
+        int leader = members[internalId % members.length];
+        PolynomialCreationContext creationContext = new PolynomialCreationContext(
+                internalId,
+                internalId,
+                1,
+                false,
+                false,
+                leader,
+                PolynomialCreationReason.RANDOM_KEY,
+                context
+        );
+        distributedPolynomial.createNewPolynomial(creationContext);
+
+        RandomPolynomialContext randomPolynomialContext = new RandomPolynomialContext(
+                internalId,
+                1,
+                f);
+        if (!randomKeyPolynomialContexts.containsKey(internalId)) {
+            randomPolynomialContext.startTime();
+            randomKeyPolynomialContexts.put(internalId, randomPolynomialContext);
+        } else {
+            logger.warn("There is already an active random key polynomial creation with internal id {}", internalId);
+        }
+        lock.unlock();
+        return internalId;
+    }
+
     public void setSequenceNumber(int seqNumber) {
         internalSequenceNumber = seqNumber;
     }
@@ -211,8 +258,25 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
             handleRecoveryPolynomial(context, consensusId, points);
         } else if (context.getReason() == PolynomialCreationReason.RANDOM) {
             handleRandomPolynomial(context, consensusId, points);
-        }
+        } else if (context.getReason() == PolynomialCreationReason.RANDOM_KEY)
+            handleRandomKeyPolynomial(context, consensusId, points);
         lock.unlock();
+    }
+
+    private void handleRandomKeyPolynomial(PolynomialCreationContext context, int consensusId, VerifiableShare[][] points) {
+        RandomPolynomialContext polynomialContext = randomKeyPolynomialContexts.remove(context.getInternalId());
+        if (polynomialContext == null) {
+            logger.debug("There is no random polynomial context. Creating one");
+            polynomialContext = new RandomPolynomialContext(
+                    context.getInternalId(),
+                    context.getNPolynomials(),
+                    context.getContexts()[0].getF()
+            );
+        }
+        polynomialContext.endTime();
+        polynomialContext.setPoint(points[0][0]);
+        polynomialContext.setCID(consensusId);
+        randomKeyPolynomialListener.onRandomKeyPolynomialsCreation(polynomialContext);
     }
 
     private void handleRandomPolynomial(PolynomialCreationContext context, int consensusId, VerifiableShare[][] points) {

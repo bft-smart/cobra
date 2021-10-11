@@ -44,7 +44,7 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         this.serversCommunication = serversCommunication;
         this.field = confidentialityScheme.getField();
         this.confidentialityScheme = confidentialityScheme;
-        this.rndGenerator = new SecureRandom(SEED);
+        this.rndGenerator = new SecureRandom(("confidential" + svController.getStaticConf().getProcessId()).getBytes());
         this.polynomialCreators = new ConcurrentHashMap<>();
         this.processId = svController.getStaticConf().getProcessId();
         this.listeners = new HashMap<>();
@@ -184,7 +184,13 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
                             logger.warn("Unknown polynomial message type {}", message.getType());
                             continue;
                     }
-                    polynomialMessage.readExternal(in);
+                    if (message.getType() == InterServersMessageType.POLYNOMIAL_PROPOSAL) {
+                        polynomialMessage = confidentialityScheme.deserializeProposalMessage(in);
+                    } else if (message.getType() == InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS) {
+                        polynomialMessage = confidentialityScheme.deserializeMissingProposalMessage(in);
+                    } else {
+                        polynomialMessage.readExternal(in);
+                    }
                     PolynomialCreator polynomialCreator = polynomialCreators.get(polynomialMessage.getId());
                     if (polynomialCreator == null && polynomialMessage instanceof NewPolynomialMessage) {
                         NewPolynomialMessage newPolynomialMessage = (NewPolynomialMessage) polynomialMessage;

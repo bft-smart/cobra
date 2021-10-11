@@ -4,8 +4,8 @@ import confidential.Configuration;
 import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentScheme;
 
 import javax.net.SocketFactory;
 import java.io.IOException;
@@ -31,14 +31,16 @@ public class BlindedDataSender extends Thread {
     private BlindedShares blindedShares;
     private byte[] commonState;
     private byte[] commonStateHash;
+    private final CommitmentScheme commitmentScheme;
 
 
-    public BlindedDataSender(int pid, String receiverServersIp, int receiverServerPort, boolean iAmStateSender) {
+    public BlindedDataSender(int pid, String receiverServersIp, int receiverServerPort, boolean iAmStateSender, CommitmentScheme commitmentScheme) {
         super("Blinded Data Sender Thread for " + receiverServersIp + ":" + receiverServerPort);
         this.pid = pid;
         this.receiverServersIp = receiverServersIp;
         this.receiverServerPort = receiverServerPort;
         this.iAmStateSender = iAmStateSender;
+        this.commitmentScheme = commitmentScheme;
         this.lock = new ReentrantLock(true);
         this.waitingSharesCondition = lock.newCondition();
         this.waitingCommonStateCondition = lock.newCondition();
@@ -108,7 +110,7 @@ public class BlindedDataSender extends Thread {
                         out.write(0);//3 - sending commitments first
                         out.writeInt(commitments.length);
                         for (Commitment commitment : commitments) {
-                            Utils.writeCommitment(commitment, out);
+                            commitmentScheme.writeCommitment(commitment, out);
                         }
                         out.flush();
                     } else {
@@ -133,7 +135,7 @@ public class BlindedDataSender extends Thread {
                     logger.info("Sending {} commitments", commitments.length);
                     out.writeInt(commitments.length);
                     for (Commitment commitment : commitments) {
-                        Utils.writeCommitment(commitment, out);
+                        commitmentScheme.writeCommitment(commitment, out);
                     }
                     out.flush();
                 }

@@ -1,8 +1,7 @@
 package confidential.encrypted;
 
-import vss.Utils;
 import vss.commitment.Commitment;
-import vss.facade.Mode;
+import vss.commitment.CommitmentUtils;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -65,7 +64,7 @@ public class EncryptedPublishedShares implements Externalizable {
 				out.write(encryptedShare);
 			}
 		}
-		Utils.writeCommitment(commitment, out);
+		CommitmentUtils.getInstance().writeCommitment(commitment, out);
 		out.writeInt(sharedData == null ? -1 : sharedData.length);
 		if (sharedData != null)
 			out.write(sharedData);
@@ -84,7 +83,7 @@ public class EncryptedPublishedShares implements Externalizable {
 				encryptedShares.put(id, encryptedShare);
 			}
 		}
-		commitment = Utils.readCommitment(in);
+		commitment = CommitmentUtils.getInstance().readCommitment(in);
 		len = in.readInt();
 		if (len != -1) {
 			sharedData = new byte[len];

@@ -13,6 +13,7 @@ repositories {
 
 distributions {
     main {
+        version = ''
         contents {
             into('pairing') {
                 from 'pairing'
@@ -42,29 +43,30 @@ ssh.settings {
     fileTransfer = 'scp'
 }
 
-task localDeploy {
-    int[] replicas = new int[]{0, 1, 2, 3}
-    int[] clients = new int[]{0}
-    dependsOn(clean, installDist)
-    String dst = System.getProperty("user.home") + System.getProperty("file.separator") +
-            "Desktop" + System.getProperty("file.separator") +
-            project.name + System.getProperty("file.separator")
+task localDeploy (dependsOn: installDist) {
+    doLast {
+        int[] replicas = new int[]{0, 1, 2, 3}
+        int[] clients = new int[]{0}
+        String dst = System.getProperty("user.home") + System.getProperty("file.separator") +
+                "Desktop" + System.getProperty("file.separator") +
+                project.name + System.getProperty("file.separator")
 
-    println ("Deploying project into ${dst}")
+        println ("Deploying project into ${dst}")
 
-    replicas.each {
-        def target = dst + System.getProperty("file.separator") + "rep${it}"
-        copy {
-            from "build/install/${project.name}"
-            into target
+        replicas.each {
+            def target = dst + System.getProperty("file.separator") + "rep${it}"
+            copy {
+                from "build/install/${project.name}"
+                into target
+            }
         }
-    }
 
-    clients.each {
-        def target = dst + System.getProperty("file.separator") + "cli${it}"
-        copy {
-            from "build/install/${project.name}"
-            into target
+        clients.each {
+            def target = dst + System.getProperty("file.separator") + "cli${it}"
+            copy {
+                from "build/install/${project.name}"
+                into target
+            }
         }
     }
 }

@@ -31,7 +31,6 @@ import confidential.statemanagement.ConfidentialStateLog;
 import confidential.statemanagement.ConfidentialStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.constant.ConstantCommitment;
@@ -111,6 +110,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 
     public DistributedPolynomialManager getDistributedPolynomialManager() {
         return stateManager.getDistributedPolynomialManager();
+    }
+
+    public BigInteger getShareholderId() {
+        return confidentialityScheme.getMyShareholderId();
     }
 
     @Override
@@ -458,7 +461,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                 }
                 Commitment commitment;
                 if (isLinearCommitmentScheme)
-                    commitment = Utils.readCommitment(commonDataStream);
+                    commitment = commitmentScheme.readCommitment(commonDataStream);
                 else {
                     byte[] c = new byte[commonDataStream.readInt()];
                     commonDataStream.readFully(c);

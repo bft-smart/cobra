@@ -7,11 +7,6 @@ public class EncryptedConfidentialMessage {
     private final byte[] plainData;
     private final EncryptedConfidentialData[] shares;
 
-    public EncryptedConfidentialMessage() {
-        plainData = null;
-        shares = null;
-    }
-
     public EncryptedConfidentialMessage(byte[] plainData, EncryptedConfidentialData... shares) {
         this.plainData = plainData;
         this.shares = shares;

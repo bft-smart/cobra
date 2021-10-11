@@ -1,8 +1,8 @@
 package confidential.benchmark;
 
 import bftsmart.tom.ServiceProxy;
+import confidential.ConfidentialExtractedResponse;
 import confidential.Configuration;
-import confidential.ExtractedResponse;
 import confidential.MessageType;
 import confidential.Metadata;
 import confidential.client.ClientConfidentialityScheme;
@@ -11,7 +11,6 @@ import confidential.client.ServersResponseHandler;
 import confidential.encrypted.EncryptedPublishedShares;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.Mode;
@@ -78,11 +77,15 @@ public class PreComputedProxy {
     }
 
     Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        ConfidentialExtractedResponse response = invokeOrdered2(plainData, confidentialData);
+        return preComputed ? null : composeResponse(response);
+    }
+    ConfidentialExtractedResponse invokeOrdered2(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
-        byte[] response;
+        ConfidentialExtractedResponse response;
         if (preComputed) {
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-            response = service.invokeOrdered(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData,
+            response = (ConfidentialExtractedResponse) service.invokeOrdered2(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData,
                     confidentialData.length == 0 || isSendAllSharesTogether ? null : privateData, metadata);
         } else {
             EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
@@ -102,17 +105,22 @@ public class PreComputedProxy {
                 }
             }
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-            response = service.invokeOrdered(commonData, privateData, metadata);
+            response = (ConfidentialExtractedResponse) service.invokeOrdered2(commonData, privateData, metadata);
         }
-        return preComputed ? null : composeResponse(response);
+        return response;
     }
 
     Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        ConfidentialExtractedResponse response = invokeUnordered2(plainData, confidentialData);
+        return preComputed ? null : composeResponse(response);
+    }
+
+    ConfidentialExtractedResponse invokeUnordered2(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
-        byte[] response;
+        ConfidentialExtractedResponse response;
         if (preComputed) {
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-            response = service.invokeUnordered(unorderedCommonData, null, metadata);
+            response = (ConfidentialExtractedResponse) service.invokeUnordered2(unorderedCommonData, null, metadata);
         } else {
             EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData.length != 0 && shares == null)
@@ -132,25 +140,22 @@ public class PreComputedProxy {
                 }
             }
             byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-            response = service.invokeUnordered(commonData, privateData, metadata);
+            response = (ConfidentialExtractedResponse) service.invokeUnordered2(commonData, privateData, metadata);
         }
 
-        return preComputed ? null : composeResponse(response);
+        return response;
     }
 
     public void close() {
         service.close();
     }
 
-    private Response composeResponse(byte[] response) throws SecretSharingException {
+    private Response composeResponse(ConfidentialExtractedResponse response) throws SecretSharingException {
         if (response == null)
             return null;
-        ExtractedResponse extractedResponse = ExtractedResponse.deserialize(response);
-        if (extractedResponse == null)
-            return null;
-        if (extractedResponse.getThrowable() != null)
-            throw extractedResponse.getThrowable();
-        return new Response(extractedResponse.getPlainData(), extractedResponse.getConfidentialData());
+        if (response.getThrowable() != null)
+            throw response.getThrowable();
+        return new Response(response.getPlainData(), response.getConfidentialData());
     }
 
     byte[] serializePrivateDataFor(int server, EncryptedPublishedShares[] shares) {
@@ -203,7 +208,7 @@ public class PreComputedProxy {
                         if (sharedData != null)
                             out.write(sharedData);
                         if (isLinearCommitmentScheme)
-                            Utils.writeCommitment(commitment, out);
+                            confidentialityScheme.getCommitmentScheme().writeCommitment(commitment, out);
                         else {
                             byte[] c = ((ConstantCommitment) commitment).getCommitment();
                             out.writeInt(c.length);
