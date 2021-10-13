@@ -33,6 +33,18 @@ public class ConfidentialServiceProxy {
         this(clientId, null);
     }
 
+    public int getProcessId() {
+        return service.getProcessId();
+    }
+
+    public int getCurrentF() {
+        return service.getViewManager().getCurrentViewF();
+    }
+
+    public int getCurrentN() {
+        return service.getViewManager().getCurrentViewN();
+    }
+
     public ConfidentialServiceProxy(int clientId, ServersResponseHandler serversResponseHandler) throws SecretSharingException {
         if (serversResponseHandler == null) {
             if (Configuration.getInstance().useTLSEncryption()) {
