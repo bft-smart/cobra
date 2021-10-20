@@ -106,25 +106,23 @@ public abstract class BlindedStateHandler extends Thread {
     }
 
     public void deliverBlindedData(int from, byte[][] shares, byte[] serializedCommonState, byte[] commonStateHash,
-                                            Commitment[] commitments, byte[] commitmentsHash) {
+                                   Commitment[] commitments, byte[] commitmentsHash) {
         lock.lock();
-
-        if (commonStateStream == null) {
-            int commonStateHashCode = Arrays.hashCode(commonStateHash);
-            if (from == stateSenderReplica) {
-                selectedCommonState = serializedCommonState;
-                selectedCommonStateHash = commonStateHashCode;
-                logger.debug("Replica {} sent me a common state of {} bytes", from, serializedCommonState.length);
-            } else {
-                logger.debug("Replica {} sent me common state hash", from);
-            }
-
-            commonState.merge(commonStateHashCode, 1, Integer::sum);
-
-            commitmentsHandler.handleNewCommitments(from, commitments, commitmentsHash);
-
-            nCommonStateReceived++;
+        logger.info("Received blinded data from {}", from);
+        int commonStateHashCode = Arrays.hashCode(commonStateHash);
+        if (from == stateSenderReplica) {
+            selectedCommonState = serializedCommonState;
+            selectedCommonStateHash = commonStateHashCode;
+            logger.debug("Replica {} sent me a common state of {} bytes", from, serializedCommonState.length);
+        } else {
+            logger.debug("Replica {} sent me common state hash", from);
         }
+
+        commonState.merge(commonStateHashCode, 1, Integer::sum);
+
+        commitmentsHandler.handleNewCommitments(from, commitments, commitmentsHash);
+
+        nCommonStateReceived++;
 
         Share[] blindedShares = reconstructBlindedShares(from, shares);
         if (blindedShares == null) {
@@ -134,7 +132,6 @@ public abstract class BlindedStateHandler extends Thread {
             this.blindedSharesSize.merge(blindedShares.length, 1, Integer::sum);
             stillValidSenders.add(from);
         }
-
         waitingBlindedDataCondition.signal();
         lock.unlock();
     }
@@ -150,9 +147,15 @@ public abstract class BlindedStateHandler extends Thread {
         while (true) {
             try {
                 lock.lock();
-                waitingBlindedDataCondition.await();
+                logger.debug("Processing new blinded data");
                 if (allBlindedShares.size() < quorum || selectedCommonState == null || nCommonStateReceived < quorum) {
+                    logger.debug("Waiting for more state: {} < {} | selectedCommonState={} | {} < {}",
+                            allBlindedShares.size(), quorum, selectedCommonState == null ? "null" : "not null",
+                            nCommonStateReceived, quorum);
+                    waitingBlindedDataCondition.await();
                     continue;
+                } else {
+                    logger.debug("I have the minimum number of blinded shares, common state and common state hashes");
                 }
                 if (commonStateStream == null) {
                     if (haveCorrectState(selectedCommonState, commonState, selectedCommonStateHash)) {
@@ -163,11 +166,13 @@ public abstract class BlindedStateHandler extends Thread {
                 }
 
                 if (!commitmentsHandler.prepareCommitments()) {
+                    logger.debug("Commitments are not prepared");
                     continue;
                 }
 
                 if (correctBlindedSharesSize == -1) {
                     correctBlindedSharesSize = selectCorrectKey(blindedSharesSize);
+                    logger.debug("Correct blinded shares size is {}", correctBlindedSharesSize);
                 }
 
                 if (commonStateStream != null && correctBlindedSharesSize != -1) {
@@ -183,6 +188,9 @@ public abstract class BlindedStateHandler extends Thread {
                     logger.info("Took {} ms to reconstruct state", totalTime);
                     reconstructionListener.onReconstructionCompleted(reconstructedState);
                     break;
+                } else {
+                    logger.debug("CommonStateStream={} | correctBlindedSharesSize={}",
+                            commonStateStream == null ? "null" : "not null", correctBlindedSharesSize);
                 }
 
             } catch (InterruptedException | IOException | ClassNotFoundException e) {
@@ -250,7 +258,7 @@ public abstract class BlindedStateHandler extends Thread {
     }
 
     private ConfidentialSnapshot reconstructSnapshot(Iterator<VerifiableShare> reconstructedShares) throws IOException {
-        logger.info("Reconstructing snapshot");
+        logger.debug("Reconstructing snapshot");
         int plainDataSize = commonStateStream.readInt();
         byte[] plainData = null;
         if (plainDataSize > -1) {
@@ -270,7 +278,7 @@ public abstract class BlindedStateHandler extends Thread {
     }
 
     private CommandsInfo[] reconstructLog(int logSize, Iterator<VerifiableShare> reconstructedShares) throws IOException {
-        logger.info("Reconstructing log");
+        logger.debug("Reconstructing log");
         CommandsInfo[] log = new CommandsInfo[logSize];
         for (int i = 0; i < logSize; i++) {
             MessageContext[] msgCtx = deserializeMessageContext(commonStateStream);
@@ -325,18 +333,18 @@ public abstract class BlindedStateHandler extends Thread {
     }
 
     private boolean haveCorrectState(byte[] selectedState, Map<Integer, Integer> states,
-                                       int selectedStateHash) {
+                                     int selectedStateHash) {
         if (selectedState == null)
             return false;
         Optional<Map.Entry<Integer, Integer>> max = states.entrySet().stream()
                 .max(Comparator.comparingInt(Map.Entry::getValue));
         if (!max.isPresent()) {
-            logger.info("I don't have correct common state");
+            logger.debug("I don't have correct common state");
             return false;
         }
         Map.Entry<Integer, Integer> entry = max.get();
         if (entry.getValue() <= f) {
-            logger.info("I don't have correct common state");
+            logger.debug("I don't have correct common state");
             return false;
         }
 

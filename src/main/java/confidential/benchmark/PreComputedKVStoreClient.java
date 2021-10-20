@@ -64,8 +64,8 @@ public class PreComputedKVStoreClient {
             for (int i = 0; i < numClients; i++) {
                 int sleepTime = random.nextInt(50);
                 Thread.sleep(sleepTime);
-                PreComputedProxy proxy = new PreComputedProxy(initialId + i, unorderedCommonData,
-                        orderedCommonData, privateData);
+                PreComputedProxy proxy = new PreComputedProxy(initialId + i);
+                proxy.setPreComputedValues(data, plainWriteData, plainReadData, shares, orderedCommonData, privateData, unorderedCommonData);
                 clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
                         plainReadData, data, write, measurementLeader);
             }

@@ -72,6 +72,12 @@ public abstract class CobraConfidentialityScheme {
         return isLinearCommitmentScheme;
     }
 
+    public void addShareholder(int newServer, BigInteger shareholderId) throws SecretSharingException {
+        vss.addShareholder(shareholderId);
+        serverToShareholder.put(newServer, shareholderId);
+        shareholderToServer.put(shareholderId, newServer);
+    }
+
     public CommitmentScheme getCommitmentScheme() {
         return vss.getCommitmentScheme();
     }

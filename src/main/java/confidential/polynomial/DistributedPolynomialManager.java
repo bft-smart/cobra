@@ -1,6 +1,7 @@
 package confidential.polynomial;
 
 import confidential.polynomial.creator.ViewStatus;
+import confidential.server.ServerConfidentialityScheme;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.secretsharing.VerifiableShare;
@@ -37,24 +38,28 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         distributedPolynomial.registerCreationListener(this, PolynomialCreationReason.RESHARING);
     }
 
-    public int createRecoveryPolynomialsFor(BigInteger shareholder, int f, int[] members,
+    public int createRecoveryPolynomialsFor(int server, BigInteger shareholderId, int f, int[] members,
                                             int nPolynomials) {
         lock.lock();
         int internalId = internalSequenceNumber;
         PolynomialContext context = new PolynomialContext(
                 f,
-                shareholder,
+                shareholderId,
                 BigInteger.ZERO,
                 members
         );
         logger.info("Starting creation of {} polynomial(s) with id {} to recover {}", nPolynomials,
-                internalId, shareholder);
+                internalId, shareholderId);
         int nExecutions = (int)Math.ceil((double) nPolynomials / (f + 1));
         logger.info("Executing polynomial generation protocol {} times to generate {} polynomial(s)",
                 nExecutions, nPolynomials);
+
         for (int i = 0; i < nExecutions; i++) {
             int id = internalSequenceNumber++;
             int leader = members[id % members.length];
+            if (leader == server) {
+                leader = (leader + 1) % members.length;
+            }
             PolynomialCreationContext creationContext = new PolynomialCreationContext(
                     id,
                     internalId,
@@ -156,8 +161,8 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
     public void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
                                             VerifiableShare[][] points) {
         lock.lock();
-        logger.debug("Created new {} polynomial(s) with id {}", points[0].length, context.getId());
 
+        logger.debug("Created new {} polynomial(s) with id {}", points[0].length, context.getId());
         if (context.getReason() == PolynomialCreationReason.RESHARING) {
             ResharingPolynomialContext polynomialContext = resharingPolynomialContexts.get(context.getInternalId());
             if (polynomialContext == null) {

@@ -2,7 +2,8 @@ package confidential;
 
 public enum  MessageType {
     CLIENT,
-    APPLICATION;
+    APPLICATION,
+    RECONFIGURATION;
 
     public static MessageType[] values = values();
 

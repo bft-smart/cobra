@@ -13,10 +13,7 @@ import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
 
 /**
  * @author Robin
@@ -25,13 +22,16 @@ public class PreComputedEncryptedServersResponseHandler extends ServersResponseH
     private final Map<byte[], EncryptedConfidentialMessage> responses;
     private final Map<EncryptedConfidentialMessage, Integer> responseHashes;
     private final int clientId;
-    private final boolean preComputed;
+    private boolean preComputed;
 
-    public PreComputedEncryptedServersResponseHandler(int clientId, boolean preComputed) {
+    public PreComputedEncryptedServersResponseHandler(int clientId) {
         this.clientId = clientId;
-        this.preComputed = preComputed;
         responses = new HashMap<>();
         responseHashes = new HashMap<>();
+    }
+
+    public void setPreComputed(boolean preComputed) {
+        this.preComputed = preComputed;
     }
 
     @Override
@@ -130,6 +130,8 @@ public class PreComputedEncryptedServersResponseHandler extends ServersResponseH
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
+        if (Arrays.equals(o1, o2))
+            return 0;
         EncryptedConfidentialMessage response1 = responses.computeIfAbsent(o1,
                 EncryptedConfidentialMessage::deserialize);
         EncryptedConfidentialMessage response2 = responses.computeIfAbsent(o2, EncryptedConfidentialMessage::deserialize);

@@ -42,29 +42,31 @@ ssh.settings {
     fileTransfer = 'scp'
 }
 
-task localDeploy {
-    int[] replicas = new int[]{0, 1, 2, 3}
-    int[] clients = new int[]{0}
-    dependsOn(clean, installDist)
-    String dst = System.getProperty("user.home") + System.getProperty("file.separator") +
-            "Desktop" + System.getProperty("file.separator") +
-            project.name + System.getProperty("file.separator")
+task localDeploy(dependsOn: installDist) {
+    doLast {
+        int[] replicas = new int[]{0, 1, 2, 3, 4, 5}
+        int[] clients = new int[]{0, 1}
 
-    println ("Deploying project into ${dst}")
+        String dst = System.getProperty("user.home") + System.getProperty("file.separator") +
+                "Desktop" + System.getProperty("file.separator") +
+                project.name + System.getProperty("file.separator")
 
-    replicas.each {
-        def target = dst + System.getProperty("file.separator") + "rep${it}"
-        copy {
-            from "build/install/${project.name}"
-            into target
+        println ("Deploying project into ${dst}")
+
+        replicas.each {
+            def target = dst + System.getProperty("file.separator") + "rep${it}"
+            copy {
+                from "build/install/${project.name}"
+                into target
+            }
         }
-    }
 
-    clients.each {
-        def target = dst + System.getProperty("file.separator") + "cli${it}"
-        copy {
-            from "build/install/${project.name}"
-            into target
+        clients.each {
+            def target = dst + System.getProperty("file.separator") + "cli${it}"
+            copy {
+                from "build/install/${project.name}"
+                into target
+            }
         }
     }
 }
@@ -102,4 +104,7 @@ dependencies {
 
     // https://mvnrepository.com/artifact/org.slf4j/slf4j-api
     implementation 'org.slf4j:slf4j-api:1.7.32'
+
+    // https://mvnrepository.com/artifact/com.google.code.gson/gson
+    implementation 'com.google.code.gson:gson:2.8.8'
 }

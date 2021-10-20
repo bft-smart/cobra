@@ -195,10 +195,10 @@ public class BlindedDataReceiver extends Thread {
 
                     elapsedTotal = elapsedCommonState + elapsedCommitments + elapsedBlindedShares;
 
-                    logger.info("Took {} ms to receive common state from {}", elapsedCommonState / 1_000_000.0, pid);
-                    logger.info("Took {} ms to receive commitments from {}", elapsedCommitments / 1_000_000.0, pid);
-                    logger.info("Took {} ms to receive blinded shares from {}", elapsedBlindedShares / 1_000_000.0, pid);
-                    logger.info("Took {} ms to receive state from {} (total)", elapsedTotal / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive common state from {}", elapsedCommonState / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive commitments from {}", elapsedCommitments / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive blinded shares from {}", elapsedBlindedShares / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive state from {} (total)", elapsedTotal / 1_000_000.0, pid);
                     blindedStateHandler.deliverBlindedData(pid, shares, commonState, commonStateHash,
                             commitments, commitmentsHash);
                     if (pid == stateSenderReplica)

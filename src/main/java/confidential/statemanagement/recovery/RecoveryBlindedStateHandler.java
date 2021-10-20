@@ -100,6 +100,9 @@ public class RecoveryBlindedStateHandler extends BlindedStateHandler {
             int corruptedServers = this.corruptedServers.get();
             Share[] recoveringShares = new Share[f + (corruptedServers < f ? 2 : 1)];
             int j = 0;
+            if (blindedShares.size() < recoveringShares.length)
+                throw new SecretSharingException("Not enough blinded shares to recovery a share ("
+                        + blindedShares.size() + " < " + recoveringShares.length + ")");
             for (Map.Entry<Integer, Share> entry : blindedShares.entrySet()) {
                 Share share = entry.getValue();
                 if (j < recoveringShares.length) {

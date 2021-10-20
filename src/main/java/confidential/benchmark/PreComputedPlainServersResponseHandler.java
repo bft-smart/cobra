@@ -12,10 +12,7 @@ import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.LinkedList;
-import java.util.Map;
+import java.util.*;
 
 /**
  * @author Robin
@@ -23,12 +20,15 @@ import java.util.Map;
 public class PreComputedPlainServersResponseHandler extends ServersResponseHandler {
     private final Map<byte[], ConfidentialMessage> responses;
     private final Map<ConfidentialMessage, Integer> responseHashes;
-    private final boolean preComputed;
+    private boolean preComputed;
 
-    public PreComputedPlainServersResponseHandler(boolean preComputed) {
-        this.preComputed = preComputed;
+    public PreComputedPlainServersResponseHandler() {
         responses = new HashMap<>();
         responseHashes = new HashMap<>();
+    }
+
+    public void setPreComputed(boolean preComputed) {
+        this.preComputed = preComputed;
     }
 
     @Override
@@ -121,6 +121,8 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
+        if (Arrays.equals(o1, o2))
+            return 0;
         ConfidentialMessage response1 = responses.computeIfAbsent(o1,
                 ConfidentialMessage::deserialize);
         ConfidentialMessage response2 = responses.computeIfAbsent(o2, ConfidentialMessage::deserialize);
