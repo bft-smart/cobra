@@ -108,6 +108,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                     BigInteger refreshedShare = blindedSecret.subtract(refreshShare.getShare().getShare()).mod(field);
                     Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
                             refreshShare.getCommitments());
+
                     vs.setCommitments(refreshedShareCommitment);
                     vs.getShare().setShare(refreshedShare);
                     vs.getShare().setShareholder(shareholderId);
@@ -154,6 +155,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
             Commitment verificationCommitments = commitmentScheme.combineCommitments(blindedCommitments);
 
             if (polynomial.getDegree() != f) {
+                logger.warn("Using commitments to check shares");
                 recoveringShares = new Share[f + 1];
                 validCommitments = new HashMap<>(f);
                 j = 0;
@@ -178,9 +180,9 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                     blindedShares.remove(server);
                 }
 
-                blindedSecretNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
+                blindedSecretNumber = interpolationStrategy.interpolateAt(BigInteger.ZERO, recoveringShares);
             } else {
-                blindedSecretNumber = polynomial.evaluateAt(shareholderId);
+                blindedSecretNumber = polynomial.evaluateAt(BigInteger.ZERO);
                 int minNumberOfCommitments = corruptedServers >= f ? f : f + 1;
                 validCommitments = new HashMap<>(minNumberOfCommitments);
 
@@ -194,7 +196,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
 
             Commitment commitment;
             try {
-                commitment = commitmentScheme.recoverCommitment(shareholderId, validCommitments);
+                commitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
             } catch (SecretSharingException e) { //there is/are invalid witness(es)
                 validCommitments.clear();
                 for (Map.Entry<Integer, Share> entry : blindedShares.entrySet()) {
@@ -211,7 +213,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                         this.corruptedServers.incrementAndGet();
                     }
                 }
-                commitment = commitmentScheme.recoverCommitment(shareholderId, validCommitments);
+                commitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
             }
             Share share = new Share(BigInteger.ZERO, blindedSecretNumber);
             return new VerifiableShare(share, commitment, null);

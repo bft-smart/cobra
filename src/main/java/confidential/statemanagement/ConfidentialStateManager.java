@@ -484,7 +484,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         int stateSenderReplica = group[consensusId % group.length];
         logger.info("Replica {} will send full reshared state", stateSenderReplica);
         int f = reconfigurationParameters.getOldF();
-        int quorum = group.length - reconfigurationParameters.getOldF();
+        int quorum = 2 * reconfigurationParameters.getOldF() + 1;
         resharingStateHandler = new ResharingBlindedStateHandler(
                 SVController,
                 SERVER_STATE_LISTENING_PORT,
