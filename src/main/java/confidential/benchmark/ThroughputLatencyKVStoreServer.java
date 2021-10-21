@@ -25,13 +25,14 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
     private double maxThroughput;
 
     public static void main(String[] args) throws NumberFormatException {
-        boolean measurementLeader = args.length != 1 && Boolean.parseBoolean(args[1]);
-        new ThroughputLatencyKVStoreServer(Integer.parseInt(args[0]), measurementLeader);
+        if (args.length != 1) {
+            System.out.println("USAGE: confidential.benchmark.ThroughputLatencyKVStoreServer <server id>");
+            System.exit(-1);
+        }
+        new ThroughputLatencyKVStoreServer(Integer.parseInt(args[0]));
     }
 
-    ThroughputLatencyKVStoreServer(int processId, boolean measurementLeader) {
-        if (measurementLeader)
-            System.out.println("I'm measurement leader");
+    ThroughputLatencyKVStoreServer(int processId) {
         map = new TreeMap<>();
         senders = new HashSet<>(1000);
         new ConfidentialServerFacade(processId, this);

@@ -144,7 +144,7 @@ public abstract class BlindedStateSender extends Thread {
                 logger.error("Blinded shares are null. Exiting blinded state sender thread.");
                 return;
             }
-            logger.info("Took {} ms to compute blinded state", total);
+            logger.info("Took {} ms to compute blinded shares [{} shares]", total, blindedShares.getShare().length);
 
             for (BlindedDataSender stateSender : stateSenders) {
                 stateSender.setBlindedShares(blindedShares);

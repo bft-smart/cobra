@@ -227,7 +227,7 @@ public abstract class BlindedStateHandler extends Thread {
             return null;
         }
         double duration = (t2 - t1) / 1_000_000.0;
-        logger.info("Took {} ms to reconstruct {} shares", duration, correctBlindedSharesSize);
+        logger.info("Took {} ms to reconstruct shares [{} shares]", duration, correctBlindedSharesSize);
 
         int lastCheckPointCID = commonStateStream.readInt();
         int lastCID = commonStateStream.readInt();
