@@ -162,11 +162,14 @@ public abstract class BlindedStateHandler extends Thread {
                         commonStateStream = new ObjectInputStream(new ByteArrayInputStream(selectedCommonState));
                     } else {
                         logger.debug("I don't have enough same common states");
+                        waitingBlindedDataCondition.await();
+                        continue;
                     }
                 }
 
                 if (!commitmentsHandler.prepareCommitments()) {
                     logger.debug("Commitments are not prepared");
+                    waitingBlindedDataCondition.await();
                     continue;
                 }
 

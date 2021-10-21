@@ -14,7 +14,6 @@ public class LinearCommitmentHandler implements BlindedCommitmentHandler {
     private final int stateSenderReplica;
     private Commitment[] selectedCommitments;
     private int selectedCommitmentHash;
-    private int index;
 
     public LinearCommitmentHandler(int f, int quorum, int stateSenderReplica) {
         this.f = f;
@@ -43,7 +42,7 @@ public class LinearCommitmentHandler implements BlindedCommitmentHandler {
         if (haveCorrectState(commitmentsHashCode, selectedCommitmentHash)) {
             return true;
         } else {
-            logger.info("I don't have enough same commitments");
+            logger.debug("I don't have enough same commitments");
             return false;
         }
     }
@@ -62,12 +61,10 @@ public class LinearCommitmentHandler implements BlindedCommitmentHandler {
         Optional<Map.Entry<Integer, Integer>> max = states.entrySet().stream()
                 .max(Comparator.comparingInt(Map.Entry::getValue));
         if (!max.isPresent()) {
-            logger.info("I don't have correct common state");
             return false;
         }
         Map.Entry<Integer, Integer> entry = max.get();
         if (entry.getValue() <= f) {
-            logger.info("I don't have correct common state");
             return false;
         }
 
