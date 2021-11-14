@@ -4,7 +4,7 @@ plugins {
     id 'org.hidetake.ssh' version '2.10.1'
 }
 
-group 'org.example'
+group 'cobra'
 version '1.0'
 
 repositories {
@@ -32,9 +32,9 @@ distributions {
 
 remotes {
     master {
-        host = '192.168.10.100'
-        user = 'testbed'
-        password = 'root'
+        host = '<host ip>'
+        user = '<host user>'
+        password = '<host password>'
     }
 }
 
@@ -44,27 +44,27 @@ ssh.settings {
 
 task localDeploy(dependsOn: installDist) {
     doLast {
-        int[] replicas = new int[]{0, 1, 2, 3}
-        int[] clients = new int[]{0}
+        int nServers = 4
+        int nClients = 1
 
-        String dst = System.getProperty("user.home") + System.getProperty("file.separator") +
-                "Desktop" + System.getProperty("file.separator") +
-                project.name + System.getProperty("file.separator")
+        def fileSeparator = System.getProperty("file.separator")
+        def src = project.buildDir.name + fileSeparator + "install" + fileSeparator + project.name
+        def workingDirectory = project.buildDir.name + fileSeparator + "local" + fileSeparator
 
-        println ("Deploying project into ${dst}")
+        println ("Deploying project into ${workingDirectory}")
 
-        replicas.each {
-            def target = dst + System.getProperty("file.separator") + "rep${it}"
+        for (i in 0..<nServers) {
+            def target = workingDirectory + "rep${i}"
             copy {
-                from "build/install/${project.name}"
+                from src
                 into target
             }
         }
 
-        clients.each {
-            def target = dst + System.getProperty("file.separator") + "cli${it}"
+        for (i in 0..<nClients) {
+            def target = workingDirectory + "cli${i}"
             copy {
-                from "build/install/${project.name}"
+                from src
                 into target
             }
         }
@@ -73,9 +73,12 @@ task localDeploy(dependsOn: installDist) {
 
 task remoteDeploy(dependsOn: installDist) {
     doLast {
+        def fileSeparator = System.getProperty("file.separator")
+        def src = project.buildDir.name + fileSeparator + "install" + fileSeparator + project.name
+        def target = '~/'
         ssh.run {
             session(remotes.master) {
-                put from: "build/install/${project.name}", into: '~/'
+                put from: src, into: target
             }
         }
     }
