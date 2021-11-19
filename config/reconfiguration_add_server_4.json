@@ -1,0 +1,13 @@
+{
+  "add_servers": [
+    {
+      "id": 4,
+      "ip": "127.0.0.1",
+      "port": 11040,
+      "portRR": 11041
+    }
+  ],
+  "remove_servers": [
+
+  ]
+}

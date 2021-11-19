@@ -1,12 +1,10 @@
 package confidential.statemanagement.recovery;
 
 import bftsmart.reconfiguration.ServerViewController;
-import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import confidential.Configuration;
 import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.privatestate.sender.BlindedShares;
 import confidential.statemanagement.privatestate.sender.BlindedStateSender;
-import confidential.statemanagement.privatestate.sender.StateSeparationListener;
 import vss.commitment.Commitment;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
@@ -20,12 +18,12 @@ import java.util.concurrent.Executors;
 
 public class RecoveryBlindedStateSender extends BlindedStateSender {
 
-    public RecoveryBlindedStateSender(ServerViewController svController, DefaultApplicationState applicationState,
-                                      int blindedStateReceiverPort, ServerConfidentialityScheme confidentialityScheme,
-                                      boolean iAmStateSender, StateSeparationListener stateSeparationListener,
+    public RecoveryBlindedStateSender(ServerViewController svController, byte[] commonState, LinkedList<Share> shares,
+                                      LinkedList<Commitment> commitments, int blindedStateReceiverPort,
+                                      ServerConfidentialityScheme confidentialityScheme, boolean iAmStateSender,
                                       int... blindedStateReceivers) {
-        super(svController, applicationState, blindedStateReceiverPort, confidentialityScheme, iAmStateSender,
-                stateSeparationListener, blindedStateReceivers);
+        super(svController, commonState, shares, commitments, blindedStateReceiverPort, confidentialityScheme, iAmStateSender,
+                blindedStateReceivers);
     }
 
     @Override

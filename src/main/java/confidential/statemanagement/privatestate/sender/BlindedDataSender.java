@@ -83,8 +83,10 @@ public class BlindedDataSender extends Thread {
                     logger.debug("Retrying to connect with {}:{}", receiverServersIp, receiverServerPort);
                 }
             }
-            if (!connection.isConnected())
+            if (connection == null || !connection.isConnected()) {
+                logger.warn("I could not connect to {}:{}", receiverServersIp, receiverServerPort);
                 return;
+            }
             try (ObjectOutput out = new ObjectOutputStream(connection.getOutputStream())) {
                 connection.setKeepAlive(true);
                 connection.setTcpNoDelay(true);

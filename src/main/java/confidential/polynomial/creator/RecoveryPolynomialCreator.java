@@ -72,7 +72,7 @@ public class RecoveryPolynomialCreator extends PolynomialCreator {
     }
 
     @Override
-    boolean validateProposal(ProposalMessage proposalMessage) {
+    synchronized boolean validateProposal(ProposalMessage proposalMessage) {
         int proposalSender = proposalMessage.getSender();
         Proposal[] proposals = proposalMessage.getProposals();
         PolynomialContext[] contexts = creationContext.getContexts();
