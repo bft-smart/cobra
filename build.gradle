@@ -11,6 +11,11 @@ repositories {
     mavenCentral()
 }
 
+compileJava {
+    sourceCompatibility = 8
+    targetCompatibility = 8
+}
+
 distributions {
     main {
         contents {
@@ -32,9 +37,10 @@ distributions {
 
 remotes {
     master {
-        host = '<host ip>'
-        user = '<host user>'
-        password = '<host password>'
+        host = '194.117.20.195'
+        user = 'rvassantlal'
+        //password = '<host password>'
+        identity = new File('C:\\Users\\robin\\.ssh\\id_rsa')
     }
 }
 
@@ -44,7 +50,7 @@ ssh.settings {
 
 task localDeploy(dependsOn: installDist) {
     doLast {
-        int nServers = 4
+        int nServers = 10
         int nClients = 1
 
         def fileSeparator = System.getProperty("file.separator")
@@ -55,6 +61,10 @@ task localDeploy(dependsOn: installDist) {
 
         for (i in 0..<nServers) {
             def target = workingDirectory + "rep${i}"
+            file( target ).list().each{
+                f ->
+                    delete "${target}/${f}"
+            }
             copy {
                 from src
                 into target
@@ -63,6 +73,10 @@ task localDeploy(dependsOn: installDist) {
 
         for (i in 0..<nClients) {
             def target = workingDirectory + "cli${i}"
+            file( target ).list().each{
+                f ->
+                    delete "${target}/${f}"
+            }
             copy {
                 from src
                 into target

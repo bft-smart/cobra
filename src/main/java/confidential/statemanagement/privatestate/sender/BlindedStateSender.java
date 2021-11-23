@@ -53,6 +53,7 @@ public abstract class BlindedStateSender extends Thread {
     @Override
     public void interrupt() {
         for (BlindedDataSender stateSender : stateSenders) {
+            stateSender.shutdown();
             stateSender.interrupt();
         }
         super.interrupt();

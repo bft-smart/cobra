@@ -1,6 +1,7 @@
 package confidential.statemanagement;
 
 import bftsmart.statemanagement.SMMessage;
+import bftsmart.tom.util.TOMUtil;
 
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -18,9 +19,9 @@ public class PolynomialRecovery extends SMMessage {
 
 	public PolynomialRecovery() {}
 
-	public PolynomialRecovery(int id, int sender, int type, int stateSenderReplica, int serverPort, int[] polynomialInitialIds,
+	public PolynomialRecovery(int id, int sender, int stateSenderReplica, int serverPort, int[] polynomialInitialIds,
 							  int[] nPolynomialsPerId) {
-		super(sender, -1, type, null, null, -1, -1);
+		super(sender, -1, TOMUtil.SM_REQUEST, null, null, -1, -1);
 		this.id = id;
 		this.stateSenderReplica = stateSenderReplica;
 		this.serverPort = serverPort;

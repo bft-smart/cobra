@@ -27,6 +27,7 @@ public class BlindedDataReceiver extends Thread {
     private final int serverPort;
     private final int quorum;
     private final int stateSenderReplica;
+    private ServerSocket serverSocket;
 
     public BlindedDataReceiver(BlindedStateHandler blindedStateHandler, ServerViewController svController,
                                int serverPort, int quorum, int stateSenderReplica) throws IOException {
@@ -45,16 +46,27 @@ public class BlindedDataReceiver extends Thread {
         }
     }
 
+    public void shutdown() {
+        try {
+            if (serverSocket != null && serverSocket.isBound())
+                serverSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void run() {
         boolean usingLinearScheme = Configuration.getInstance().getVssScheme().equals("1");
+
         try (ServerSocket serverSocket = new ServerSocket()) {
+            this.serverSocket = serverSocket;
             String myIp = svController.getStaticConf()
                     .getLocalAddress(svController.getStaticConf().getProcessId())
                     .getAddress().getHostAddress();
             serverSocket.bind(new InetSocketAddress(myIp, serverPort));
-            logger.debug("Listening for blinded data on {}:{}",
-                    serverSocket.getInetAddress().getHostAddress(), serverSocket.getLocalPort());
+            logger.debug("Listening for blinded data on {}:{} {}",
+                    serverSocket.getInetAddress().getHostAddress(), serverSocket.getLocalPort(), this.getId());
             int nReceivedStates = 0;
             boolean receivedFullState = false;
             while (nReceivedStates < quorum || !receivedFullState) {
@@ -65,7 +77,7 @@ public class BlindedDataReceiver extends Thread {
 
                     String clientIp = client.getInetAddress().getHostAddress();
                     if (!knownServerIps.contains(clientIp)) {
-                        logger.debug("Received connection from unknown server with ip {}", clientIp);
+                        logger.warn("Received connection from unknown server with ip {}", clientIp);
                         continue;
                     }
 
@@ -209,6 +221,10 @@ public class BlindedDataReceiver extends Thread {
                 } catch (ClassNotFoundException e) {
                     logger.error("Failed to read commitments.", e);
                 } catch (IOException e) {
+                    if (serverSocket.isClosed()) {
+                        logger.debug("Blinded data receiver server is closed");
+                        break;
+                    }
                     logger.error("Failed to receive data", e);
                 }
             }

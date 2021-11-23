@@ -10,6 +10,7 @@ import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.TOMUtil;
 import confidential.Configuration;
 import confidential.Utils;
+import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.*;
 import confidential.reconfiguration.ReconfigurationParameters;
 import confidential.server.ServerConfidentialityScheme;
@@ -24,9 +25,16 @@ import confidential.statemanagement.resharing.ResharingBlindedStateSender;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentScheme;
 import vss.secretsharing.Share;
 import vss.secretsharing.VerifiableShare;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.math.BigInteger;
+import java.net.InetSocketAddress;
+import java.security.PublicKey;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
@@ -43,7 +51,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     private Timer stateTimer;
     private long timeout = INIT_TIMEOUT;
     private final ReentrantLock lockTimer;
-    private final Map<Integer, SMMessage> onGoingRecoveryRequests;
+    private final Map<Integer, SMMessage> ongoingRecoveryRequests;
+    private final Map<Integer, PolynomialRecovery> pendingRecoveryRequests;
     private final HashMap<Integer, Integer> sequenceNumbers;
     private final Timer refreshTimer;
     private TimerTask refreshTriggerTask;
@@ -51,14 +60,17 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     private long renewalStartTime;
     private final Set<Integer> usedReplicas;
     private boolean isRefreshing;
+    private RecoveryBlindedStateHandler recoveryBlindedStateHandler;
     private RecoveryBlindedStateSender recoveryStateSender;
     private ResharingBlindedStateSender resharingStateSender;
     private ReconfigurationParameters reconfigurationParameters;
     private final PolynomialStorage resharingNewGroupPoints;
+    private int processId;
 
     public ConfidentialStateManager() {
         lockTimer = new ReentrantLock();
-        onGoingRecoveryRequests = new ConcurrentHashMap<>();
+        ongoingRecoveryRequests = new ConcurrentHashMap<>();
+        pendingRecoveryRequests = new ConcurrentHashMap<>();
         sequenceNumbers = new HashMap<>();
         refreshTimer = new Timer("Refresh Timer");
         usedReplicas = new HashSet<>();
@@ -85,10 +97,13 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     @Override
     public void init(TOMLayer tomLayer, DeliveryThread dt) {
         super.init(tomLayer, dt);
+        processId = tomLayer.controller.getStaticConf().getProcessId();
         tomLayer.requestsTimer.Enabled(false);
     }
 
     private int getRandomReplica() {
+        if (true)
+            return 3;
         int[] processes = SVController.getCurrentViewOtherAcceptors();
         Random rnd = new Random();
         while (true) {
@@ -112,7 +127,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         int stateSenderReplica = getRandomReplica();
 
         DefaultSMMessage recoverySMMessage = new DefaultSMMessage(
-                SVController.getStaticConf().getProcessId(),
+                processId,
                 waitingCID,
                 TOMUtil.SM_REQUEST,
                 null,
@@ -128,9 +143,9 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         int quorum = SVController.getCurrentViewN() - f;
         logger.info("Starting recovery state handler");
         StateReceivedListener stateReceivedListener = (commonState, shares)
-                -> new COBRAStateCombiner(SVController.getStaticConf().getProcessId(),
+                -> new COBRAStateCombiner(processId,
                 commonState, shares, this).start();
-        new RecoveryBlindedStateHandler(
+        recoveryBlindedStateHandler = new RecoveryBlindedStateHandler(
                 SVController,
                 SERVER_RECOVERY_STATE_LISTENING_PORT,
                 f,
@@ -138,7 +153,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                 stateSenderReplica,
                 confidentialityScheme,
                 stateReceivedListener
-        ).start();
+        );
+        recoveryBlindedStateHandler.start();
 
         logger.info("Sending request for state up to CID {} to {}", waitingCID,
                 Arrays.toString(SVController.getCurrentViewOtherAcceptors()));
@@ -151,7 +167,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             public void run() {
                 logger.info("Timeout to retrieve state");
                 SMMessage message = new DefaultSMMessage(
-                        SVController.getStaticConf().getProcessId(),
+                        processId,
                         waitingCID,
                         TOMUtil.TRIGGER_SM_LOCALLY,
                         null,
@@ -210,59 +226,95 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             PolynomialRecovery request = (PolynomialRecovery)msg;
             VerifiableShare[] points = resharingNewGroupPoints.getPoints(request.getId());
             if (points == null) {
-                logger.info("I do not have points for new group");
+                logger.info("I do not have points for new group. Adding the request into the pending list.");
+                pendingRecoveryRequests.put(request.getId(), request);
             } else {
-                LinkedList<Share> shares = new LinkedList<>();
-                LinkedList<Commitment> commitments = new LinkedList<>();
-
-                int[] polynomialInitialIds = request.getPolynomialInitialIds();
-                int[] nPolynomialsPerId = request.getNPolynomialsPerId();
-
-                for (int i = 0; i < polynomialInitialIds.length; i++) {
-                    int initialId = polynomialInitialIds[i];
-                    int quantity = nPolynomialsPerId[i];
-                    for (int j = initialId; j < initialId + quantity; j++) {
-                        VerifiableShare point = points[j];
-                        shares.add(point.getShare());
-                        commitments.add(point.getCommitments());
-                    }
-                }
-
-                triggerRecoveryStateTransfer(msg, request.getStateSenderReplica(), request.getServerPort(),
-                        new byte[0], shares, commitments);
+                handlePolynomialRecoveryRequest(request, points);
             }
-        } else
-            logger.warn("Received unknown SM message type from {}", msg.getSender());
-    }
+        } else if (msg instanceof PolynomialAccusation) {
+            PolynomialAccusation accusation = (PolynomialAccusation) msg;
+            int accuser = accusation.getAccuser();
+            ProposalMessage[][] invalidProposals = accusation.getInvalidProposals();
+            BigInteger[][][] invalidPoints = accusation.getInvalidPoints();
+            Set<Integer> faultyProcesses = new HashSet<>(SVController.getCurrentViewF());
+            for (int i = 0; i < invalidProposals.length; i++) {
+                for (ProposalMessage proposalMessage : invalidProposals[i]) {
+                    faultyProcesses.add(proposalMessage.getSender());
+                }
+                if (isInvalidAccusation(accuser, invalidProposals[i], invalidPoints[i])) {
+                    logger.warn("Accuser {} sent me an invalid accusation", accuser);
+                    System.exit(-1);
+                }
+            }
 
-    private void triggerRecoveryStateTransfer(SMMessage recoveryMessage, int fullStateSenderReplica, int serverPort,
-                                              byte[] commonState, LinkedList<Share> shares,
-                                              LinkedList<Commitment> commitments) {
-        boolean iAmStateSender =
-                fullStateSenderReplica == SVController.getStaticConf().getProcessId();
-        recoveryStateSender = new RecoveryBlindedStateSender(
-                SVController,
-                commonState,
-                shares,
-                commitments,
-                serverPort,
-                confidentialityScheme,
-                iAmStateSender,
-                recoveryMessage.getSender()
-        );
-        recoveryStateSender.start();
-        int id = distributedPolynomialManager.createRecoveryPolynomialsFor(
-                recoveryMessage.getSender(),
-                confidentialityScheme.getShareholder(recoveryMessage.getSender()),
-                SVController.getCurrentViewF(),
-                SVController.getCurrentViewAcceptors(),
-                shares.size()
-        );
-        onGoingRecoveryRequests.put(id, recoveryMessage);
+            if (recoveryStateSender != null) {
+                recoveryStateSender.interrupt();
+                recoveryStateSender = null;
+            }
+            logger.info("Received a valid polynomial accusation from {} of accuser {}", msg.getSender(),
+                    accuser);
+            removeFaultyProcesses(faultyProcesses);
+            PolynomialRecovery polynomialRecoveryRequest = accusation.getPolynomialRecoveryRequest();
+            if (polynomialRecoveryRequest != null /*&& processId != 1 /*&& processId != 4/* && processId != 5*/) {//TODO remove this
+                VerifiableShare[] points = resharingNewGroupPoints.getPoints(polynomialRecoveryRequest.getId());
+                if (points == null) {
+                    logger.info("I do not have points for new group. Adding the request into the pending list.");
+                    pendingRecoveryRequests.put(polynomialRecoveryRequest.getId(), polynomialRecoveryRequest);
+                } else {
+                    handlePolynomialRecoveryRequest(polynomialRecoveryRequest, points);
+                }
+            }
+        } else {
+            logger.warn("Received unknown SM message type from {}", msg.getSender());
+        }
     }
 
     @Override
     public void SMReplyDeliver(SMMessage msg, boolean isBFT) {
+        if (msg instanceof PolynomialAccusation) {
+            PolynomialAccusation accusation = (PolynomialAccusation)msg;
+            int accuser = accusation.getAccuser();
+            ProposalMessage[][] invalidProposals = accusation.getInvalidProposals();
+            BigInteger[][][] invalidPoints = accusation.getInvalidPoints();
+            Set<Integer> faultyProcesses = new HashSet<>(SVController.getCurrentViewF());
+            for (int i = 0; i < invalidProposals.length; i++) {
+                for (ProposalMessage proposalMessage : invalidProposals[i]) {
+                    faultyProcesses.add(proposalMessage.getSender());
+                }
+                if (isInvalidAccusation(accuser, invalidProposals[i], invalidPoints[i])) {
+                    logger.warn("Accuser {} sent me an invalid accusation", accuser);
+                    System.exit(-1);
+                }
+            }
+            logger.info("Accusation from {} is valid", accuser);
+            recoveryBlindedStateHandler.interrupt();
+            recoveryBlindedStateHandler = null;
+            int[] sendAccusationTo = SVController.getCurrentViewOtherAcceptors();
+
+            PolynomialAccusation accusationForBroadcast;
+            PolynomialRecovery polynomialRecoveryRequest = null;
+            if (resharingStateHandler == null) {
+                accusationForBroadcast = new PolynomialAccusation(processId, TOMUtil.SM_REQUEST, invalidProposals,
+                        invalidPoints, accuser);
+            } else {
+                logger.info("Restarting polynomial recovery");
+                polynomialRecoveryRequest = createPolynomialRecoveryRequest(failedResharingPolynomialContext);
+                accusationForBroadcast = new PolynomialAccusation(processId, TOMUtil.SM_REQUEST, invalidProposals,
+                        invalidPoints, accuser, polynomialRecoveryRequest);
+            }
+            logger.info("Broadcasting accusation to {}", Arrays.toString(sendAccusationTo));
+            tomLayer.getCommunication().send(sendAccusationTo, accusationForBroadcast);
+
+            removeFaultyProcesses(faultyProcesses);
+
+            if (resharingStateHandler == null) {
+                logger.info("Restarting recovery");
+                requestState();
+            } else if (polynomialRecoveryRequest != null){
+                startPolynomialRecovery(failedResharingPolynomialContext, polynomialRecoveryRequest);
+            }
+            return;
+        }
         try {
             lockTimer.lock();
             RecoveryStateServerSMMessage recoverySMMessage = (RecoveryStateServerSMMessage)msg;
@@ -288,23 +340,154 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         }
     }
 
+    private void removeFaultyProcesses(Set<Integer> faultyProcesses) {
+        int[] currentHonestProcesses = new int[SVController.getCurrentViewN() - faultyProcesses.size()];
+        InetSocketAddress[] socketAddresses = new InetSocketAddress[SVController.getCurrentViewN() - faultyProcesses.size()];
+        int index = 0;
+        for (int currentViewAcceptor : SVController.getCurrentViewAcceptors()) {
+            if (faultyProcesses.contains(currentViewAcceptor))
+                continue;
+            currentHonestProcesses[index] = currentViewAcceptor;
+            socketAddresses[index] = SVController.getStaticConf().getRemoteAddress(currentViewAcceptor);
+            index++;
+        }
+        logger.info("Remaining processes: {}", Arrays.toString(currentHonestProcesses));
+        logger.info("Faulty processes: {}", faultyProcesses);
+        SVController.reconfigureTo(new View(SVController.getCurrentViewId() + 1, currentHonestProcesses,
+                SVController.getCurrentViewF(), socketAddresses));
+
+        logger.info("Updating connections");
+        tomLayer.getCommunication().updateServersConnections();
+
+        for (int faultyProcess : faultyProcesses) {
+            if (processId == faultyProcess) {
+                logger.info("Shutting down");
+                tomLayer.shutdown();
+            }
+        }
+    }
+
+    private void handlePolynomialRecoveryRequest(PolynomialRecovery request, VerifiableShare[] points) {
+        LinkedList<Share> shares = new LinkedList<>();
+        LinkedList<Commitment> commitments = new LinkedList<>();
+
+        int[] polynomialInitialIds = request.getPolynomialInitialIds();
+        int[] nPolynomialsPerId = request.getNPolynomialsPerId();
+
+        for (int i = 0; i < polynomialInitialIds.length; i++) {
+            int initialId = polynomialInitialIds[i];
+            int quantity = nPolynomialsPerId[i];
+            for (int j = initialId; j < initialId + quantity; j++) {
+                VerifiableShare point = points[j];
+                shares.add(point.getShare());
+                commitments.add(point.getCommitments());
+            }
+        }
+
+        triggerRecoveryStateTransfer(request, request.getStateSenderReplica(), request.getServerPort(),
+                new byte[0], shares, commitments);
+    }
+
+    private void triggerRecoveryStateTransfer(SMMessage recoveryMessage, int fullStateSenderReplica, int serverPort,
+                                              byte[] commonState, LinkedList<Share> shares,
+                                              LinkedList<Commitment> commitments) {
+        logger.info("Triggering recovery state transfer");
+        boolean iAmStateSender =
+                fullStateSenderReplica == processId;
+        //if (processId != 1 /*&& processId != 4 /*&& processId != 5*/) {//TODO remove this
+            recoveryStateSender = new RecoveryBlindedStateSender(
+                    SVController,
+                    commonState,
+                    shares,
+                    commitments,
+                    serverPort,
+                    confidentialityScheme,
+                    iAmStateSender,
+                    recoveryMessage.getSender()
+            );
+            recoveryStateSender.start();
+        //}
+        int id = distributedPolynomialManager.createRecoveryPolynomialsFor(
+                recoveryMessage.getSender(),
+                confidentialityScheme.getShareholder(recoveryMessage.getSender()),
+                SVController.getCurrentViewF(),
+                SVController.getCurrentViewAcceptors(),
+                shares.size()
+        );
+        ongoingRecoveryRequests.put(id, recoveryMessage);
+    }
+
+    private boolean isInvalidAccusation(int accuser, ProposalMessage[] invalidProposals, BigInteger[][] invalidPoints) {
+        int nInvalidProposals = invalidProposals.length;
+        for (int i = 0; i < nInvalidProposals; i++) {
+            ProposalMessage invalidProposalMessage = invalidProposals[i];
+            BigInteger[] invalidPoint = invalidPoints[i];
+            Proposal[] proposals = invalidProposalMessage.getProposals();
+            //verify signature
+            byte[] cryptHash = computeCryptographicHash(invalidProposalMessage);
+            PublicKey signingPublicKey = confidentialityScheme.getSigningPublicKeyFor(invalidProposalMessage.getSender());
+            if (!TOMUtil.verifySignature(signingPublicKey, cryptHash, invalidProposalMessage.getSignature())) {
+                return true;
+            }
+            //compare encrypted point
+            for (int j = 0; j < invalidPoint.length; j++) {
+                byte[] encryptedPoint = confidentialityScheme.encryptDataFor(accuser,
+                        invalidPoint[i].toByteArray());
+                if (!Arrays.equals(encryptedPoint, proposals[i].getPoints().get(accuser)))
+                    return true;
+            }
+            //check the point
+            CommitmentScheme commitmentScheme = confidentialityScheme.getCommitmentScheme();
+            Share share = new Share();
+            share.setShareholder(confidentialityScheme.getShareholder(accuser));
+            Share propertyShare = new Share(confidentialityScheme.getShareholder(2), BigInteger.ZERO);//TODO correct this
+            for (int j = 0; j < proposals.length; j++) {
+                share.setShare(invalidPoint[i]);
+                Commitment commitments = proposals[i].getCommitments();
+                if (commitmentScheme.checkValidityWithoutPreComputation(share, commitments) &&
+                        commitmentScheme.checkValidityWithoutPreComputation(propertyShare, commitments))
+                    return true;
+            }
+        }
+
+        return false;
+    }
+
     @Override
     public void onRecoveryPolynomialsFailure(RecoveryPolynomialContext context) {
         int counter = (int) Arrays.stream(context.getPoints()).filter(Objects::isNull).count();
         logger.warn("Received {} invalid polynomials for recovery", counter);
+        int size = context.getInvalidPolynomialsContexts().size();
+        int[] ids = new int[size];
+        int[] nPolynomials = new int[size];
+        int index = 0;
+        ProposalMessage[][] invalidProposals = new ProposalMessage[context.getInvalidPolynomialsContexts().size()][];
+        BigInteger[][][] invalidPoints = new BigInteger[context.getInvalidPolynomialsContexts().size()][][];
+        for (Map.Entry<Integer, InvalidPolynomialContext> entry : context.getInvalidPolynomialsContexts().entrySet()) {
+            ids[index] = entry.getKey();
+            nPolynomials[index] = entry.getValue().getNInvalidPolynomials();
+            invalidProposals[index] = entry.getValue().getInvalidProposals();
+            invalidPoints[index] = entry.getValue().getInvalidPoints();
+            index++;
+        }
 
-
+        logger.debug("Invalid polynomial ids: {}", Arrays.toString(ids));
+        logger.debug("Number of invalid polynomials per id: {}", Arrays.toString(nPolynomials));
+        PolynomialAccusation accusation = new PolynomialAccusation(processId,
+                TOMUtil.SM_REPLY, invalidProposals, invalidPoints, processId);
+        SMMessage smMessage = ongoingRecoveryRequests.get(context.getInitialId());
+        logger.info("Sending accusation to {}", smMessage.getSender());
+        tomLayer.getCommunication().send(new int[]{smMessage.getSender()}, accusation);
     }
 
     @Override
     public void onRecoveryPolynomialsCreation(RecoveryPolynomialContext context) {
         logger.debug("Received {} polynomials for recovery", context.getNPolynomials());
-
-        if (onGoingRecoveryRequests.containsKey(context.getInitialId())) {
-            SMMessage recoveryMessage = onGoingRecoveryRequests.remove(context.getInitialId());
+        if (ongoingRecoveryRequests.containsKey(context.getInitialId())
+                /*&& processId != 1 /*&& processId != 4 /*&& processId != 5*/) {//TODO remove the last
+            SMMessage recoveryMessage = ongoingRecoveryRequests.remove(context.getInitialId());
             if (recoveryMessage instanceof DefaultSMMessage) {
                 RecoveryStateServerSMMessage response;
-                int processId = SVController.getStaticConf().getProcessId();
                 View currentView = SVController.getCurrentView();
                 int lastReg = tomLayer.getSynchronizer().getLCManager().getLastReg();
                 int leader = tomLayer.execManager.getCurrentLeader();
@@ -323,8 +506,10 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                 recoveryStateSender.setBlindingShares(context.getPoints());
                 recoveryStateSender = null;
             } else if (recoveryMessage instanceof PolynomialRecovery) {
-                recoveryStateSender.setBlindingShares(context.getPoints());
-                recoveryStateSender = null;
+                if (recoveryStateSender != null) {
+                    recoveryStateSender.setBlindingShares(context.getPoints());
+                    recoveryStateSender = null;
+                }
             }
         } else
             logger.debug("There is no recovery request for id {}", context.getInitialId());
@@ -339,7 +524,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             return;
         }
         dt.resumeDecisionDelivery();
-        boolean iAmStateSender = leader == SVController.getStaticConf().getProcessId();
+        boolean iAmStateSender = leader == processId;
 
         StateSeparationListener listener = (commonState, shares, commitments) -> {
             resharingStateSender = new ResharingBlindedStateSender(
@@ -366,19 +551,59 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         ).start();
     }
 
+    private ResharingPolynomialContext failedResharingPolynomialContext;
+
     @Override
     public void onResharingPolynomialsFailure(ResharingPolynomialContext context) {
+        failedResharingPolynomialContext = context;
         int[] newMembers = context.getNewMembers();
-        int processId = SVController.getStaticConf().getProcessId();
         if (!Utils.isIn(processId, newMembers)) {
             logger.warn("Received invalid polynomials for resharing but I am not in new view.");
             System.exit(0);
         }
-
         VerifiableShare[] pointsForNewGroup = context.getPointsForNewGroup();
         int counter = (int) Arrays.stream(pointsForNewGroup).filter(Objects::isNull).count();
         logger.warn("Received {} invalid polynomials for resharing", counter);
 
+        PolynomialRecovery request = createPolynomialRecoveryRequest(context);
+        startPolynomialRecovery(context, request);
+
+        logger.info("Sending polynomial recovery request to {}", Arrays.toString(SVController.getCurrentViewOtherAcceptors()));
+        tomLayer.getCommunication().send(SVController.getCurrentViewOtherAcceptors(), request);
+    }
+
+    private void startPolynomialRecovery(ResharingPolynomialContext context, PolynomialRecovery request) {
+        VerifiableShare[] pointsForNewGroup = context.getPointsForNewGroup();
+        int[] ids = request.getPolynomialInitialIds();
+        int f = SVController.getCurrentViewF();
+        int quorum =  f * 2 + 1;
+        StateReceivedListener stateReceivedListener = (commonState, shares) -> {
+            logger.info("------------>>>>>> Received recovered polynomial points");
+            Iterator<VerifiableShare> it = shares.iterator();
+            for (int id : ids) {
+                pointsForNewGroup[id] = it.next();
+            }
+
+            isRefreshing = true;
+            resharingStateSender.interrupt();
+            resharingStateSender = null;
+            resharingStateHandler.setRefreshShares(context.getPointsForNewGroup());
+            resharingNewGroupPoints.putPoints(context.getInitialId(), context.getPointsForNewGroup());
+        };
+        recoveryBlindedStateHandler = new RecoveryBlindedStateHandler(
+                SVController,
+                SERVER_RECOVERY_STATE_LISTENING_PORT,
+                f,
+                quorum,
+                3,
+                confidentialityScheme,
+                stateReceivedListener
+        );
+        recoveryBlindedStateHandler.start();
+    }
+
+    private PolynomialRecovery createPolynomialRecoveryRequest(ResharingPolynomialContext context) {
+        int stateSenderReplica = 3;
         int size = context.getInvalidPolynomialsContexts().size();
         int[] ids = new int[size];
         int[] nPolynomials = new int[size];
@@ -388,37 +613,12 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             nPolynomials[index] = entry.getValue().getNInvalidPolynomials();
             index++;
         }
-        logger.info("Invalid polynomial ids: {}", Arrays.toString(ids));
-        logger.info("Number of invalid polynomials per id: {}", Arrays.toString(nPolynomials));
-        int stateSenderReplica = getRandomReplica();
-        int f = SVController.getCurrentViewF();
-        int quorum = SVController.getCurrentViewN() - f;
-        StateReceivedListener stateReceivedListener = (commonState, shares) -> {
-            Iterator<VerifiableShare> it = shares.iterator();
-            for (int i = 0; i < ids.length; i++) {
-                pointsForNewGroup[ids[i]] = it.next();
-            }
+        logger.debug("Invalid polynomial ids: {}", Arrays.toString(ids));
+        logger.debug("Number of invalid polynomials per id: {}", Arrays.toString(nPolynomials));
+        logger.info("Replica {} will send full recovery polynomial state", stateSenderReplica);
 
-            isRefreshing = true;
-            resharingStateSender.interrupt();
-            resharingStateSender = null;
-            resharingStateHandler.setRefreshShares(context.getPointsForNewGroup());
-            resharingNewGroupPoints.putPoints(context.getMaxCID(), context.getPointsForNewGroup());
-        };
-        new RecoveryBlindedStateHandler(
-                SVController,
-                SERVER_RECOVERY_STATE_LISTENING_PORT,
-                f,
-                quorum,
-                stateSenderReplica,
-                confidentialityScheme,
-                stateReceivedListener
-        ).start();
-        PolynomialRecovery request = new PolynomialRecovery(context.getMaxCID(),
-                SVController.getStaticConf().getProcessId(), TOMUtil.SM_REQUEST, stateSenderReplica,
+        return new PolynomialRecovery(context.getInitialId(), processId, stateSenderReplica,
                 SERVER_RECOVERY_STATE_LISTENING_PORT, ids, nPolynomials);
-        logger.info("Sending polynomial recovery request to {}", Arrays.toString(context.getNewMembers()));
-        tomLayer.getCommunication().send(context.getNewMembers(), request);
     }
 
     @Override
@@ -431,13 +631,15 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         int[] newMembers = context.getNewMembers();
         logger.info("Old members: {}", Arrays.toString(oldMembers));
         logger.info("New members: {}", Arrays.toString(newMembers));
-        int processId = SVController.getStaticConf().getProcessId();
         if (Utils.isIn(processId, oldMembers)) {
-            resharingStateSender.setBlindingShares(context.getPointsForOldGroup());
+            //if (processId != 1 /*&& processId != 4 /*&& processId != 5*/) //TODO remove this if
+                resharingStateSender.setBlindingShares(context.getPointsForOldGroup());
         }
         if (Utils.isIn(processId, newMembers)) {
             resharingStateHandler.setRefreshShares(context.getPointsForNewGroup());
-            resharingNewGroupPoints.putPoints(context.getMaxCID(), context.getPointsForNewGroup());
+            resharingNewGroupPoints.putPoints(context.getInitialId(), context.getPointsForNewGroup());
+            if (pendingRecoveryRequests.containsKey(context.getInitialId()))
+                handlePolynomialRecoveryRequest(pendingRecoveryRequests.remove(context.getInitialId()), context.getPointsForNewGroup());
         }
     }
 
@@ -475,11 +677,11 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
 
             if (currentRegency == -1 || currentLeader == -1 || currentView == null || seqNumber == -1 ||
                     state == null) {
-                logger.info("Waiting for more states");
+                logger.debug("Waiting for more states");
                 return;
             }
 
-            logger.info("More than f states confirmed");
+            logger.debug("More than f states confirmed");
 
             if (stateTimer != null) {
                 stateTimer.cancel();
@@ -505,7 +707,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
 
             dt.deliverLock();
 
-            logger.info("Updating state");
+            logger.debug("Updating state");
             dt.update(state);
 
             logger.info("Last exec: {}", tomLayer.getLastExec());
@@ -568,6 +770,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         logger.info("Total renewal time: {} ms", totalTime);
         dt.resumeDecisionDelivery();
         isRefreshing = false;
+        resharingStateHandler.interrupt();
+        resharingStateHandler = null;
         resharingStateSender = null;
         if (Configuration.getInstance().isRenewalActive())
             setRefreshTimer();
@@ -607,12 +811,13 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             return;
         }
         int[] group = SVController.getCurrentViewAcceptors();
-        int stateSenderReplica = group[consensusId % group.length];
+        int stateSenderReplica = 0;//group[consensusId % group.length]; TODO uncomment this
         logger.info("Replica {} will send full reshared state", stateSenderReplica);
         int f = reconfigurationParameters.getOldF();
         int quorum = 2 * reconfigurationParameters.getOldF() + 1;
+        renewalStartTime = System.nanoTime();
         StateReceivedListener stateReceivedListener = (commonState, shares)
-                -> new COBRAStateCombiner(SVController.getStaticConf().getProcessId(),
+                -> new COBRAStateCombiner(processId,
                 commonState, shares, this).start();
         resharingStateHandler = new ResharingBlindedStateHandler(
                 SVController,
@@ -626,7 +831,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         );
         logger.info("Starting resharing state handler");
         resharingStateHandler.start();
-        startResharing(consensusId, stateSenderReplica, f, group,
+        //if (processId != 1 /*&& processId != 4 /*&& processId != 5*/)//TODO remove this if
+            startResharing(consensusId, stateSenderReplica, f, group,
                 reconfigurationParameters.getNewF(), group);
     }
 
@@ -636,7 +842,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         if (Configuration.getInstance().isRenewalActive())
             throw new UnsupportedOperationException("Send reconfiguration request from admin client for the same threshold to use refresh.");
         StateReceivedListener stateReceivedListener = (commonState, shares)
-                -> new COBRAStateCombiner(SVController.getStaticConf().getProcessId(),
+                -> new COBRAStateCombiner(processId,
                 commonState, shares, this).start();
         refreshTriggerTask = new TimerTask() {
             @Override
@@ -644,7 +850,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                 renewalStartTime = System.nanoTime();
                 int f = SVController.getCurrentViewF();
                 int[] currentGroup = SVController.getCurrentViewAcceptors();
-                int quorum = SVController.getCurrentViewN() - f;
+                int quorum = 2 * f + 1;
                 int leader = tomLayer.execManager.getCurrentLeader();
                 resharingStateHandler = new ResharingBlindedStateHandler(
                         SVController,
@@ -696,5 +902,33 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         if (max <= SVController.getCurrentViewF())
             return null;
         return result;
+    }
+
+    private byte[] computeCryptographicHash(ProposalMessage message) {
+        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+             ObjectOutputStream out = new ObjectOutputStream(bos)) {
+            out.writeInt(message.getSender());
+            out.writeInt(message.getId());
+            for (Proposal proposal : message.getProposals()) {
+                int[] members = new int[proposal.getPoints().size()];
+                int i = 0;
+                Map<Integer, byte[]> points = proposal.getPoints();
+                for (int member : points.keySet()) {
+                    members[i++] = member;
+                }
+                Arrays.sort(members);
+                for (int member : members) {
+                    out.write(member);
+                    out.write(points.get(member));
+                }
+                proposal.getCommitments().writeExternal(out);
+            }
+            out.flush();
+            bos.flush();
+            return TOMUtil.computeHash(bos.toByteArray());
+        } catch (IOException e) {
+            logger.error("Failed to create cryptographic hash of the proposal from {}", message.getSender(), e);
+            return null;
+        }
     }
 }

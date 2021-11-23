@@ -41,7 +41,7 @@ public class HashThread extends Thread {
             latch.await();
             return result;
         } catch (InterruptedException e) {
-            logger.error("Failed to wait for digest result", e);
+            logger.debug("Failed to wait for digest result", e);
             return null;
         }
     }
@@ -50,7 +50,7 @@ public class HashThread extends Thread {
         try {
             offsets.put(new Pair(offset, len));
         } catch (InterruptedException e) {
-            logger.error("Failed to add offset to queue.", e);
+            logger.debug("Failed to add offset to queue.", e);
         }
     }
 
@@ -63,7 +63,7 @@ public class HashThread extends Thread {
                     break;
                 digest.update(data, offset.offset, offset.len);
             } catch (InterruptedException e) {
-                logger.error("Failed to take offset from queue.", e);
+                logger.debug("Failed to take offset from queue.", e);
             }
         }
         result = digest.digest();

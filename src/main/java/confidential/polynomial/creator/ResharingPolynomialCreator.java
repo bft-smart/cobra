@@ -96,7 +96,7 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                     logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
+                    logger.debug("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
                 break;
@@ -117,7 +117,7 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                     logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
+                    logger.debug("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
                 break;
@@ -143,7 +143,7 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                     logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
+                    logger.debug("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
                 break;

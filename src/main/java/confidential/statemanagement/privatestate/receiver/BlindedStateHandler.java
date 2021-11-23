@@ -51,10 +51,12 @@ public abstract class BlindedStateHandler extends Thread {
     private final Map<Integer, Share[]> allBlindedShares;
     private final Map<Integer, Integer> blindedSharesSize;
     private int correctBlindedSharesSize;
+    private final BlindedDataReceiver blindedDataReceiver;
 
     public BlindedStateHandler(ServerViewController svController, int serverPort, int f, int quorum,
                                int stateSenderReplica, ServerConfidentialityScheme confidentialityScheme,
                                StateReceivedListener stateReceivedListener) {
+        super("Blinded State Handler Thread");
         int pid = svController.getStaticConf().getProcessId();
         this.shareholderId = confidentialityScheme.getMyShareholderId();
         this.field = confidentialityScheme.getField();
@@ -83,12 +85,19 @@ public abstract class BlindedStateHandler extends Thread {
 
         int port = serverPort + pid;
         try {
-            BlindedDataReceiver blindedDataReceiver = new BlindedDataReceiver(this, svController,
+            blindedDataReceiver = new BlindedDataReceiver(this, svController,
                     port, quorum, stateSenderReplica);
             blindedDataReceiver.start();
         } catch (IOException e) {
             throw new IllegalStateException("Failed to initialize blinded data receiver thread", e);
         }
+    }
+
+    @Override
+    public void interrupt() {
+        blindedDataReceiver.shutdown();
+        blindedDataReceiver.interrupt();
+        super.interrupt();
     }
 
     public void deliverBlindedData(int from, byte[][] shares, byte[] serializedCommonState, byte[] commonStateHash,
@@ -99,7 +108,8 @@ public abstract class BlindedStateHandler extends Thread {
         if (from == stateSenderReplica) {
             selectedCommonState = serializedCommonState;
             selectedCommonStateHash = commonStateHashCode;
-            logger.debug("Replica {} sent me a common state of {} bytes", from, serializedCommonState.length);
+            logger.debug("Replica {} sent me a common state of {} bytes", from,
+                    serializedCommonState == null ? "null" : serializedCommonState.length);
         } else {
             logger.debug("Replica {} sent me common state hash", from);
         }
@@ -134,10 +144,10 @@ public abstract class BlindedStateHandler extends Thread {
             try {
                 lock.lock();
                 logger.debug("Processing new blinded data");
-                if (allBlindedShares.size() < quorum || selectedCommonState == null || nCommonStateReceived < quorum) {
-                    logger.debug("Waiting for more state: {} < {} | selectedCommonState={} | {} < {}",
-                            allBlindedShares.size(), quorum, selectedCommonState == null ? "null" : "not null",
-                            nCommonStateReceived, quorum);
+                if (allBlindedShares.size() <= f + 1 || selectedCommonState == null || nCommonStateReceived <= f) {
+                    logger.debug("Waiting for more state: {} <= {} | selectedCommonState={} | {} <= {}",
+                            allBlindedShares.size(), f + 1, selectedCommonState == null ? "null" : "not null",
+                            nCommonStateReceived, f + 1);
                     waitingBlindedDataCondition.await();
                     continue;
                 } else {
@@ -178,13 +188,14 @@ public abstract class BlindedStateHandler extends Thread {
                 }
 
             } catch (InterruptedException e) {
-                logger.error("Failed to reconstruct private state", e);
+                //logger.error("Failed to reconstruct private state", e);
                 break;
             } finally {
                 lock.unlock();
             }
         }
-
+        blindedDataReceiver.shutdown();
+        blindedDataReceiver.interrupt();
         logger.debug("Exiting blinded state handler thread");
     }
 

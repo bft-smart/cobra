@@ -54,11 +54,10 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
 
         for (int i = 0; i < nExecutions; i++) {
             int id = internalSequenceNumber++;
-            int leader = members[id % members.length];
+            int leader = 0;//members[id % members.length]; TODO uncomment
             if (leader == server) {
                 leader = (leader + 1) % members.length;
             }
-
             PolynomialCreationContext creationContext = new PolynomialCreationContext(
                     id,
                     internalId,
@@ -156,7 +155,6 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         return internalSequenceNumber;
     }
 
-    //TODO check if all servers receive their points in same order
     @Override
     public void onPolynomialCreationSuccess(PolynomialCreationContext context, int consensusId,
                                             VerifiableShare[][] points) {
@@ -318,7 +316,7 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         }
         polynomialContext.updateCID(cid);
         InvalidPolynomialContext invalidPolynomialContext = new InvalidPolynomialContext(invalidProposals, invalidPoints,
-                invalidPoints[0].length);
+                polynomialContext.getF() + 1);
         polynomialContext.addInvalidPolynomialProposals(context.getId(), invalidPolynomialContext);
         internalSequenceNumber = Math.max(internalSequenceNumber, context.getId() + 1);
         if (polynomialContext.currentSize >= polynomialContext.getNPolynomials()) {

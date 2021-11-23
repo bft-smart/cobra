@@ -208,7 +208,18 @@ public abstract class PolynomialCreator {
         for (int member : members) {
             BigInteger point =
                     polynomial.evaluateAt(confidentialityScheme.getShareholder(member));
-            
+            //TODO remove this
+            /*if ((processId == 1 && (creationContext.getId() == 0 || creationContext.getId() == 1))
+                    || (processId == 4 && creationContext.getId() == 2)
+                    || (processId == 5 && creationContext.getId() == 1002)) {
+                if (creationContext.getReason() == PolynomialCreationReason.RECOVERY && member == 3) {
+                    logger.info("---->>>> I AM MALICIOUS! I am messing up 3's recovery polynomial proposal");
+                    point = point.add(BigInteger.ONE).mod(field);
+                } else if (creationContext.getReason() == PolynomialCreationReason.RESHARING && member == 2) {
+                    logger.info("---->>>> I AM MALICIOUS! I am messing up 1's resharing polynomial proposal");
+                    point = point.add(BigInteger.ONE).mod(field);
+                }
+            }*/
             byte[] encryptedPoint = confidentialityScheme.encryptDataFor(member,
                     point.toByteArray());
             points.put(member, encryptedPoint);
@@ -235,10 +246,23 @@ public abstract class PolynomialCreator {
         if (processId == creationContext.getLeader()) {
             validateProposal(message);
             lock.lock();
-            if (!proposalSetProposed && validProposals.size() > faultsThreshold)
+            //boolean is1InMembers = isMember(1);
+            //boolean is4InMembers = isMember(4);
+            //boolean is5InMembers = isMember(5);
+            if (!proposalSetProposed && validProposals.size() > faultsThreshold
+                    /*&& ((!is1InMembers /*&& !is4InMembers /*&& !is5InMembers) || (is1InMembers && (validProposals.contains(1) || invalidProposals.contains(1)))
+                    /*|| (!is1InMembers && (validProposals.contains(4) || invalidProposals.contains(4)))
+                    /*|| (!is1InMembers && !is4InMembers && (validProposals.contains(5) || invalidProposals.contains(5))))*/)//TODO remove the last condition
                 generateAndSendProposalSet();
             lock.unlock();
         }
+    }
+    private boolean isMember(int server) {
+        for (int member : allMembers) {
+            if (member == server)
+                return true;
+        }
+        return false;
     }
 
     abstract boolean validateProposal(ProposalMessage proposalMessage);
@@ -276,8 +300,34 @@ public abstract class PolynomialCreator {
         byte[][] receivedProposalsHashes = new byte[faultsThreshold + 1][];
 
         int index = 0;
+        //TODO remove this
+        //boolean is1InMembers = isMember(1);
+        //boolean is4InMembers = isMember(4);
+        //boolean is5InMembers = isMember(5);
+        /*if (is1InMembers && validProposals.contains(1)) {
+            ProposalMessage maliciousProposal = proposals.get(1);
+            receivedNodes[index] = maliciousProposal.getSender();
+            receivedProposalsHashes[index] = maliciousProposal.getCryptographicHash();
+            index++;
+        } /*else if (is4InMembers && validProposals.contains(4)) {
+            ProposalMessage maliciousProposal = proposals.get(4);
+            receivedNodes[index] = maliciousProposal.getSender();
+            receivedProposalsHashes[index] = maliciousProposal.getCryptographicHash();
+            index++;
+        } /*else if (is5InMembers && validProposals.contains(5)) {
+            ProposalMessage maliciousProposal = proposals.get(5);
+            receivedNodes[index] = maliciousProposal.getSender();
+            receivedProposalsHashes[index] = maliciousProposal.getCryptographicHash();
+            index++;
+        }*/
         for (int validProposalId : validProposals) {
             ProposalMessage validProposal = proposals.get(validProposalId);
+            /*if (validProposal.getSender() == 1)//TODO remove this
+                continue;
+            /*if (!is1InMembers && validProposal.getSender() == 4)//TODO remove this
+                continue;
+            /*if (!is1InMembers && !is4InMembers && validProposal.getSender() == 5)//TODO remove this
+                continue;*/
             logger.debug("Selected proposal from {} in creation {}", validProposal.getSender(), creationContext.getId());
             receivedNodes[index] = validProposal.getSender();
             receivedProposalsHashes[index] = validProposal.getCryptographicHash();
@@ -295,7 +345,13 @@ public abstract class PolynomialCreator {
                 receivedNodes,
                 receivedProposalsHashes
         );
+
         int[] members = getMembers(false);
+
+        if (creationContext.getReason() == PolynomialCreationReason.RECOVERY) { //TODO remove this
+            logger.info("----->>>> I'm leader for {} {}", creationContext.getId(), Arrays.toString(receivedNodes));
+        }
+
         logger.debug("I'm leader for {} and I'm proposing a proposal set with proposals from: {}",
                 creationContext.getId(), Arrays.toString(receivedNodes));
         serversCommunication.sendOrdered(InterServersMessageType.POLYNOMIAL_PROPOSAL_SET,
@@ -459,6 +515,7 @@ public abstract class PolynomialCreator {
                 invalidProposalsArray[index] = invalidProposal;
                 invalidPoints[index] = decryptedPoints.get(invalidProposal.getSender());
                 index++;
+
             }
             creationListener.onPolynomialCreationFailure(creationContext, consensusId, invalidProposalsArray, invalidPoints);
             return;
@@ -522,7 +579,7 @@ public abstract class PolynomialCreator {
     }
 
     private VerifiableShare[] computeResultUsingVandermondeMatrix(BigInteger[] points, Commitment[] commitments,
-                                                        boolean combineCommitments) {
+                                                                  boolean combineCommitments) {
         logger.debug("Using vandermonde matrix for polynomial creation {}", creationContext.getId());
         BigInteger[][] vandermondeMatrix = distributedPolynomial.getVandermondeMatrix();
         int rows = vandermondeMatrix.length;
