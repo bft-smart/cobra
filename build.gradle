@@ -37,10 +37,10 @@ distributions {
 
 remotes {
     master {
-        host = '194.117.20.195'
-        user = 'rvassantlal'
-        //password = '<host password>'
-        identity = new File('C:\\Users\\robin\\.ssh\\id_rsa')
+        host = '<host ip>'
+        user = '<host username>'
+        password = '<host password>'
+        //identity = <ssh key>
     }
 }
 
