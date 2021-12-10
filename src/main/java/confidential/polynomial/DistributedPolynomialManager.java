@@ -54,7 +54,7 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
 
         for (int i = 0; i < nExecutions; i++) {
             int id = internalSequenceNumber++;
-            int leader = 0;//members[id % members.length]; TODO uncomment
+            int leader = members[id % members.length];
             if (leader == server) {
                 leader = (leader + 1) % members.length;
             }
