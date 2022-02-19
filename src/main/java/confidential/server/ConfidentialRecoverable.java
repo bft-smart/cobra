@@ -30,9 +30,9 @@ import confidential.statemanagement.ConfidentialStateLog;
 import confidential.statemanagement.ConfidentialStateManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.VerifiableShare;
@@ -456,7 +456,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                 }
                 Commitment commitment;
                 if (isLinearCommitmentScheme)
-                    commitment = Utils.readCommitment(commonDataStream);
+                    commitment = CommitmentUtils.getInstance().readCommitment(commonDataStream);
                 else {
                     byte[] c = new byte[commonDataStream.readInt()];
                     commonDataStream.readFully(c);

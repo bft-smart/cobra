@@ -8,8 +8,8 @@ import confidential.Metadata;
 import confidential.encrypted.EncryptedPublishedShares;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.Mode;
 import vss.facade.SecretSharingException;
@@ -157,7 +157,7 @@ public class ConfidentialServiceProxy {
                         if (sharedData != null)
                             out.write(sharedData);
                         if (isLinearCommitmentScheme)
-                            Utils.writeCommitment(commitment, out);
+                            CommitmentUtils.getInstance().writeCommitment(commitment, out);
                         else {
                             byte[] c = ((ConstantCommitment) commitment).getCommitment();
                             out.writeInt(c.length);

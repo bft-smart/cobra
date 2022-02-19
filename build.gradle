@@ -11,6 +11,11 @@ repositories {
     mavenCentral()
 }
 
+compileJava {
+    sourceCompatibility = 8
+    targetCompatibility = 8
+}
+
 distributions {
     main {
         contents {
@@ -35,6 +40,7 @@ remotes {
         host = '<host ip>'
         user = '<host user>'
         password = '<host password>'
+        //identity=file("<ssh private key file>")
     }
 }
 

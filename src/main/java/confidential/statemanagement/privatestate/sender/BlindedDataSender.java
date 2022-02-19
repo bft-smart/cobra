@@ -4,8 +4,8 @@ import confidential.Configuration;
 import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentUtils;
 
 import javax.net.SocketFactory;
 import java.io.IOException;
@@ -32,7 +32,7 @@ public class BlindedDataSender extends Thread {
     private BlindedShares blindedShares;
     private byte[] commonState;
     private byte[] commonStateHash;
-
+    private final CommitmentUtils commitmentUtils;
 
     public BlindedDataSender(int pid, String receiverServersIp, int receiverServerPort, boolean iAmStateSender) {
         super("Blinded Data Sender Thread for " + receiverServersIp + ":" + receiverServerPort);
@@ -43,6 +43,7 @@ public class BlindedDataSender extends Thread {
         this.lock = new ReentrantLock(true);
         this.waitingSharesCondition = lock.newCondition();
         this.waitingCommonStateCondition = lock.newCondition();
+        this.commitmentUtils = CommitmentUtils.getInstance();
     }
 
     public void setBlindedShares(BlindedShares blindedShares) {
@@ -120,7 +121,7 @@ public class BlindedDataSender extends Thread {
                         out.write(0);//3 - sending commitments first
                         out.writeInt(commitments.length);
                         for (Commitment commitment : commitments) {
-                            Utils.writeCommitment(commitment, out);
+                            commitmentUtils.writeCommitment(commitment, out);
                         }
                         out.flush();
                     } else {
@@ -145,7 +146,7 @@ public class BlindedDataSender extends Thread {
                     logger.debug("Sending {} commitments", commitments.length);
                     out.writeInt(commitments.length);
                     for (Commitment commitment : commitments) {
-                        Utils.writeCommitment(commitment, out);
+                        commitmentUtils.writeCommitment(commitment, out);
                     }
                     out.flush();
                 }

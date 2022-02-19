@@ -6,8 +6,8 @@ import confidential.Configuration;
 import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentUtils;
 
 import java.io.IOException;
 import java.io.ObjectInput;
@@ -27,6 +27,7 @@ public class BlindedDataReceiver extends Thread {
     private final int serverPort;
     private final int quorum;
     private final int stateSenderReplica;
+    private final CommitmentUtils commitmentUtils;
 
     public BlindedDataReceiver(BlindedStateHandler blindedStateHandler, ServerViewController svController,
                                int serverPort, int quorum, int stateSenderReplica) throws IOException {
@@ -38,7 +39,7 @@ public class BlindedDataReceiver extends Thread {
         this.stateSenderReplica = stateSenderReplica;
         View currentView = svController.getCurrentView();
         this.knownServerIps = new HashSet<>(currentView.getN());
-
+        this.commitmentUtils = CommitmentUtils.getInstance();
         for (int process : currentView.getProcesses()) {
             String ip = currentView.getAddress(process).getAddress().getHostAddress();
             knownServerIps.add(ip);
@@ -137,7 +138,7 @@ public class BlindedDataReceiver extends Thread {
                             byte[] b;
                             for (int i = 0; i < nCommitments; i++) {
                                 t1Commitments = System.nanoTime();
-                                commitments[i] = Utils.readCommitment(in);
+                                commitments[i] = commitmentUtils.readCommitment(in);
                                 t2Commitments = System.nanoTime();
                                 elapsedCommitments += t2Commitments - t1Commitments;
                                 b = confidential.Utils.toBytes(commitments[i].consistentHash());
@@ -153,7 +154,7 @@ public class BlindedDataReceiver extends Thread {
                         commitments = new Commitment[nCommitments];
                         for (int i = 0; i < nCommitments; i++) {
                             t1Commitments = System.nanoTime();
-                            commitments[i] = Utils.readCommitment(in);
+                            commitments[i] = commitmentUtils.readCommitment(in);
                             t2Commitments = System.nanoTime();
                             elapsedCommitments += t2Commitments - t1Commitments;
                         }

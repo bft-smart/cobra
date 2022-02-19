@@ -1,7 +1,7 @@
 package confidential.encrypted;
 
-import vss.Utils;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentUtils;
 
 import java.io.Externalizable;
 import java.io.IOException;
@@ -91,7 +91,7 @@ public class EncryptedVerifiableShare implements Externalizable {
         out.writeInt(share == null ? -1 : share.length);
         if (share != null)
             out.write(share);
-        Utils.writeCommitment(commitments, out);
+        CommitmentUtils.getInstance().writeCommitment(commitments, out);
         out.writeInt(sharedData == null ? -1 : sharedData.length);
         if (sharedData != null)
             out.write(sharedData);
@@ -110,7 +110,7 @@ public class EncryptedVerifiableShare implements Externalizable {
             in.readFully(share);
         }
 
-        commitments = Utils.readCommitment(in);
+        commitments = CommitmentUtils.getInstance().readCommitment(in);
         len = in.readInt();
         if (len != -1) {
             sharedData = new byte[len];
