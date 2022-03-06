@@ -3,8 +3,8 @@ package confidential.statemanagement.resharing;
 import bftsmart.reconfiguration.ServerViewController;
 import confidential.Configuration;
 import confidential.server.ServerConfidentialityScheme;
-import confidential.statemanagement.ReconstructionCompleted;
 import confidential.statemanagement.privatestate.receiver.BlindedStateHandler;
+import confidential.statemanagement.privatestate.receiver.StateReceivedListener;
 import vss.commitment.Commitment;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
@@ -28,9 +28,9 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
 
     public ResharingBlindedStateHandler(ServerViewController svController, int serverPort, int f, int newF, int quorum,
                                         int stateSenderReplica, ServerConfidentialityScheme confidentialityScheme,
-                                        ReconstructionCompleted reconstructionListener) {
+                                        StateReceivedListener stateReceivedListener) {
         super(svController, serverPort, f, quorum, stateSenderReplica, confidentialityScheme,
-                reconstructionListener);
+                stateReceivedListener);
         this.newF = newF;
         this.lock = new ReentrantLock(true);
         this.waitingForRefreshShares = lock.newCondition();
@@ -54,7 +54,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
     }
 
     @Override
-    protected Iterator<VerifiableShare> reconstructShares(int nShares,
+    protected LinkedList<VerifiableShare> reconstructShares(int nShares,
                                                           Map<Integer, Share[]> allBlindedShares,
                                                           Map<BigInteger, Commitment[]> allBlindedCommitments) {
         lock.lock();
@@ -132,7 +132,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                 return null;
             result.add(refreshedShare);
         }
-        return result.iterator();
+        return result;
     }
 
     private VerifiableShare recoverShare(Map<Integer, Share> blindedShares,

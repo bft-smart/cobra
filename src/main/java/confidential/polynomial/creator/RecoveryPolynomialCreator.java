@@ -72,7 +72,7 @@ public class RecoveryPolynomialCreator extends PolynomialCreator {
     }
 
     @Override
-    boolean validateProposal(ProposalMessage proposalMessage) {
+    synchronized boolean validateProposal(ProposalMessage proposalMessage) {
         int proposalSender = proposalMessage.getSender();
         Proposal[] proposals = proposalMessage.getProposals();
         PolynomialContext[] contexts = creationContext.getContexts();
@@ -111,7 +111,7 @@ public class RecoveryPolynomialCreator extends PolynomialCreator {
                         logger.debug("Proposal from {} is valid", proposalSender);
                     } else {
                         invalidProposals.add(proposalSender);
-                        logger.warn("Proposal from {} is invalid", proposalSender);
+                        logger.debug("Proposal from {} is invalid", proposalSender);
                         isValid.set(false);
                     }
                 }
@@ -123,9 +123,7 @@ public class RecoveryPolynomialCreator extends PolynomialCreator {
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
-        if (!isValid.get())
-            return false;
         decryptedPoints.put(proposalSender, decryptedProposalPoints);
-        return true;
+        return isValid.get();
     }
 }

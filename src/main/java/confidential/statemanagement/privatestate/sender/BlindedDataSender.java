@@ -84,8 +84,10 @@ public class BlindedDataSender extends Thread {
                     logger.debug("Retrying to connect with {}:{}", receiverServersIp, receiverServerPort);
                 }
             }
-            if (!connection.isConnected())
+            if (connection == null || !connection.isConnected()) {
+                logger.warn("I could not connect to {}:{}", receiverServersIp, receiverServerPort);
                 return;
+            }
             try (ObjectOutput out = new ObjectOutputStream(connection.getOutputStream())) {
                 connection.setKeepAlive(true);
                 connection.setTcpNoDelay(true);
@@ -173,9 +175,12 @@ public class BlindedDataSender extends Thread {
                     out.write(commitmentsHash);
                 }
                 out.flush();
+                logger.debug("Sent blinded data to {}:{}", receiverServersIp, receiverServerPort);
             }
             connection.close();
-        } catch (SocketException | InterruptedException ignored) {
+        } catch (SocketException ignored) {
+            logger.debug("Connecting to {}:{} was closed", receiverServersIp, receiverServerPort);
+        } catch (InterruptedException ignored) {
         } catch (IOException | NoSuchAlgorithmException e) {
             logger.error("Failed to send data to {}:{}", receiverServersIp, receiverServerPort, e);
         } finally {
@@ -185,7 +190,7 @@ public class BlindedDataSender extends Thread {
 
     public void shutdown() {
         try {
-            if (connection.isConnected())
+            if (connection != null && connection.isConnected())
                 connection.close();
         } catch (IOException e) {
             e.printStackTrace();

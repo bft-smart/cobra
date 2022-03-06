@@ -132,9 +132,21 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
             return 1;
         if (response2 == null)
             return -1;
-        int hash1 = responseHashes.computeIfAbsent(response1, ConfidentialMessage::hashCode);
-        int hash2 = responseHashes.computeIfAbsent(response2, ConfidentialMessage::hashCode);
+        int hash1 = responseHashes.computeIfAbsent(response1, this::computeSameSecretHash);
+        int hash2 = responseHashes.computeIfAbsent(response2, this::computeSameSecretHash);
         return hash1 - hash2;
+    }
+
+    private int computeSameSecretHash(ConfidentialMessage message) {
+        int result = Arrays.hashCode(message.getPlainData());
+        VerifiableShare[] shares = message.getShares();
+        if (shares != null) {
+            for (VerifiableShare share : shares) {
+                result = 31 * result + Arrays.hashCode(share.getSharedData());
+                result = 31 * result + share.getCommitments().consistentHash();
+            }
+        }
+        return result;
     }
 
     @Override
