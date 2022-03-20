@@ -101,6 +101,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     }
 
     private int getRandomReplica() {
+        if (true)
+            return 3;
         int[] processes = SVController.getCurrentViewOtherAcceptors();
         Random rnd = new Random();
         while (true) {
@@ -252,7 +254,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                     accuser);
             removeFaultyProcesses(faultyProcesses);
             PolynomialRecovery polynomialRecoveryRequest = accusation.getPolynomialRecoveryRequest();
-            if (polynomialRecoveryRequest != null) {
+            if (polynomialRecoveryRequest != null && processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
                 VerifiableShare[] points = resharingNewGroupPoints.getPoints(polynomialRecoveryRequest.getId());
                 if (points == null) {
                     logger.info("I do not have points for new group. Adding the request into the pending list.");
@@ -391,17 +393,19 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         logger.info("Triggering recovery state transfer");
         boolean iAmStateSender =
                 fullStateSenderReplica == processId;
-        recoveryStateSender = new RecoveryBlindedStateSender(
-                SVController,
-                commonState,
-                shares,
-                commitments,
-                serverPort,
-                confidentialityScheme,
-                iAmStateSender,
-                recoveryMessage.getSender()
-        );
-        recoveryStateSender.start();
+        if (processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
+            recoveryStateSender = new RecoveryBlindedStateSender(
+                    SVController,
+                    commonState,
+                    shares,
+                    commitments,
+                    serverPort,
+                    confidentialityScheme,
+                    iAmStateSender,
+                    recoveryMessage.getSender()
+            );
+            recoveryStateSender.start();
+        }
         int id = distributedPolynomialManager.createRecoveryPolynomialsFor(
                 recoveryMessage.getSender(),
                 confidentialityScheme.getShareholder(recoveryMessage.getSender()),
@@ -420,6 +424,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             Proposal[] proposals = invalidProposalMessage.getProposals();
             //verify signature
             byte[] cryptHash = computeCryptographicHash(invalidProposalMessage);
+
             PublicKey signingPublicKey = confidentialityScheme.getSigningPublicKeyFor(invalidProposalMessage.getSender());
             if (!TOMUtil.verifySignature(signingPublicKey, cryptHash, invalidProposalMessage.getSignature())) {
                 return true;
@@ -478,7 +483,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     @Override
     public void onRecoveryPolynomialsCreation(RecoveryPolynomialContext context) {
         logger.debug("Received {} polynomials for recovery", context.getNPolynomials());
-        if (ongoingRecoveryRequests.containsKey(context.getInitialId())) {
+        if (ongoingRecoveryRequests.containsKey(context.getInitialId())
+                && processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
             SMMessage recoveryMessage = ongoingRecoveryRequests.remove(context.getInitialId());
             if (recoveryMessage instanceof DefaultSMMessage) {
                 RecoveryStateServerSMMessage response;
@@ -572,6 +578,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         int f = SVController.getCurrentViewF();
         int quorum =  f * 2 + 1;
         StateReceivedListener stateReceivedListener = (commonState, shares) -> {
+            logger.info("------------>>>>>> Received recovered polynomial points");
             Iterator<VerifiableShare> it = shares.iterator();
             for (int id : ids) {
                 pointsForNewGroup[id] = it.next();
@@ -596,7 +603,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     }
 
     private PolynomialRecovery createPolynomialRecoveryRequest(ResharingPolynomialContext context) {
-        int stateSenderReplica = 3;//TODO correct this
+        int stateSenderReplica = 3;
         int size = context.getInvalidPolynomialsContexts().size();
         int[] ids = new int[size];
         int[] nPolynomials = new int[size];
@@ -625,7 +632,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         logger.info("Old members: {}", Arrays.toString(oldMembers));
         logger.info("New members: {}", Arrays.toString(newMembers));
         if (Utils.isIn(processId, oldMembers)) {
-            resharingStateSender.setBlindingShares(context.getPointsForOldGroup());
+            if (processId != 1 && processId != 4 && processId != 5) //TODO for adversarial attack
+                resharingStateSender.setBlindingShares(context.getPointsForOldGroup());
         }
         if (Utils.isIn(processId, newMembers)) {
             resharingStateHandler.setRefreshShares(context.getPointsForNewGroup());
@@ -803,7 +811,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
             return;
         }
         int[] group = SVController.getCurrentViewAcceptors();
-        int stateSenderReplica = group[consensusId % group.length];
+        int stateSenderReplica = 0;//group[consensusId % group.length]; TODO for adversarial attack [uncomment to make it correct]
         logger.info("Replica {} will send full reshared state", stateSenderReplica);
         int f = reconfigurationParameters.getOldF();
         int quorum = 2 * reconfigurationParameters.getOldF() + 1;
@@ -823,7 +831,8 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         );
         logger.info("Starting resharing state handler");
         resharingStateHandler.start();
-        startResharing(consensusId, stateSenderReplica, f, group,
+        if (processId != 1 && processId != 4 && processId != 5)//TODO for adversarial attack
+            startResharing(consensusId, stateSenderReplica, f, group,
                 reconfigurationParameters.getNewF(), group);
     }
 

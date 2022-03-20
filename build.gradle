@@ -50,8 +50,8 @@ ssh.settings {
 
 task localDeploy(dependsOn: installDist) {
     doLast {
-        int nServers = 4
-        int nClients = 1
+        int nServers = 10
+        int nClients = 2
 
         def fileSeparator = System.getProperty("file.separator")
         def src = project.buildDir.name + fileSeparator + "install" + fileSeparator + project.name

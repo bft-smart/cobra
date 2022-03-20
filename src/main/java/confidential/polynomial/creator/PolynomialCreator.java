@@ -208,7 +208,21 @@ public abstract class PolynomialCreator {
         for (int member : members) {
             BigInteger point =
                     polynomial.evaluateAt(confidentialityScheme.getShareholder(member));
-
+            //TODO for adversarial attack
+            //injecting fault - begin
+            if (creationContext.getReason() == PolynomialCreationReason.RESHARING && creationContext.getId() == 0
+                    && processId == 1 && member == 2) {
+                logger.info("---->>>> I AM MALICIOUS! I am messing up process 2's resharing polynomial proposal");
+                point = point.add(BigInteger.ONE).mod(field);
+            } else if (creationContext.getReason() == PolynomialCreationReason.RECOVERY && member == 3) {
+                if ((processId == 1 && (creationContext.getId() == 1 || creationContext.getId() == 1000))
+                || (processId == 4 && (creationContext.getId() == 2 || creationContext.getId() == 1001))
+                || (processId == 5 && (creationContext.getId() == 3 || creationContext.getId() == 1002))) {
+                    logger.info("---->>>> I AM MALICIOUS! I am messing up process 3's recovery polynomial proposal (leader {})", creationContext.getLeader());
+                    point = point.add(BigInteger.ONE).mod(field);
+                }
+            }
+            //injecting fault - end
             byte[] encryptedPoint = confidentialityScheme.encryptDataFor(member,
                     point.toByteArray());
             points.put(member, encryptedPoint);
@@ -235,10 +249,23 @@ public abstract class PolynomialCreator {
         if (processId == creationContext.getLeader()) {
             validateProposal(message);
             lock.lock();
-            if (!proposalSetProposed && validProposals.size() > faultsThreshold)
+            boolean is1InMembers = isMember(1);
+            boolean is4InMembers = isMember(4);
+            boolean is5InMembers = isMember(5);
+            if (!proposalSetProposed && validProposals.size() > faultsThreshold
+                    && ((!is1InMembers && !is4InMembers & !is5InMembers) || (is1InMembers && (validProposals.contains(1) || invalidProposals.contains(1)))
+                    || (!is1InMembers && (validProposals.contains(4) || invalidProposals.contains(4)))
+                    || (!is1InMembers && !is4InMembers && (validProposals.contains(5) || invalidProposals.contains(5)))))//TODO for adversarial attack
                 generateAndSendProposalSet();
             lock.unlock();
         }
+    }
+    private boolean isMember(int server) {
+        for (int member : allMembers) {
+            if (member == server)
+                return true;
+        }
+        return false;
     }
 
     abstract boolean validateProposal(ProposalMessage proposalMessage);
@@ -276,8 +303,34 @@ public abstract class PolynomialCreator {
         byte[][] receivedProposalsHashes = new byte[faultsThreshold + 1][];
 
         int index = 0;
+        //TODO for adversarial attack
+        boolean is1InMembers = isMember(1);
+        boolean is4InMembers = isMember(4);
+        boolean is5InMembers = isMember(5);
+        if (is1InMembers && validProposals.contains(1)) {
+            ProposalMessage maliciousProposal = proposals.get(1);
+            receivedNodes[index] = maliciousProposal.getSender();
+            receivedProposalsHashes[index] = maliciousProposal.getCryptographicHash();
+            index++;
+        } else if (is4InMembers && validProposals.contains(4)) {
+            ProposalMessage maliciousProposal = proposals.get(4);
+            receivedNodes[index] = maliciousProposal.getSender();
+            receivedProposalsHashes[index] = maliciousProposal.getCryptographicHash();
+            index++;
+        } else if (is5InMembers && validProposals.contains(5)) {
+            ProposalMessage maliciousProposal = proposals.get(5);
+            receivedNodes[index] = maliciousProposal.getSender();
+            receivedProposalsHashes[index] = maliciousProposal.getCryptographicHash();
+            index++;
+        }
         for (int validProposalId : validProposals) {
             ProposalMessage validProposal = proposals.get(validProposalId);
+            if (validProposal.getSender() == 1)//TODO for adversarial attack
+                continue;
+            if (!is1InMembers && validProposal.getSender() == 4)//TODO for adversarial attack
+                continue;
+            if (!is1InMembers && !is4InMembers && validProposal.getSender() == 5)//TODO for adversarial attack
+                continue;
             logger.debug("Selected proposal from {} in creation {}", validProposal.getSender(), creationContext.getId());
             receivedNodes[index] = validProposal.getSender();
             receivedProposalsHashes[index] = validProposal.getCryptographicHash();
@@ -297,6 +350,11 @@ public abstract class PolynomialCreator {
         );
 
         int[] members = getMembers(false);
+
+        if (creationContext.getReason() == PolynomialCreationReason.RECOVERY) { //TODO for adversarial attack
+            logger.info("----->>>> I'm leader for {} {}", creationContext.getId(), Arrays.toString(receivedNodes));
+        }
+
         logger.debug("I'm leader for {} and I'm proposing a proposal set with proposals from: {}",
                 creationContext.getId(), Arrays.toString(receivedNodes));
         serversCommunication.sendOrdered(InterServersMessageType.POLYNOMIAL_PROPOSAL_SET,

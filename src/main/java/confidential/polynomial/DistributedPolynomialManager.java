@@ -6,6 +6,7 @@ import org.slf4j.LoggerFactory;
 import vss.secretsharing.VerifiableShare;
 
 import java.math.BigInteger;
+import java.util.Arrays;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.locks.Lock;
@@ -46,8 +47,8 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
                 BigInteger.ZERO,
                 members
         );
-        logger.info("Starting creation of {} polynomial(s) with initial id {} to recover {}", nPolynomials,
-                internalId, server);
+        logger.info("Starting creation of {} polynomial(s) with initial id {} to recover {} (view: {})", nPolynomials,
+                internalId, server, Arrays.toString(members));
         int nExecutions = (int)Math.ceil((double) nPolynomials / (f + 1));
         logger.info("Executing recovery polynomial generation protocol {} times to generate {} polynomial(s)",
                 nExecutions, nPolynomials);
@@ -55,8 +56,12 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         for (int i = 0; i < nExecutions; i++) {
             int id = internalSequenceNumber++;
             int leader = members[id % members.length];
-            if (leader == server) {
-                leader = (leader + 1) % members.length;
+            if (leader == server || leader == 1 || leader == 3 || leader == 4 || leader == 5) {//TODO for adversarial attack
+                int k = 1;
+                do {
+                    leader = members[(id + k) % members.length];
+                    k++;
+                } while (leader == server || leader == 1 || leader == 3 || leader == 4 || leader == 5);
             }
             PolynomialCreationContext creationContext = new PolynomialCreationContext(
                     id,
