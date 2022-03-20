@@ -254,7 +254,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                     accuser);
             removeFaultyProcesses(faultyProcesses);
             PolynomialRecovery polynomialRecoveryRequest = accusation.getPolynomialRecoveryRequest();
-            if (polynomialRecoveryRequest != null && processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
+            if (polynomialRecoveryRequest != null && processId != 1 && processId != 4) {//TODO for adversarial attack
                 VerifiableShare[] points = resharingNewGroupPoints.getPoints(polynomialRecoveryRequest.getId());
                 if (points == null) {
                     logger.info("I do not have points for new group. Adding the request into the pending list.");
@@ -393,7 +393,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         logger.info("Triggering recovery state transfer");
         boolean iAmStateSender =
                 fullStateSenderReplica == processId;
-        if (processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
+        if (processId != 1 && processId != 4) {//TODO for adversarial attack
             recoveryStateSender = new RecoveryBlindedStateSender(
                     SVController,
                     commonState,
@@ -484,7 +484,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
     public void onRecoveryPolynomialsCreation(RecoveryPolynomialContext context) {
         logger.debug("Received {} polynomials for recovery", context.getNPolynomials());
         if (ongoingRecoveryRequests.containsKey(context.getInitialId())
-                && processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
+                && processId != 1 && processId != 4) {//TODO for adversarial attack
             SMMessage recoveryMessage = ongoingRecoveryRequests.remove(context.getInitialId());
             if (recoveryMessage instanceof DefaultSMMessage) {
                 RecoveryStateServerSMMessage response;
@@ -632,7 +632,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         logger.info("Old members: {}", Arrays.toString(oldMembers));
         logger.info("New members: {}", Arrays.toString(newMembers));
         if (Utils.isIn(processId, oldMembers)) {
-            if (processId != 1 && processId != 4 && processId != 5) //TODO for adversarial attack
+            if (processId != 1 && processId != 4) //TODO for adversarial attack
                 resharingStateSender.setBlindingShares(context.getPointsForOldGroup());
         }
         if (Utils.isIn(processId, newMembers)) {
@@ -831,7 +831,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         );
         logger.info("Starting resharing state handler");
         resharingStateHandler.start();
-        if (processId != 1 && processId != 4 && processId != 5)//TODO for adversarial attack
+        if (processId != 1 && processId != 4)//TODO for adversarial attack
             startResharing(consensusId, stateSenderReplica, f, group,
                 reconfigurationParameters.getNewF(), group);
     }
