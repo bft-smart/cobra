@@ -1,7 +1,7 @@
 package confidential.server;
 
-import bftsmart.reconfiguration.ReconfigureRequest;
-import bftsmart.reconfiguration.ServerViewController;
+import bftsmart.reconfiguration.BatchReconfigurationRequest;
+import bftsmart.reconfiguration.IReconfigurationListener;
 import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.StateManager;
 import bftsmart.tom.MessageContext;
@@ -33,21 +33,19 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.ConstantCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.VerifiableShare;
 
-import java.io.ByteArrayInputStream;
-import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectInputStream;
+import java.io.*;
 import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 
 public final class ConfidentialRecoverable implements SingleExecutable, Recoverable,
-        ProposeRequestVerifier {
+        ProposeRequestVerifier, IReconfigurationListener {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private ServerConfidentialityScheme confidentialityScheme;
     private CommitmentScheme commitmentScheme;
@@ -61,7 +59,6 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     private int checkpointPeriod;
     private final List<byte[]> commands;
     private final List<MessageContext> msgContexts;
-    private int currentF;
     private final boolean useTLSEncryption;
     private final ConfidentialSingleExecutable confidentialExecutor;
     private DistributedPolynomial distributedPolynomial;
@@ -86,7 +83,6 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     @Override
     public void setReplicaContext(ReplicaContext replicaContext) {
         logger.debug("setting replica context");
-        this.currentF = replicaContext.getSVController().getCurrentViewF();
         this.replicaContext = replicaContext;
         this.stateLock = new ReentrantLock();
         interServersCommunication = new InterServersCommunication(
@@ -253,6 +249,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                             logger.debug("Ignoring application request");
                             continue;
                         }
+                        if (request.getType() == MessageType.RECONFIGURATION) {
+                            logger.debug("Ignoring reconfiguration request");
+                            continue;
+                        }
                         confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(), msgCtx[i]);
                     }
                 } catch (Exception e) {
@@ -285,27 +285,21 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 
     @Override
     public void noOp(int CID, byte[][] operations, MessageContext[] msgCtx) {
-        logger.debug("NoOp");
-        //for (int i = 0; i < msgCtx.length; i++)
-        //    logRequest(operations[i], msgCtx[i]);
+        for (int i = 0; i < operations.length; i++) {
+            try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+                 ObjectOutput out = new ObjectOutputStream(bos)) {
+                logger.info("NoOp in cid {} from {}", CID, msgCtx[i].getSender());
+                out.write((byte) MessageType.RECONFIGURATION.ordinal());//This is wrong because after reconfiguration, old view clients' requests are delivered here
+                byte[] operation = operations[i];
+                out.writeInt(operation == null ? -1 : operation.length);
+                out.write(operation);
+                out.writeInt(-1);
+                out.flush();
+                bos.flush();
 
-        for (byte[] operation : operations) {
-            Object obj = TOMUtil.getObject(operation);
-            if (obj instanceof ReconfigureRequest) {
-                logger.info("Reconfiguration");
-                ReconfigureRequest reconfigureRequest = (ReconfigureRequest) obj;
-                for (Integer key : reconfigureRequest.getProperties().keySet()) {
-                    String value = reconfigureRequest.getProperties().get(key);
-                    if (key == ServerViewController.CHANGE_F) {
-                        int f = Integer.parseInt(value);
-                        if (currentF < f) {
-                            logger.info("Increasing f. {}->{}", currentF, f);
-                        } else if (currentF > f) {
-                            logger.info("Reducing f. {}->{}", currentF, f);
-                        }
-                        currentF = f;
-                    }
-                }
+                logRequest(bos.toByteArray(), msgCtx[i]);
+            } catch (IOException e) {
+                logger.error("Failed to log noOp operation");
             }
         }
     }
@@ -327,17 +321,20 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         byte[] preprocessedCommand = request.serialize();
         byte[] response;
         if (request.getType() == MessageType.APPLICATION) {
-            logger.info("Received application ordered message of {} in CID {}. Regency: {}", msgCtx.getSender(),
+            logger.debug("Received application ordered message of {} in CID {}. Regency: {}", msgCtx.getSender(),
                     msgCtx.getConsensusId(), msgCtx.getRegency());
             interServersCommunication.messageReceived(request.getPlainData(), msgCtx);
             response = new byte[0];
-        } else {
+        } else if (request.getType() == MessageType.CLIENT) {
             stateLock.lock();
             ConfidentialMessage r = confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(),
                     msgCtx);
             response = r == null ? null : (useTLSEncryption ? r.serialize() :
                     encryptResponse(r, msgCtx).serialize());
             stateLock.unlock();
+        } else {
+            logger.info("Received reconfiguration message in executeOrdered");
+            response = null;
         }
         logRequest(preprocessedCommand, msgCtx);
 
@@ -429,6 +426,12 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                     in.readFully(plainData);
                     result = new Request(type, plainData);
                     break;
+                case RECONFIGURATION:
+                    len = in.available();
+                    plainData = new byte[len];
+                    in.readFully(plainData);
+                    result = new Request(type, plainData);
+                    break;
             }
             return result;
         } catch (IOException | SecretSharingException | ClassNotFoundException e) {
@@ -461,7 +464,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
                 }
                 Commitment commitment;
                 if (isLinearCommitmentScheme)
-                    commitment = commitmentScheme.readCommitment(commonDataStream);
+                    commitment = CommitmentUtils.getInstance().readCommitment(commonDataStream);
                 else {
                     byte[] c = new byte[commonDataStream.readInt()];
                     commonDataStream.readFully(c);
@@ -543,5 +546,40 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
         getStateManager().setLastCID(cid);
         commands.clear();
         msgContexts.clear();
+    }
+
+    @Override
+    public void onReconfigurationRequest(TOMMessage reconfigurationRequest) {
+        logger.info("onReconfigurationRequest");
+        BatchReconfigurationRequest request = (BatchReconfigurationRequest)TOMUtil.getObject(reconfigurationRequest.getContent());
+        int newF;
+        Set<Integer> joiningServers = new HashSet<>(request.getJoiningServers().size());
+        Set<Integer> leavingServers = new HashSet<>(request.getLeavingServers());
+
+        for (String joiningServer : request.getJoiningServers()) {
+            int pid = Integer.parseInt(joiningServer.split(":")[0]);
+            joiningServers.add(pid);
+            BigInteger shareholder = BigInteger.valueOf(pid + 1);
+            try {
+                confidentialityScheme.addShareholder(pid, shareholder);
+            } catch (SecretSharingException e) {
+                logger.error("Failed to add new server as shareholder", e);
+            }
+        }
+
+        newF = request.getF();
+        stateManager.setReconfigurationParameters(newF, joiningServers, leavingServers);
+    }
+
+    @Override
+    public void onReconfigurationComplete(int consensusId) {
+        logger.info("onReconfigurationComplete");
+        logger.info("{}", stateManager.getReconfigurationParameters());
+        stateManager.executeReconfiguration(consensusId);
+    }
+
+    @Override
+    public void onReconfigurationFailure() {
+        logger.error("Reconfiguration failed");
     }
 }

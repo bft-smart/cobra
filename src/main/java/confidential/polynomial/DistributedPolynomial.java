@@ -235,7 +235,7 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
             logger.debug("Accepting proposal set from {} for polynomial creation id {}", message.getSender(),
                     message.getId());
         } else {
-            logger.info("Rejecting proposal set from {} for polynomial creation id {}", message.getSender(),
+            logger.debug("Rejecting proposal set from {} for polynomial creation id {}", message.getSender(),
                     message.getId());
         }
         return isValid;

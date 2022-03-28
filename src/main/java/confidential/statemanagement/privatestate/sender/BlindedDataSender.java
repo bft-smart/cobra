@@ -5,12 +5,13 @@ import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
-import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentUtils;
 
 import javax.net.SocketFactory;
 import java.io.IOException;
 import java.io.ObjectOutput;
 import java.io.ObjectOutputStream;
+import java.net.ConnectException;
 import java.net.Socket;
 import java.net.SocketException;
 import java.security.NoSuchAlgorithmException;
@@ -31,19 +32,18 @@ public class BlindedDataSender extends Thread {
     private BlindedShares blindedShares;
     private byte[] commonState;
     private byte[] commonStateHash;
-    private final CommitmentScheme commitmentScheme;
+    private final CommitmentUtils commitmentUtils;
 
-
-    public BlindedDataSender(int pid, String receiverServersIp, int receiverServerPort, boolean iAmStateSender, CommitmentScheme commitmentScheme) {
+    public BlindedDataSender(int pid, String receiverServersIp, int receiverServerPort, boolean iAmStateSender) {
         super("Blinded Data Sender Thread for " + receiverServersIp + ":" + receiverServerPort);
         this.pid = pid;
         this.receiverServersIp = receiverServersIp;
         this.receiverServerPort = receiverServerPort;
         this.iAmStateSender = iAmStateSender;
-        this.commitmentScheme = commitmentScheme;
         this.lock = new ReentrantLock(true);
         this.waitingSharesCondition = lock.newCondition();
         this.waitingCommonStateCondition = lock.newCondition();
+        this.commitmentUtils = CommitmentUtils.getInstance();
     }
 
     public void setBlindedShares(BlindedShares blindedShares) {
@@ -74,14 +74,27 @@ public class BlindedDataSender extends Thread {
 
             //connecting
             logger.debug("Connecting to {}:{}", receiverServersIp, receiverServerPort);
-            connection = SocketFactory.getDefault().createSocket(receiverServersIp, receiverServerPort);
+            int counter = 3;
+            while (counter-- > 0) {
+                try {
+                    connection = SocketFactory.getDefault().createSocket(receiverServersIp, receiverServerPort);
+                    break;
+                } catch (ConnectException ignored) {
+                    Thread.sleep(500);
+                    logger.debug("Retrying to connect with {}:{}", receiverServersIp, receiverServerPort);
+                }
+            }
+            if (connection == null || !connection.isConnected()) {
+                logger.warn("I could not connect to {}:{}", receiverServersIp, receiverServerPort);
+                return;
+            }
             try (ObjectOutput out = new ObjectOutputStream(connection.getOutputStream())) {
                 connection.setKeepAlive(true);
                 connection.setTcpNoDelay(true);
                 out.writeInt(pid);
                 //Sending common state
                 if (iAmStateSender) {
-                    logger.info("Sending {} bytes of common state", commonState.length);
+                    logger.debug("Sending {} bytes of common state", commonState.length);
                     out.write(0); //sending full state
                     out.writeInt(commonState.length);
                     out.write(commonState);
@@ -106,11 +119,11 @@ public class BlindedDataSender extends Thread {
                 Commitment[] commitments = blindedShares.getCommitment();
                 if (usingLinearScheme) {
                     if (iAmStateSender) {
-                        logger.info("Sending {} commitments", commitments.length);
+                        logger.debug("Sending {} commitments", commitments.length);
                         out.write(0);//3 - sending commitments first
                         out.writeInt(commitments.length);
                         for (Commitment commitment : commitments) {
-                            commitmentScheme.writeCommitment(commitment, out);
+                            commitmentUtils.writeCommitment(commitment, out);
                         }
                         out.flush();
                     } else {
@@ -132,10 +145,10 @@ public class BlindedDataSender extends Thread {
                         }
                     }
                 } else {
-                    logger.info("Sending {} commitments", commitments.length);
+                    logger.debug("Sending {} commitments", commitments.length);
                     out.writeInt(commitments.length);
                     for (Commitment commitment : commitments) {
-                        commitmentScheme.writeCommitment(commitment, out);
+                        commitmentUtils.writeCommitment(commitment, out);
                     }
                     out.flush();
                 }
@@ -143,7 +156,7 @@ public class BlindedDataSender extends Thread {
                 //Sending blinded shares
                 long totalBytes = 0;
                 byte[][] shares = blindedShares.getShare();
-                logger.info("Sending {} blinded shares", shares.length);
+                logger.debug("Sending {} blinded shares", shares.length);
                 out.writeInt(shares.length);
                 for (byte[] blindedShare : shares) {
                     out.writeInt(blindedShare.length);
@@ -151,7 +164,7 @@ public class BlindedDataSender extends Thread {
                     totalBytes += blindedShare.length;
                 }
                 out.flush();
-                logger.info("Sent {} bytes of blinded shares", totalBytes);
+                logger.debug("Sent {} bytes of blinded shares", totalBytes);
 
                 //Sending commitments
                 if (usingLinearScheme && commitmentsHashThread != null) {
@@ -162,19 +175,22 @@ public class BlindedDataSender extends Thread {
                     out.write(commitmentsHash);
                 }
                 out.flush();
+                logger.debug("Sent blinded data to {}:{}", receiverServersIp, receiverServerPort);
             }
             connection.close();
-        } catch (SocketException | InterruptedException ignored) {
+        } catch (SocketException ignored) {
+            logger.debug("Connecting to {}:{} was closed", receiverServersIp, receiverServerPort);
+        } catch (InterruptedException ignored) {
         } catch (IOException | NoSuchAlgorithmException e) {
             logger.error("Failed to send data to {}:{}", receiverServersIp, receiverServerPort, e);
+        } finally {
+            logger.debug("Exiting blinded data sender for {}:{}", receiverServersIp, receiverServerPort);
         }
-
-        logger.debug("Exiting blinded data sender for {}:{}", receiverServersIp, receiverServerPort);
     }
 
     public void shutdown() {
         try {
-            if (connection.isConnected())
+            if (connection != null && connection.isConnected())
                 connection.close();
         } catch (IOException e) {
             e.printStackTrace();

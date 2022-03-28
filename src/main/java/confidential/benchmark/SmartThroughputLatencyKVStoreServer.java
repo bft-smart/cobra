@@ -22,13 +22,14 @@ public class SmartThroughputLatencyKVStoreServer extends DefaultRecoverable {
     private double maxThroughput;
 
     public static void main(String[] args) throws NumberFormatException {
-        boolean measurementLeader = args.length != 1 && Boolean.parseBoolean(args[1]);
-        new SmartThroughputLatencyKVStoreServer(Integer.parseInt(args[0]), measurementLeader);
+        if (args.length != 1) {
+            System.out.println("USAGE: confidential.benchmark.SmartThroughputLatencyKVStoreServer <server id>");
+            System.exit(-1);
+        }
+        new SmartThroughputLatencyKVStoreServer(Integer.parseInt(args[0]));
     }
 
-    SmartThroughputLatencyKVStoreServer(int processId, boolean measurementLeader) {
-        if (measurementLeader)
-            System.out.println("I'm measurement leader");
+    SmartThroughputLatencyKVStoreServer(int processId) {
         map = new TreeMap<>();
         new ServiceReplica(processId, this, this);
         senders = new HashSet<>(1000);

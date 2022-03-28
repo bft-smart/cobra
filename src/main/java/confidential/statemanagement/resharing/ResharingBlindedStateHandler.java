@@ -3,8 +3,8 @@ package confidential.statemanagement.resharing;
 import bftsmart.reconfiguration.ServerViewController;
 import confidential.Configuration;
 import confidential.server.ServerConfidentialityScheme;
-import confidential.statemanagement.ReconstructionCompleted;
 import confidential.statemanagement.privatestate.receiver.BlindedStateHandler;
+import confidential.statemanagement.privatestate.receiver.StateReceivedListener;
 import vss.commitment.Commitment;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
@@ -16,17 +16,31 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.locks.Condition;
+import java.util.concurrent.locks.Lock;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class ResharingBlindedStateHandler extends BlindedStateHandler {
-    private final VerifiableShare[] refreshShares;
+    private final int newF;
+    private VerifiableShare[] refreshShares;
+    private final Lock lock;
+    private final Condition waitingForRefreshShares;
 
-    public ResharingBlindedStateHandler(ServerViewController svController, int serverPort, int f, int quorum,
+    public ResharingBlindedStateHandler(ServerViewController svController, int serverPort, int f, int newF, int quorum,
                                         int stateSenderReplica, ServerConfidentialityScheme confidentialityScheme,
-                                        ReconstructionCompleted reconstructionListener,
-                                        VerifiableShare[] refreshShares) {
+                                        StateReceivedListener stateReceivedListener) {
         super(svController, serverPort, f, quorum, stateSenderReplica, confidentialityScheme,
-                reconstructionListener);
+                stateReceivedListener);
+        this.newF = newF;
+        this.lock = new ReentrantLock(true);
+        this.waitingForRefreshShares = lock.newCondition();
+    }
+
+    public void setRefreshShares(VerifiableShare[] refreshShares) {
+        lock.lock();
         this.refreshShares = refreshShares;
+        waitingForRefreshShares.signal();
+        lock.unlock();
     }
 
     @Override
@@ -40,9 +54,18 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
     }
 
     @Override
-    protected Iterator<VerifiableShare> reconstructShares(int nShares,
+    protected LinkedList<VerifiableShare> reconstructShares(int nShares,
                                                           Map<Integer, Share[]> allBlindedShares,
                                                           Map<BigInteger, Commitment[]> allBlindedCommitments) {
+        lock.lock();
+        if (refreshShares == null) {
+            try {
+                waitingForRefreshShares.await();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+        lock.unlock();
         ExecutorService executorService = Executors
                 .newFixedThreadPool(Configuration.getInstance().getShareProcessingThreads());
         CountDownLatch latch = new CountDownLatch(nShares);
@@ -73,16 +96,19 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
             int finalI = i;
             executorService.execute(() -> {
                 try {
-
                     VerifiableShare vs = recoverShare(blindedShares, blindedCommitments);
                     if (vs == null) {
                         return;
                     }
                     BigInteger blindedSecret = vs.getShare().getShare();
+                    BigInteger[] zeroConstants = new BigInteger[newF];
+                    Arrays.fill(zeroConstants, BigInteger.ZERO);
+                    Polynomial tempSecretPolynomial = new Polynomial(field, blindedSecret, zeroConstants);
+                    Commitment blindedSecretCommitment = commitmentScheme.generateCommitments(tempSecretPolynomial);
                     BigInteger refreshedShare = blindedSecret.subtract(refreshShare.getShare().getShare()).mod(field);
-                    Commitment blindedSecretCommitment = vs.getCommitments();
                     Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
                             refreshShare.getCommitments());
+
                     vs.setCommitments(refreshedShareCommitment);
                     vs.getShare().setShare(refreshedShare);
                     vs.getShare().setShareholder(shareholderId);
@@ -106,7 +132,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                 return null;
             result.add(refreshedShare);
         }
-        return result.iterator();
+        return result;
     }
 
     private VerifiableShare recoverShare(Map<Integer, Share> blindedShares,
@@ -129,6 +155,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
             Commitment verificationCommitments = commitmentScheme.combineCommitments(blindedCommitments);
 
             if (polynomial.getDegree() != f) {
+                logger.warn("Using commitments to check shares");
                 recoveringShares = new Share[f + 1];
                 validCommitments = new HashMap<>(f);
                 j = 0;
@@ -153,9 +180,9 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                     blindedShares.remove(server);
                 }
 
-                blindedSecretNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
+                blindedSecretNumber = interpolationStrategy.interpolateAt(BigInteger.ZERO, recoveringShares);
             } else {
-                blindedSecretNumber = polynomial.evaluateAt(shareholderId);
+                blindedSecretNumber = polynomial.evaluateAt(BigInteger.ZERO);
                 int minNumberOfCommitments = corruptedServers >= f ? f : f + 1;
                 validCommitments = new HashMap<>(minNumberOfCommitments);
 
@@ -169,7 +196,7 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
 
             Commitment commitment;
             try {
-                commitment = commitmentScheme.recoverCommitment(shareholderId, validCommitments);
+                commitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
             } catch (SecretSharingException e) { //there is/are invalid witness(es)
                 validCommitments.clear();
                 for (Map.Entry<Integer, Share> entry : blindedShares.entrySet()) {
@@ -186,9 +213,9 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                         this.corruptedServers.incrementAndGet();
                     }
                 }
-                commitment = commitmentScheme.recoverCommitment(shareholderId, validCommitments);
+                commitment = commitmentScheme.recoverCommitment(BigInteger.ZERO, validCommitments);
             }
-            Share share = new Share(shareholderId, blindedSecretNumber);
+            Share share = new Share(BigInteger.ZERO, blindedSecretNumber);
             return new VerifiableShare(share, commitment, null);
         } catch (SecretSharingException e) {
             logger.error("Failed to a recover share", e);

@@ -27,6 +27,8 @@ public class BlindedDataReceiver extends Thread {
     private final int serverPort;
     private final int quorum;
     private final int stateSenderReplica;
+    private ServerSocket serverSocket;
+    private final CommitmentUtils commitmentUtils;
 
     public BlindedDataReceiver(BlindedStateHandler blindedStateHandler, ServerViewController svController,
                                int serverPort, int quorum, int stateSenderReplica) throws IOException {
@@ -38,23 +40,34 @@ public class BlindedDataReceiver extends Thread {
         this.stateSenderReplica = stateSenderReplica;
         View currentView = svController.getCurrentView();
         this.knownServerIps = new HashSet<>(currentView.getN());
-
+        this.commitmentUtils = CommitmentUtils.getInstance();
         for (int process : currentView.getProcesses()) {
             String ip = currentView.getAddress(process).getAddress().getHostAddress();
             knownServerIps.add(ip);
         }
     }
 
+    public void shutdown() {
+        try {
+            if (serverSocket != null && serverSocket.isBound())
+                serverSocket.close();
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
     @Override
     public void run() {
         boolean usingLinearScheme = Configuration.getInstance().getVssScheme().equals("1");
+
         try (ServerSocket serverSocket = new ServerSocket()) {
+            this.serverSocket = serverSocket;
             String myIp = svController.getStaticConf()
                     .getLocalAddress(svController.getStaticConf().getProcessId())
                     .getAddress().getHostAddress();
             serverSocket.bind(new InetSocketAddress(myIp, serverPort));
-            logger.debug("Listening for blinded data on {}:{}",
-                    serverSocket.getInetAddress().getHostAddress(), serverSocket.getLocalPort());
+            logger.debug("Listening for blinded data on {}:{} (pid:{})",
+                    serverSocket.getInetAddress().getHostAddress(), serverSocket.getLocalPort(), this.getId());
             int nReceivedStates = 0;
             boolean receivedFullState = false;
             while (nReceivedStates < quorum || !receivedFullState) {
@@ -65,7 +78,7 @@ public class BlindedDataReceiver extends Thread {
 
                     String clientIp = client.getInetAddress().getHostAddress();
                     if (!knownServerIps.contains(clientIp)) {
-                        logger.debug("Received connection from unknown server with ip {}", clientIp);
+                        logger.warn("Received connection from unknown server with ip {}", clientIp);
                         continue;
                     }
 
@@ -137,7 +150,7 @@ public class BlindedDataReceiver extends Thread {
                             byte[] b;
                             for (int i = 0; i < nCommitments; i++) {
                                 t1Commitments = System.nanoTime();
-                                commitments[i] = CommitmentUtils.getInstance().readCommitment(in);
+                                commitments[i] = commitmentUtils.readCommitment(in);
                                 t2Commitments = System.nanoTime();
                                 elapsedCommitments += t2Commitments - t1Commitments;
                                 b = confidential.Utils.toBytes(commitments[i].consistentHash());
@@ -153,7 +166,7 @@ public class BlindedDataReceiver extends Thread {
                         commitments = new Commitment[nCommitments];
                         for (int i = 0; i < nCommitments; i++) {
                             t1Commitments = System.nanoTime();
-                            commitments[i] = CommitmentUtils.getInstance().readCommitment(in);
+                            commitments[i] = commitmentUtils.readCommitment(in);
                             t2Commitments = System.nanoTime();
                             elapsedCommitments += t2Commitments - t1Commitments;
                         }
@@ -195,10 +208,10 @@ public class BlindedDataReceiver extends Thread {
 
                     elapsedTotal = elapsedCommonState + elapsedCommitments + elapsedBlindedShares;
 
-                    logger.info("Took {} ms to receive common state from {}", elapsedCommonState / 1_000_000.0, pid);
-                    logger.info("Took {} ms to receive commitments from {}", elapsedCommitments / 1_000_000.0, pid);
-                    logger.info("Took {} ms to receive blinded shares from {}", elapsedBlindedShares / 1_000_000.0, pid);
-                    logger.info("Took {} ms to receive state from {} (total)", elapsedTotal / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive common state from {}", elapsedCommonState / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive commitments from {}", elapsedCommitments / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive blinded shares from {}", elapsedBlindedShares / 1_000_000.0, pid);
+                    logger.debug("Took {} ms to receive state from {} (total)", elapsedTotal / 1_000_000.0, pid);
                     blindedStateHandler.deliverBlindedData(pid, shares, commonState, commonStateHash,
                             commitments, commitmentsHash);
                     if (pid == stateSenderReplica)
@@ -209,6 +222,10 @@ public class BlindedDataReceiver extends Thread {
                 } catch (ClassNotFoundException e) {
                     logger.error("Failed to read commitments.", e);
                 } catch (IOException e) {
+                    if (serverSocket.isClosed()) {
+                        logger.debug("Blinded data receiver server is closed");
+                        break;
+                    }
                     logger.error("Failed to receive data", e);
                 }
             }

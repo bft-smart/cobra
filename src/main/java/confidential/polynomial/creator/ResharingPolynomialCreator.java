@@ -70,7 +70,7 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
     }
 
     @Override
-    boolean validateProposal(ProposalMessage proposalMessage) {
+    synchronized boolean validateProposal(ProposalMessage proposalMessage) {
         Proposal oldViewProposal = proposalMessage.getProposals()[0];
         Proposal newViewProposal = proposalMessage.getProposals()[1];
         int proposalSender = proposalMessage.getSender();
@@ -84,6 +84,8 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                 oldViewShare = getDecryptedShare(proposalSender, oldViewProposal);
                 if (oldViewShare == null)
                     return false;
+                decryptedProposalPoints = new BigInteger[1];
+                decryptedProposalPoints[0] = oldViewShare.getShare();
                 isValid = new boolean[2];
                 isValid[0] = commitmentScheme.checkValidityWithoutPreComputation(oldViewShare,
                         oldViewProposal.getCommitments());
@@ -94,16 +96,17 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                     logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
+                    logger.debug("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
-                decryptedProposalPoints = new BigInteger[1];
-                decryptedProposalPoints[0] = oldViewShare.getShare();
                 break;
             case IN_NEW:
                 newViewShare = getDecryptedShare(proposalSender, newViewProposal);
-                if (newViewShare == null)
+                if (newViewShare == null) {
                     return false;
+                }
+                decryptedProposalPoints = new BigInteger[1];
+                decryptedProposalPoints[0] = newViewShare.getShare();
                 isValid = new boolean[2];
                 isValid[0] = commitmentScheme.checkValidityWithoutPreComputation(newViewShare,
                         newViewProposal.getCommitments());
@@ -114,11 +117,9 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                     logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
+                    logger.debug("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
-                decryptedProposalPoints = new BigInteger[1];
-                decryptedProposalPoints[0] = newViewShare.getShare();
                 break;
             case IN_BOTH:
                 oldViewShare = getDecryptedShare(proposalSender, oldViewProposal);
@@ -127,6 +128,9 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                 newViewShare = getDecryptedShare(proposalSender, newViewProposal);
                 if (newViewShare == null)
                     return false;
+                decryptedProposalPoints = new BigInteger[2];
+                decryptedProposalPoints[0] = oldViewShare.getShare();
+                decryptedProposalPoints[1] = newViewShare.getShare();
                 isValid = new boolean[3];
                 isValid[0] = commitmentScheme.checkValidityWithoutPreComputation(oldViewShare,
                         oldViewProposal.getCommitments());
@@ -139,12 +143,9 @@ public class ResharingPolynomialCreator extends PolynomialCreator {
                     logger.debug("Proposal from {} is valid for creation {}", proposalSender, proposalMessage.getId());
                 } else {
                     invalidProposals.add(proposalSender);
-                    logger.warn("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
+                    logger.debug("Proposal from {} is invalid for creation {}", proposalSender, proposalMessage.getId());
                     return false;
                 }
-                decryptedProposalPoints = new BigInteger[2];
-                decryptedProposalPoints[0] = oldViewShare.getShare();
-                decryptedProposalPoints[1] = newViewShare.getShare();
                 break;
         }
         decryptedPoints.put(proposalSender, decryptedProposalPoints);

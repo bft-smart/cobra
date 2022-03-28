@@ -66,8 +66,8 @@ public class ResharingPolynomialContext extends PolynomialManagerContext {
     }
 
     public void addPolynomial(int id, VerifiableShare... points) {
-        int index = super.id == 0 ? id : id % super.id;
-        if (currentIndex == nPolynomials || index >= nPolynomials) {
+        int index = id - initialId;
+        if (currentSize == nPolynomials) {
             return;
         }
 
@@ -89,6 +89,6 @@ public class ResharingPolynomialContext extends PolynomialManagerContext {
                 pointsForNewGroup[index] = points[1];
                 break;
         }
-        currentIndex++;
+        currentSize++;
     }
 }

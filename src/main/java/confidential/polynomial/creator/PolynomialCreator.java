@@ -275,32 +275,19 @@ public abstract class PolynomialCreator {
         int[] receivedNodes = new int[faultsThreshold + 1];
         byte[][] receivedProposalsHashes = new byte[faultsThreshold + 1][];
 
-        Iterator<Map.Entry<Integer, ProposalMessage>> it = proposals.entrySet().iterator();
-        CountDownLatch latch = new CountDownLatch(faultsThreshold + 1);
-        for (int i = 0; i < receivedNodes.length; i++) {
-            Map.Entry<Integer, ProposalMessage> entry = it.next();
-            int finalI = i;
-            distributedPolynomial.submitJob(() -> {
-                if (invalidProposals.contains(entry.getKey())) {
-                    return;
-                }
-                ProposalMessage proposal = entry.getValue();
-                if (validProposals.contains(entry.getKey())) {
-                    receivedNodes[finalI] = proposal.getSender();
-                    receivedProposalsHashes[finalI] = proposal.getCryptographicHash();
-                } else if (validateProposal(proposal)) {
-                    receivedNodes[finalI] = proposal.getSender();
-                    receivedProposalsHashes[finalI] = proposal.getCryptographicHash();
-                }
-                latch.countDown();
-            });
+        int index = 0;
+        for (int validProposalId : validProposals) {
+            ProposalMessage validProposal = proposals.get(validProposalId);
+            logger.debug("Selected proposal from {} in creation {}", validProposal.getSender(), creationContext.getId());
+            receivedNodes[index] = validProposal.getSender();
+            receivedProposalsHashes[index] = validProposal.getCryptographicHash();
+            index++;
+            if (index == receivedNodes.length)
+                break;
         }
 
-        try {
-            latch.await();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
+        if (index != receivedNodes.length)
+            throw new IllegalStateException("I should have f+1 validated proposals.");
 
         ProposalSetMessage proposalSetMessage =  new ProposalSetMessage(
                 creationContext.getId(),
@@ -308,6 +295,7 @@ public abstract class PolynomialCreator {
                 receivedNodes,
                 receivedProposalsHashes
         );
+
         int[] members = getMembers(false);
         logger.debug("I'm leader for {} and I'm proposing a proposal set with proposals from: {}",
                 creationContext.getId(), Arrays.toString(receivedNodes));
@@ -465,15 +453,24 @@ public abstract class PolynomialCreator {
         }
 
         if (!invalidProposals.isEmpty()) {
-            creationListener.onPolynomialCreationFailure(creationContext, invalidProposals, consensusId);
+            BigInteger[][] invalidPoints = new BigInteger[invalidProposals.size()][];
+            ProposalMessage[] invalidProposalsArray = new ProposalMessage[invalidProposals.size()];
+            int index = 0;
+            for (ProposalMessage invalidProposal : invalidProposals) {
+                invalidProposalsArray[index] = invalidProposal;
+                invalidPoints[index] = decryptedPoints.get(invalidProposal.getSender());
+                index++;
+
+            }
+            creationListener.onPolynomialCreationFailure(creationContext, consensusId, invalidProposalsArray, invalidPoints);
             return;
         }
 
         for (int member : proposalSet.getReceivedNodes()) {
             BigInteger[] points = decryptedPoints.get(member);
             if (points == null) { //if this replica did not received some proposals
-                creationListener.onPolynomialCreationFailure(creationContext, invalidProposals,
-                        consensusId);
+                logger.warn("I do not have a proposal from {}. This should not happen in deliverResult()", member);
+                creationListener.onPolynomialCreationFailure(creationContext, consensusId, null, null);
                 return;
             }
             if (finalPoint == null) {
@@ -527,7 +524,7 @@ public abstract class PolynomialCreator {
     }
 
     private VerifiableShare[] computeResultUsingVandermondeMatrix(BigInteger[] points, Commitment[] commitments,
-                                                        boolean combineCommitments) {
+                                                                  boolean combineCommitments) {
         logger.debug("Using vandermonde matrix for polynomial creation {}", creationContext.getId());
         BigInteger[][] vandermondeMatrix = distributedPolynomial.getVandermondeMatrix();
         int rows = vandermondeMatrix.length;
