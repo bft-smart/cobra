@@ -254,7 +254,7 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
                     accuser);
             removeFaultyProcesses(faultyProcesses);
             PolynomialRecovery polynomialRecoveryRequest = accusation.getPolynomialRecoveryRequest();
-            if (polynomialRecoveryRequest != null && processId != 1 && processId != 4 && processId != 5) {//TODO for adversarial attack
+            if (polynomialRecoveryRequest != null && processId != 1) {//TODO for adversarial attack
                 VerifiableShare[] points = resharingNewGroupPoints.getPoints(polynomialRecoveryRequest.getId());
                 if (points == null) {
                     logger.info("I do not have points for new group. Adding the request into the pending list.");

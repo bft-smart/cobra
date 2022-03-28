@@ -215,9 +215,7 @@ public abstract class PolynomialCreator {
                 logger.info("---->>>> I AM MALICIOUS! I am messing up process 2's resharing polynomial proposal");
                 point = point.add(BigInteger.ONE).mod(field);
             } else if (creationContext.getReason() == PolynomialCreationReason.RECOVERY && member == 3) {
-                if ((processId == 1 && (creationContext.getId() == 1 || creationContext.getId() == 1000))
-                || (processId == 4 && (creationContext.getId() == 2 || creationContext.getId() == 1001))
-                || (processId == 5 && (creationContext.getId() == 3 || creationContext.getId() == 1002))) {
+                if (processId == 1 && (creationContext.getId() == 1 || creationContext.getId() == 1000)) {
                     logger.info("---->>>> I AM MALICIOUS! I am messing up process 3's recovery polynomial proposal (leader {})", creationContext.getLeader());
                     point = point.add(BigInteger.ONE).mod(field);
                 }

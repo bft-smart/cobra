@@ -56,12 +56,12 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         for (int i = 0; i < nExecutions; i++) {
             int id = internalSequenceNumber++;
             int leader = members[id % members.length];
-            if (leader == server || leader == 1 || leader == 3 || leader == 4 || leader == 5) {//TODO for adversarial attack
+            if (leader == server || leader == 1 || leader == 3) {//TODO for adversarial attack
                 int k = 1;
                 do {
                     leader = members[(id + k) % members.length];
                     k++;
-                } while (leader == server || leader == 1 || leader == 3 || leader == 4 || leader == 5);
+                } while (leader == server || leader == 1 || leader == 3);
             }
             PolynomialCreationContext creationContext = new PolynomialCreationContext(
                     id,
