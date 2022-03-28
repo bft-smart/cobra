@@ -148,7 +148,7 @@ You can test these demonstrations by following these instructions:
     ```
 4) When the previous client terminates, execute the following command inside the folder `build/local/cli0/`:
    ```
-   build/local/cli0$./smartrun.sh confidential.reconfiguration.ReconfigurationClient 7002 config/reconfiguration_f_1.json
+   build/local/cli0$./smartrun.sh confidential.reconfiguration.ReconfigurationClient 7002 config/reconfiguration_f_3.json
     ```
 
 The last step (Step 4) execution will trigger resharing protocols in servers. Depending on the branch, 
