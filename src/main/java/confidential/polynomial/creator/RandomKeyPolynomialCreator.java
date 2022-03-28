@@ -140,15 +140,23 @@ public class RandomKeyPolynomialCreator extends PolynomialCreator {
 		}
 
 		if (!invalidProposals.isEmpty()) {
-			creationListener.onPolynomialCreationFailure(creationContext, invalidProposals, consensusId);
-			return;
+			BigInteger[][] invalidPoints = new BigInteger[invalidProposals.size()][];
+			ProposalMessage[] invalidProposalsArray = new ProposalMessage[invalidProposals.size()];
+			int index = 0;
+			for (ProposalMessage invalidProposal : invalidProposals) {
+				invalidProposalsArray[index] = invalidProposal;
+				invalidPoints[index] = decryptedPoints.get(invalidProposal.getSender());
+				index++;
+
+			}
+			creationListener.onPolynomialCreationFailure(creationContext, consensusId, invalidProposalsArray, invalidPoints);			return;
 		}
 
 		for (int member : proposalSet.getReceivedNodes()) {
 			BigInteger[] points = decryptedPoints.get(member);
 			if (points == null) { //if this replica did not received some proposals
-				creationListener.onPolynomialCreationFailure(creationContext, invalidProposals,
-						consensusId);
+				logger.warn("I do not have a proposal from {}. This should not happen in deliverResult()", member);
+				creationListener.onPolynomialCreationFailure(creationContext, consensusId, null, null);
 				return;
 			}
 			if (finalPoint == null) {

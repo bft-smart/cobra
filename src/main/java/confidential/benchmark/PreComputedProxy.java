@@ -36,17 +36,21 @@ public class PreComputedProxy {
     private byte[] orderedCommonData;
     private byte[] unorderedCommonData;
     Map<Integer, byte[]> privateData;
-    private final boolean preComputed;
+    private boolean preComputed;
     private final boolean isLinearCommitmentScheme;
     private final boolean isSendAllSharesTogether;
+    private byte[] data;
+    private byte[] plainWriteData;
+    private byte[] plainReadData;
+    private EncryptedPublishedShares[] shares;
 
     PreComputedProxy(int clientId) throws SecretSharingException {
         this.preComputed = false;
         if (Configuration.getInstance().useTLSEncryption()) {
-            serversResponseHandler = new PreComputedPlainServersResponseHandler(false);
+            serversResponseHandler = new PreComputedPlainServersResponseHandler();
         } else {
             serversResponseHandler =
-                    new PreComputedEncryptedServersResponseHandler(clientId, false);
+                    new PreComputedEncryptedServersResponseHandler(clientId);
         }
         this.service = new ServiceProxy(clientId, null, serversResponseHandler,
                 serversResponseHandler, null);
@@ -56,24 +60,22 @@ public class PreComputedProxy {
         isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
 
-    PreComputedProxy(int clientId, byte[] unorderedCommonData, byte[] orderedCommonData,
-                     Map<Integer, byte[]> privateData) throws SecretSharingException {
+    public void setPreComputedValues(byte[] data, byte[] plainWriteData, byte[] plainReadData,
+                                     EncryptedPublishedShares[] shares, byte[] orderedCommonData,
+                                     Map<Integer, byte[]> privateData,
+                                     byte[] unorderedCommonData) {
+        if (serversResponseHandler instanceof PreComputedPlainServersResponseHandler)
+            ((PreComputedPlainServersResponseHandler)serversResponseHandler).setPreComputed(true);
+        else if (serversResponseHandler instanceof PreComputedEncryptedServersResponseHandler)
+            ((PreComputedEncryptedServersResponseHandler)serversResponseHandler).setPreComputed(true);
         this.preComputed = true;
-        if (Configuration.getInstance().useTLSEncryption()) {
-            serversResponseHandler = new PreComputedPlainServersResponseHandler(true);
-        } else {
-            serversResponseHandler =
-                    new PreComputedEncryptedServersResponseHandler(clientId, true);
-        }
-        this.service = new ServiceProxy(clientId, null, serversResponseHandler,
-                serversResponseHandler, null);
-        this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
-        serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
-        isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
-        this.unorderedCommonData = unorderedCommonData;
+        this.data = data;
+        this.plainWriteData = plainWriteData;
+        this.plainReadData = plainReadData;
+        this.shares = shares;
         this.orderedCommonData = orderedCommonData;
         this.privateData = privateData;
-        this.isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
+        this.unorderedCommonData = unorderedCommonData;
     }
 
     Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {

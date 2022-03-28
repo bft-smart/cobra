@@ -1,8 +1,8 @@
 package confidential.client;
 
 import bftsmart.tom.ServiceProxy;
-import confidential.Configuration;
 import confidential.ConfidentialExtractedResponse;
+import confidential.Configuration;
 import confidential.MessageType;
 import confidential.Metadata;
 import confidential.encrypted.EncryptedPublishedShares;

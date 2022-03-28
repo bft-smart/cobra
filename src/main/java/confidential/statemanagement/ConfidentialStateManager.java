@@ -407,7 +407,6 @@ public class ConfidentialStateManager extends StateManager implements Reconstruc
         );
         recoveryStateSender.start();
         int id = distributedPolynomialManager.createRecoveryPolynomialsFor(
-                recoveryMessage.getSender(),
                 confidentialityScheme.getShareholder(recoveryMessage.getSender()),
                 SVController.getCurrentViewF(),
                 SVController.getCurrentViewAcceptors(),
