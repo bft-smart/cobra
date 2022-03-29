@@ -1,4 +1,4 @@
-# COBRA - A COnfidential Byzantine ReplicAtion library
+# COBRA - A COnfidential Byzantine ReplicAtion SMR library
 
 COBRA is a fully-featured state machine replication library that guarantees the confidentiality of the data. 
 Confidentiality is ensured by integrating a secret sharing mechanism into the 
