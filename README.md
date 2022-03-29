@@ -12,9 +12,9 @@ Therefore, before using it, consider the following limitations:
 the number of shares to reshare;
 * The constant commitment scheme, i.e., Kate et al.'s protocol, was not tested with recent changes;
 * The adversarial attack for resharing is hardcoded in branches 
-*[adversarial_1_faulty_servers](https://github.com/rvassantlal/COBRA/tree/adversarial_1_faulty_servers)*, 
-*[adversarial_2_faulty_servers](https://github.com/rvassantlal/COBRA/tree/adversarial_2_faulty_servers)*, and 
-*[adversarial_3_faulty_servers](https://github.com/rvassantlal/COBRA/tree/adversarial_3_faulty_servers)*;
+*[adversarial_1_faulty_servers](https://github.com/bft-smart/cobra/tree/adversarial_1_faulty_servers)*, 
+*[adversarial_2_faulty_servers](https://github.com/bft-smart/cobra/tree/adversarial_2_faulty_servers)*, and 
+*[adversarial_3_faulty_servers](https://github.com/bft-smart/cobra/tree/adversarial_3_faulty_servers)*;
 * Recovery and resharing while changing the leader was not tested.
 
 ## Requirements
@@ -36,9 +36,13 @@ task `localDeploy` will create the folder `build/local` containing `nServers` fo
 folders `cli*` (you can change these parameters in the `build.gradle` file). Each server and client folder 
 will have the required files to run COBRA demos.
 
-To use the constant commitment scheme, follow the instructions presented in the 
-Verifiable Secret Sharing library [repository](https://github.com/rvassantlal/VerifiableSecretSharing) to compile 
-the required C code.
+***Compiling C code***
+
+The constant commitment scheme is implemented in C using [`relic` library](https://github.com/relic-toolkit/relic). 
+Execute the following commands inside `pairing` folder to compile the `relic` library and C code:
+1. Compile the `relic` library by executing `./build_relic.sh`;
+2. Compile the C code by executing `./build.sh <path to java folder>`.
+
 
 ## Usage
 Since COBRA extends the BFT-SMaRt library, first configure BFT-SMaRt following instructions presented in 
@@ -104,9 +108,9 @@ latencies of each request in nanoseconds. For example, you can use this result t
 
 
 ## Adversarial demonstration
-Branches *[adversarial_1_faulty_servers](https://github.com/rvassantlal/COBRA/tree/adversarial_1_faulty_servers)*, 
-*[adversarial_2_faulty_servers](https://github.com/rvassantlal/COBRA/tree/adversarial_2_faulty_servers)*, and 
-*[adversarial_3_faulty_servers](https://github.com/rvassantlal/COBRA/tree/adversarial_3_faulty_servers)*
+Branches *[adversarial_1_faulty_servers](https://github.com/bft-smart/cobra/tree/adversarial_1_faulty_servers)*,
+*[adversarial_2_faulty_servers](https://github.com/bft-smart/cobra/tree/adversarial_2_faulty_servers)*, and
+*[adversarial_3_faulty_servers](https://github.com/bft-smart/cobra/tree/adversarial_3_faulty_servers)*
 have hardcoded demonstration of the effect of 1, 2, and 3 faulty servers, respectively, during resharing 
 in a system with ten replicas tolerating three faults.
 
@@ -167,10 +171,11 @@ Following are the relevant modifications done in BFT-SMaRt:
 * Added a metadata field inside `MessageContext` and `TOMMessage`;
 * Added a reconfiguration listener.
 
-## Publication
-The COBRA library results from research to improve secret sharing protocols while devising a practical 
-replication library with confidentiality. The result was published at a conference that you can find here. 
-The paper explains how the COBRA secret sharing protocols work.
+## References
 
+We empirically showed that the COBRA library improves the state-of-the-art protocol 
+[VSSR](https://dl.acm.org/doi/10.1145/3319535.3354207) in recovery and the state-of-the-art protocol 
+[MPSS](https://dl.acm.org/doi/10.1145/1880022.1880028) in resharing. The prototype implementation of VSSR and MPSS 
+can be found [here](https://github.com/rvassantlal/VSSR) and [here](https://github.com/rvassantlal/MPSS), respectively.
 
 ***Feel free to contact us if you have any questions!***
