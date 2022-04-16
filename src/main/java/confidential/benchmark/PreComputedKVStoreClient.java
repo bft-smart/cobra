@@ -62,7 +62,7 @@ public class PreComputedKVStoreClient {
             byte[] unorderedCommonData = generatorProxy.serializeCommonData(plainReadData, null);
 
             for (int i = 0; i < numClients; i++) {
-                int sleepTime = random.nextInt(50);
+                int sleepTime = random.nextInt(10000);
                 Thread.sleep(sleepTime);
                 PreComputedProxy proxy = new PreComputedProxy(initialId + i);
                 proxy.setPreComputedValues(data, plainWriteData, plainReadData, shares, orderedCommonData, privateData, unorderedCommonData);
@@ -72,7 +72,7 @@ public class PreComputedKVStoreClient {
             generatorProxy.close();
         } else {
             for (int i = 0; i < numClients; i++) {
-                int sleepTime = random.nextInt(50);
+                int sleepTime = random.nextInt(10000);
                 Thread.sleep(sleepTime);
                 PreComputedProxy proxy = new PreComputedProxy(initialId + i);
                 clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,

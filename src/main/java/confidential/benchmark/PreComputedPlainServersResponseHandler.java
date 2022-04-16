@@ -121,7 +121,7 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
-        if (Arrays.equals(o1, o2))
+        if (o1 == null && o2 == null)
             return 0;
         ConfidentialMessage response1 = responses.computeIfAbsent(o1,
                 ConfidentialMessage::deserialize);
