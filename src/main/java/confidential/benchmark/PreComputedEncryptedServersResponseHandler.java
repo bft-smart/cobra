@@ -124,7 +124,7 @@ public class PreComputedEncryptedServersResponseHandler extends ServersResponseH
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
-        if (Arrays.equals(o1, o2))
+        if (o1 == null && o2 == null)
             return 0;
         EncryptedConfidentialMessage response1 = responses.computeIfAbsent(o1,
                 EncryptedConfidentialMessage::deserialize);

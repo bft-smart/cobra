@@ -58,6 +58,7 @@ public class PreComputedProxy {
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
         isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
+        service.setInvokeTimeout(60000);
     }
 
     public void setPreComputedValues(byte[] data, byte[] plainWriteData, byte[] plainReadData,

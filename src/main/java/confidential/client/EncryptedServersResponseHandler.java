@@ -121,6 +121,8 @@ public class EncryptedServersResponseHandler extends ServersResponseHandler {
 
     @Override
     public int compare(byte[] o1, byte[] o2) {
+        if (o1 == null && o2 == null)
+            return 0;
         EncryptedConfidentialMessage response1 = responses.computeIfAbsent(o1,
                 EncryptedConfidentialMessage::deserialize);
         EncryptedConfidentialMessage response2 = responses.computeIfAbsent(o2, EncryptedConfidentialMessage::deserialize);
