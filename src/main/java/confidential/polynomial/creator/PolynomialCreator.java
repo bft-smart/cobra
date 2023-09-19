@@ -300,7 +300,7 @@ public abstract class PolynomialCreator {
         logger.debug("I'm leader for {} and I'm proposing a proposal set with proposals from: {}",
                 creationContext.getId(), Arrays.toString(receivedNodes));
         serversCommunication.sendOrdered(InterServersMessageType.POLYNOMIAL_PROPOSAL_SET,
-                new byte[]{(byte)Metadata.POLYNOMIAL_PROPOSAL_SET.ordinal()},
+				(byte) Metadata.POLYNOMIAL_PROPOSAL_SET.ordinal(),
                 serialize(proposalSetMessage), members);
 
         proposalSetProposed = true;

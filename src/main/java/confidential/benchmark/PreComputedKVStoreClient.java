@@ -22,9 +22,10 @@ public class PreComputedKVStoreClient {
     private static int initialId;
 
     public static void main(String[] args) throws SecretSharingException, InterruptedException {
-        if (args.length != 7) {
+        if (args.length != 8) {
             System.out.println("USAGE: ... PreComputedKVStoreClient <initial client id> " +
-                    "<num clients> <number of ops> <request size> <write?> <precomputed?> <measurement leader?>");
+                    "<num clients> <number of ops> <request size> <write?> <precomputed?> <use hashed response> " +
+					"<measurement leader?>");
             System.exit(-1);
         }
 
@@ -34,7 +35,8 @@ public class PreComputedKVStoreClient {
         int requestSize = Integer.parseInt(args[3]);
         boolean write = Boolean.parseBoolean(args[4]);
         boolean precomputed = Boolean.parseBoolean(args[5]);
-        boolean measurementLeader = Boolean.parseBoolean(args[6]);
+		boolean useHashedResponse = Boolean.parseBoolean(args[6]);
+        boolean measurementLeader = Boolean.parseBoolean(args[7]);
 
         Random random = new Random(1L);
         byte[] data = new byte[requestSize];
@@ -67,7 +69,7 @@ public class PreComputedKVStoreClient {
                 PreComputedProxy proxy = new PreComputedProxy(initialId + i);
                 proxy.setPreComputedValues(data, plainWriteData, plainReadData, shares, orderedCommonData, privateData, unorderedCommonData);
                 clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
-                        plainReadData, data, write, measurementLeader);
+                        plainReadData, data, write, measurementLeader, useHashedResponse);
             }
             generatorProxy.close();
         } else {
@@ -76,7 +78,7 @@ public class PreComputedKVStoreClient {
                 Thread.sleep(sleepTime);
                 PreComputedProxy proxy = new PreComputedProxy(initialId + i);
                 clients[i] = new Client(initialId + i, proxy, true, numOperations, plainWriteData,
-                        plainReadData, data, write, measurementLeader);
+                        plainReadData, data, write, measurementLeader, useHashedResponse);
             }
         }
 
@@ -130,12 +132,13 @@ public class PreComputedKVStoreClient {
         private final boolean write;
         private final PreComputedProxy proxy;
         private final boolean measurementLeader;
-        private final boolean preComputed;
+		private final boolean useHashedResponse;
+		private final boolean preComputed;
         private int rampup = 1000;
 
         Client(int id, PreComputedProxy proxy, boolean precomputed, int numOperations,
                byte[] plainWriteData, byte[] plainReadData, byte[] data, boolean write,
-               boolean measurementLeader) {
+               boolean measurementLeader, boolean useHashedResponse) {
             super("Client " + id);
             this.id = id;
             this.numOperations = numOperations;
@@ -146,7 +149,8 @@ public class PreComputedKVStoreClient {
             this.preComputed = precomputed;
             this.proxy = proxy;
             this.measurementLeader = measurementLeader;
-        }
+			this.useHashedResponse = useHashedResponse;
+		}
 
         @Override
         public void run() {
@@ -168,9 +172,17 @@ public class PreComputedKVStoreClient {
                     long t2;
                     long t1 = System.nanoTime();
                     if (write) {
-                        proxy.invokeOrdered(plainWriteData, data);
+						if (useHashedResponse) {
+							proxy.invokeOrderedHashed(plainWriteData, data);
+						} else {
+							proxy.invokeOrdered(plainWriteData, data);
+						}
                     } else {
-                        proxy.invokeUnordered(plainReadData);
+						if (useHashedResponse) {
+							proxy.invokeUnorderedHashed(plainReadData);
+						} else {
+							proxy.invokeUnordered(plainReadData);
+						}
                     }
                     t2 = System.nanoTime();
                     long latency = t2 - t1;
