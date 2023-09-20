@@ -176,7 +176,7 @@ public class COBRAStateCombiner extends Thread {
 		for (int i = 0; i < size; i++) {
 			int sender = in.readInt();
 			int viewId = in.readInt();
-			TOMMessageType type = TOMMessageType.fromInt(in.readInt());
+			TOMMessageType type = TOMMessageType.getMessageType(in.read());
 			int session = in.readInt();
 			int sequence = in.readInt();
 			int operationId = in.readInt();
@@ -193,12 +193,8 @@ public class COBRAStateCombiner extends Thread {
 			int consensusId = in.readInt();
 			int numOfNonces = in.readInt();
 			long seed = in.readLong();
-			len = in.readInt();
-			byte[] metadata = null;
-			if (len > -1) {
-				metadata = new byte[len];
-				in.readFully(metadata);
-			}
+			boolean hasReplicaSpecificContent = in.readBoolean();
+			byte metadata = (byte) in.read();
 			len = in.readInt();
 			Set<ConsensusMessage> proof = null;
 			if (len != -1) {
@@ -235,7 +231,7 @@ public class COBRAStateCombiner extends Thread {
 
 			MessageContext messageContext = new MessageContext(sender, viewId, type, session, sequence, operationId,
 					replyServer, signature, timestamp, numOfNonces, seed, regency, leader, consensusId,
-					proof, firstInBatch, noOp, metadata);
+					proof, firstInBatch, noOp, hasReplicaSpecificContent, metadata);
 			if (lastInBatch)
 				messageContext.setLastInBatch();
 			messageContexts[i] = messageContext;

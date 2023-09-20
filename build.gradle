@@ -37,10 +37,11 @@ distributions {
 
 remotes {
     master {
-        host = '<host ip>'
-        user = '<host user>'
-        password = '<host password>'
-        //identity=file("<ssh private key file>")
+		//Create a gradle.properties and set the following properties: remoteDeployMasterHost, remoteDeployMasterUser,
+		// remoteDeployMasterPrivateKeyFile
+		host = remoteDeployMasterHost
+		user = remoteDeployMasterUser
+		identity = file(remoteDeployMasterPrivateKeyFile)
     }
 }
 

@@ -25,7 +25,7 @@ public class TOMMessageGenerator {
 		this.session = new Random(System.nanoTime()).nextInt();
 	}
 	
-	public TOMMessage getNextOrdered(byte[] metadata, byte[] payload) {
+	public TOMMessage getNextOrdered(byte metadata, byte[] payload) {
 		int os = orderedSeq.getAndIncrement();
 		int reqId = requestId.getAndIncrement();
 		return nextMessage(metadata, payload, os, reqId, TOMMessageType.ORDERED_REQUEST);
@@ -34,19 +34,19 @@ public class TOMMessageGenerator {
 	public TOMMessage getNextUnordered(byte[] payload) {
 		int os = unorderedSeq.getAndIncrement();
 		int reqId = requestId.getAndIncrement();
-		return nextMessage(null, payload, os, reqId, TOMMessageType.UNORDERED_REQUEST);
+		return nextMessage((byte) -1, payload, os, reqId, TOMMessageType.UNORDERED_REQUEST);
 	}
 
-	private TOMMessage nextMessage(byte[] metadata, byte[] payload, int sequence,
+	private TOMMessage nextMessage(byte metadata, byte[] payload, int sequence,
 								   int requestId, TOMMessageType type) {
 		TOMMessage msg =  new TOMMessage(
 				id,
 				session,
 				sequence,
 				requestId,
-				metadata,
 				payload,
-				new byte[0],
+				false,
+				metadata,
 				controller.getCurrentViewId(),
 				type);
 		msg.serializedMessage = TOMMessage.messageToBytes(msg);

@@ -58,7 +58,7 @@ public class ConnectionManager extends Thread {
             myAddress = InetAddress.getLocalHost().getHostAddress();
             //If the replica binds to the loopback address, clients will not be able to connect to replicas.
             //To solve that issue, we bind to the address supplied in config/hosts.config instead.
-            if (InetAddress.getLoopbackAddress().getHostAddress().equals(myAddress) && !myAddress.equals(confAddress)) {
+            if (InetAddress.getByName(myAddress).isLoopbackAddress() && !myAddress.equals(confAddress)) {
                 myAddress = confAddress;
             }
         } else {

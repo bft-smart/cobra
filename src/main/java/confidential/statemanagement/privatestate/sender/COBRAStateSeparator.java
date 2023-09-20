@@ -157,7 +157,7 @@ public class COBRAStateSeparator extends Thread {
 		for (MessageContext ctx : msgCtx) {
 			out.writeInt(ctx.getSender());
 			out.writeInt(ctx.getViewID());
-			out.writeInt(ctx.getType().ordinal());
+			out.write(ctx.getType().ordinal());
 			out.writeInt(ctx.getSession());
 			out.writeInt(ctx.getSequence());
 			out.writeInt(ctx.getOperationId());
@@ -172,10 +172,8 @@ public class COBRAStateSeparator extends Thread {
 			out.writeInt(ctx.getConsensusId());
 			out.writeInt(ctx.getNumOfNonces());
 			out.writeLong(ctx.getSeed());
-			out.writeInt(ctx.getMetadata() == null ? -1 : ctx.getMetadata().length);
-			if (ctx.getMetadata() != null) {
-				out.write(ctx.getMetadata());
-			}
+			out.writeBoolean(ctx.hasReplicaSpecificContent());
+			out.write(ctx.getMetadata());
 			out.writeInt(ctx.getProof() == null ? -1 : ctx.getProof().size());
 			if (ctx.getProof() != null) {
 				List<ConsensusMessage> orderedProf = new ArrayList<>(ctx.getProof());

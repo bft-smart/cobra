@@ -34,7 +34,7 @@ public class InterServersCommunication {
         this.pid = viewController.getStaticConf().getProcessId();
     }
 
-    public synchronized void sendOrdered(InterServersMessageType type, byte[] metadata, byte[] request,
+    public synchronized void sendOrdered(InterServersMessageType type, byte metadata, byte[] request,
                             int... targets) {
         TOMMessage msg = tomMessageGenerator.getNextOrdered(metadata,
                 serializeRequest(type, request));
