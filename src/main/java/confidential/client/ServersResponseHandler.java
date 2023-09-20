@@ -121,6 +121,16 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 
 
 	protected byte[][] reconstructConfidentialData(LinkedList<ConfidentialMessage> correctReplies) throws SecretSharingException {
+		OpenPublishedShares[] secretShares = reconstructOpenPublishedShares(correctReplies);
+		byte[][] confidentialData = new byte[secretShares.length][];
+		for (int i = 0; i < secretShares.length; i++) {
+			confidentialData[i] = confidentialityScheme.combine(secretShares[i],
+					secretShares[i].getSharedData() == null ? Mode.SMALL_SECRET : Mode.LARGE_SECRET);
+		}
+		return confidentialData;
+	}
+
+	protected OpenPublishedShares[] reconstructOpenPublishedShares(LinkedList<ConfidentialMessage> correctReplies) {
 		ConfidentialMessage firstMsg = correctReplies.getFirst();
 		int numSecrets = firstMsg.getShares().length;
 		ArrayList<LinkedList<VerifiableShare>> verifiableShares =
@@ -128,7 +138,7 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 		for (int i = 0; i < numSecrets; i++) {
 			verifiableShares.add(new LinkedList<>());
 		}
-		byte[][] confidentialData = new byte[numSecrets][];
+		OpenPublishedShares[] confidentialData = new OpenPublishedShares[numSecrets];
 
 		for (ConfidentialMessage confidentialMessage : correctReplies) {
 			VerifiableShare[] sharesI =
@@ -157,8 +167,7 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 			Commitment commitment =
 					commitmentScheme.combineCommitments(commitmentsToCombine);
 			OpenPublishedShares secret = new OpenPublishedShares(shares, commitment, shareData);
-			confidentialData[i] = confidentialityScheme.combine(secret,
-					shareData == null ? Mode.SMALL_SECRET : Mode.LARGE_SECRET);
+			confidentialData[i] = secret;
 		}
 		return confidentialData;
 	}
