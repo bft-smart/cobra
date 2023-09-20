@@ -31,12 +31,20 @@ public class ConfidentialServiceProxy {
     private final boolean isLinearCommitmentScheme;
     private final boolean isSendAllSharesTogether;
 
-    public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
-        if (Configuration.getInstance().useTLSEncryption()) {
-            serversResponseHandler = new PlainServersResponseHandler();
-        } else {
-            serversResponseHandler = new EncryptedServersResponseHandler(clientId);
-        }
+	public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
+		this(clientId, null);
+	}
+
+    public ConfidentialServiceProxy(int clientId, ServersResponseHandler customServersResponseHandler) throws SecretSharingException {
+        if (customServersResponseHandler == null) {
+			if (Configuration.getInstance().useTLSEncryption()) {
+				serversResponseHandler = new PlainServersResponseHandler();
+			} else {
+				serversResponseHandler = new EncryptedServersResponseHandler(clientId);
+			}
+		} else {
+			serversResponseHandler = customServersResponseHandler;
+		}
         this.service = new ExtendedServiceProxy(clientId, serversResponseHandler,
                 serversResponseHandler, null);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
@@ -44,6 +52,18 @@ public class ConfidentialServiceProxy {
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
         isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
+
+	public int getProcessId() {
+		return service.getProcessId();
+	}
+
+	public int getCurrentF() {
+		return service.getViewManager().getCurrentViewF();
+	}
+
+	public int getCurrentN() {
+		return service.getViewManager().getCurrentViewN();
+	}
 
 	public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
 		return invokeOrdered(plainData, Mode.LARGE_SECRET, confidentialData);
