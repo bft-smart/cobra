@@ -2,6 +2,7 @@ package confidential.benchmark;
 
 import bftsmart.tom.core.messages.TOMMessage;
 import bftsmart.tom.util.ServiceResponse;
+import confidential.ExtractedResponse;
 import confidential.client.ServersResponseHandler;
 import vss.secretsharing.Share;
 
@@ -22,7 +23,7 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
     @Override
     public ServiceResponse extractResponse(TOMMessage[] replies, int sameContent, int lastReceived) {
         if (preComputed)
-            return new ServiceResponse(replies[lastReceived].getCommonContent());
+            return new ExtractedResponse(null, null);
 
 		return super.extractResponse(replies, sameContent, lastReceived);
     }
@@ -31,7 +32,7 @@ public class PreComputedPlainServersResponseHandler extends ServersResponseHandl
 	public ServiceResponse extractHashedResponse(TOMMessage[] replies, TOMMessage fullReply, byte[] fullReplyHash,
 												 int sameContent) {
 		if (preComputed)
-			return new ServiceResponse(fullReply.getCommonContent());
+			return new ExtractedResponse(null, null);
 		return super.extractHashedResponse(replies, fullReply, fullReplyHash, sameContent);
 	}
 

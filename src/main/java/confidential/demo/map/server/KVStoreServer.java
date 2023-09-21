@@ -85,8 +85,12 @@ public class KVStoreServer implements ConfidentialSingleExecutable {
                 case GET_ALL:
                     if (map.isEmpty())
                         return new ConfidentialMessage();
-                    VerifiableShare[] allValues = (VerifiableShare[]) map.values().toArray();
-                    return new ConfidentialMessage(null, allValues);
+
+                    VerifiableShare[] allValues = new VerifiableShare[map.size()];
+					int i = 0;
+					for (VerifiableShare share : map.values())
+						allValues[i++] = share;
+					return new ConfidentialMessage(null, allValues);
             }
         } catch (IOException e) {
             logger.error("Failed to attend unordered request from {}", msgCtx.getSender(), e);
