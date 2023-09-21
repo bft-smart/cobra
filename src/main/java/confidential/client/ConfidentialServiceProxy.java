@@ -46,7 +46,7 @@ public class ConfidentialServiceProxy {
 			serversResponseHandler = customServersResponseHandler;
 		}
         this.service = new ExtendedServiceProxy(clientId, serversResponseHandler,
-                serversResponseHandler, null);
+                serversResponseHandler, serversResponseHandler);
         this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
@@ -184,7 +184,6 @@ public class ConfidentialServiceProxy {
     private Response composeResponse(ServiceResponse response) throws SecretSharingException {
 		if (response == null)
 			return null;
-
 		ExtractedResponse extractedResponse = (ExtractedResponse) response;
 
 		if (extractedResponse.getThrowable() != null)

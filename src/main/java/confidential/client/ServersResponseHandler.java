@@ -54,7 +54,7 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 			return null;
 		}
 
-		byte[] plainData = replies[lastReceived].getCommonContent();
+		byte[] plainData = correctReplies.getFirst().getPlainData();
 		byte[][] confidentialData = null;
 
 		if (correctReplies.getFirst().getShares() != null) { // this response has secret data
@@ -70,7 +70,7 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 	@Override
 	public ServiceResponse extractHashedResponse(TOMMessage[] replies, TOMMessage fullReply, byte[] fullReplyHash,
 												 int sameContent) {
-		LinkedList<TOMMessage> correctReplies = getCorrectHashedReplies(replies, fullReplyHash, sameContent);
+		LinkedList<TOMMessage> correctReplies = getCorrectHashedReplies(replies, fullReply, fullReplyHash, sameContent);
 		if (correctReplies == null) {
 			logger.error("This should not happen. Did not found {} equivalent responses", sameContent);
 			return null;
@@ -86,7 +86,7 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 		VerifiableShare[] shares = fullConfidentialReply.getShares();
 
 		if (shares == null) {
-			return new ServiceResponse(plainData);
+			return new ExtractedResponse(plainData, null);
 		}
 
 		BigInteger[] shareholders = new BigInteger[shares.length];
@@ -196,11 +196,11 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 			if (msg == null)
 				continue;
 			response = responses.get(msg.getContent());
-			if (response == null) {
-				logger.warn("Something went wrong while getting deserialized response from {}.", msg.getSender());
-				continue;
-			}
 			int responseHash = responseHashes.get(response);
+			if (response == null) {
+				response = reconstructConfidentialMessage(msg.getContent());
+				responseHash = computeSameSecretHash(response);
+			}
 			LinkedList<ConfidentialMessage> msgList = repliesSets.computeIfAbsent(responseHash, k -> new LinkedList<>());
 			msgList.add(response);
 		}
@@ -211,13 +211,15 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 		return null;
 	}
 
-	protected LinkedList<TOMMessage> getCorrectHashedReplies(TOMMessage[] replies, byte[] fullReplyHash,
-															 int sameContent) {
+	protected LinkedList<TOMMessage> getCorrectHashedReplies(TOMMessage[] replies, TOMMessage fullReply,
+															 byte[] fullReplyHash, int sameContent) {
 		LinkedList<TOMMessage> repliesSets = new LinkedList<>();
 		for (TOMMessage msg : replies) {
 			if (msg == null)
 				continue;
-			if (Arrays.equals(fullReplyHash, msg.getCommonContent())) {
+			if (msg == fullReply) {
+				repliesSets.addFirst(msg);
+			} else if (Arrays.equals(fullReplyHash, msg.getCommonContent())) {
 				repliesSets.add(msg);
 			}
 		}
