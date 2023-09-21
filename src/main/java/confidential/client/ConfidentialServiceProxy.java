@@ -66,22 +66,26 @@ public class ConfidentialServiceProxy {
 	}
 
 	public Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-		return invokeOrdered(plainData, Mode.LARGE_SECRET, confidentialData);
+		ServiceResponse response = invokeOrdered(plainData, Mode.LARGE_SECRET, confidentialData);
+		return composeResponse(response);
 	}
 
 	public Response invokeOrderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-		return invokeOrderedHashed(plainData, Mode.LARGE_SECRET, confidentialData);
+		ServiceResponse response = invokeOrderedHashed(plainData, Mode.LARGE_SECRET, confidentialData);
+		return composeResponse(response);
 	}
 
 	public Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-		return invokeUnordered(plainData, Mode.LARGE_SECRET, confidentialData);
+		ServiceResponse response = invokeUnordered(plainData, Mode.LARGE_SECRET, confidentialData);
+		return composeResponse(response);
 	}
 
 	public Response invokeUnorderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-		return invokeUnorderedHashed(plainData, Mode.LARGE_SECRET, confidentialData);
+		ServiceResponse response = invokeUnorderedHashed(plainData, Mode.LARGE_SECRET, confidentialData);
+		return composeResponse(response);
 	}
 
-    public Response invokeOrdered(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
+    public ServiceResponse invokeOrdered(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
         EncryptedPublishedShares[] shares = sharePrivateData(mode, confidentialData);
         if (confidentialData.length != 0 && shares == null)
@@ -100,12 +104,10 @@ public class ConfidentialServiceProxy {
             }
         }
         byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-        ServiceResponse response = service.invokeOrdered(commonData, privateData, metadata);
-
-        return composeResponse(response);
+        return service.invokeOrdered(commonData, privateData, metadata);
     }
 
-	public Response invokeOrderedHashed(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
+	public ServiceResponse invokeOrderedHashed(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
 		serversResponseHandler.reset();
 		EncryptedPublishedShares[] shares = sharePrivateData(mode, confidentialData);
 		if (confidentialData.length != 0 && shares == null)
@@ -124,12 +126,10 @@ public class ConfidentialServiceProxy {
 			}
 		}
 		byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-		ServiceResponse response = service.invokeOrderedHashed(commonData, privateData, metadata);
-
-		return composeResponse(response);
+		return service.invokeOrderedHashed(commonData, privateData, metadata);
 	}
 
-    public Response invokeUnordered(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
+    public ServiceResponse invokeUnordered(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
         EncryptedPublishedShares[] shares = sharePrivateData(mode, confidentialData);
         if (confidentialData.length != 0 && shares == null)
@@ -148,12 +148,10 @@ public class ConfidentialServiceProxy {
             }
         }
         byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-        ServiceResponse response = service.invokeUnordered(commonData, privateData, metadata);
-
-        return composeResponse(response);
+        return service.invokeUnordered(commonData, privateData, metadata);
     }
 
-	public Response invokeUnorderedHashed(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
+	public ServiceResponse invokeUnorderedHashed(byte[] plainData, Mode mode, byte[]... confidentialData) throws SecretSharingException {
 		serversResponseHandler.reset();
 		EncryptedPublishedShares[] shares = sharePrivateData(mode, confidentialData);
 		if (confidentialData.length != 0 && shares == null)
@@ -172,9 +170,7 @@ public class ConfidentialServiceProxy {
 			}
 		}
 		byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-		ServiceResponse response = service.invokeUnorderedHashed(commonData, privateData, metadata);
-
-		return composeResponse(response);
+		return service.invokeUnorderedHashed(commonData, privateData, metadata);
 	}
 
     public void close() {
