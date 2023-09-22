@@ -15,10 +15,10 @@ public class Counter {
     }
 
     public String incrementOrdered() throws SecretSharingException {
-        return new String(service.invokeOrdered(new byte[0]).getPainData());
+        return new String(service.invokeOrdered(new byte[0]).getPlainData());
     }
 
     public String incrementUnordered() throws SecretSharingException {
-        return new String(service.invokeUnordered(new byte[0]).getPainData());
+        return new String(service.invokeUnordered(new byte[0]).getPlainData());
     }
 }
