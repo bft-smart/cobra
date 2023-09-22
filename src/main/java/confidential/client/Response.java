@@ -1,16 +1,16 @@
 package confidential.client;
 
 public class Response {
-    private final byte[] painData;
+    private final byte[] plainData;
     private final byte[][] confidentialData;
 
-    public Response(byte[] painData, byte[][] confidentialData) {
-        this.painData = painData;
+    public Response(byte[] plainData, byte[][] confidentialData) {
+        this.plainData = plainData;
         this.confidentialData = confidentialData;
     }
 
-    public byte[] getPainData() {
-        return painData;
+    public byte[] getPlainData() {
+        return plainData;
     }
 
     public byte[][] getConfidentialData() {
