@@ -330,6 +330,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 			stateLock.lock();
 			ConfidentialMessage r = confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(),
 					msgCtx);
+			if (r == null)
+				return null;
 			response = composeResponse(r, msgCtx.getSender());
 			stateLock.unlock();
 		} else {
@@ -353,6 +355,8 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		}
 		ConfidentialMessage r = confidentialExecutor.appExecuteUnordered(request.getPlainData(), request.getShares(),
 				msgCtx);
+		if (r == null)
+			return null;
 		return composeResponse(r, msgCtx.getSender());
 	}
 
