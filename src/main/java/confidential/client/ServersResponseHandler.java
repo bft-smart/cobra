@@ -196,9 +196,11 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 			if (msg == null)
 				continue;
 			response = responses.get(msg.getContent());
-			int responseHash = responseHashes.get(response);
 			if (response == null) {
 				response = reconstructConfidentialMessage(msg.getContent());
+			}
+			Integer responseHash = responseHashes.get(response);
+			if (responseHash == null) {
 				responseHash = computeSameSecretHash(response);
 			}
 			LinkedList<ConfidentialMessage> msgList = repliesSets.computeIfAbsent(responseHash, k -> new LinkedList<>());
