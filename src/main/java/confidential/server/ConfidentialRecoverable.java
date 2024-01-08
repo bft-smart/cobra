@@ -348,6 +348,9 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	}
 
 	private ServiceContent composeResponse(ConfidentialMessage response, int requester) {
+		if (response == null) {
+			return null;
+		}
 		VerifiableShare[] shares = response.getShares();
 		int nConfidentialData = shares == null ? -1 : shares.length;
 		byte[] plainData = response.getPlainData();
