@@ -7,9 +7,8 @@ import bftsmart.statemanagement.StateManager;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ReplicaContext;
 import bftsmart.tom.core.messages.TOMMessage;
-import bftsmart.tom.server.ProposeRequestVerifier;
-import bftsmart.tom.server.Recoverable;
-import bftsmart.tom.server.SingleExecutable;
+import bftsmart.tom.core.messages.TOMMessageType;
+import bftsmart.tom.server.*;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.ServiceContent;
@@ -65,6 +64,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	// Not the best solution. Requests failed during consensus, will not be removed from this map
 	private final Map<Integer, Request> deserializedRequests;
 	private final boolean verifyClientsRequests;
+	private IResponseSender responseSender;
 
 	public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
 		this.processId = processId;
@@ -100,6 +100,11 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		} catch (SecretSharingException e) {
 			logger.error("Failed to initialize ServerConfidentialityScheme", e);
 		}
+	}
+
+	@Override
+	public void setResponseSender(IResponseSender responseSender) {
+		this.responseSender = responseSender;
 	}
 
 	@Override
@@ -385,6 +390,11 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		byte[] replicaSpecificContent = serializeReplicaSpecificContent(nConfidentialData, serializedShares,
 				commitments);
 		return new ServiceContent(commonContent, replicaSpecificContent);
+	}
+
+	public void sendMessageToClient(MessageContext receiverMsgCtx, ConfidentialMessage message) {
+		ServiceContent serviceContent = composeResponse(message, receiverMsgCtx.getSender());
+		responseSender.sendResponseTo(receiverMsgCtx, serviceContent);
 	}
 
 	private byte[] serializeReplicaSpecificContent(int nConfidentialData, byte[][] serializedShares,
