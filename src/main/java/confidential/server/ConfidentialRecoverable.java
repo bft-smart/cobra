@@ -23,7 +23,6 @@ import confidential.encrypted.EncryptedVerifiableShare;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
-import confidential.polynomial.DistributedPolynomialManager;
 import confidential.polynomial.ProposalSetMessage;
 import confidential.statemanagement.ConfidentialSnapshot;
 import confidential.statemanagement.ConfidentialStateLog;
@@ -66,6 +65,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	// Not the best solution. Requests failed during consensus, will not be removed from this map
 	private final Map<Integer, Request> deserializedRequests;
 	private final boolean verifyClientsRequests;
+	private IResponseSender responseSender;
 
 	public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
 		this.processId = processId;
@@ -112,6 +112,11 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
     }
 
     @Override
+	public void setResponseSender(IResponseSender responseSender) {
+		this.responseSender = responseSender;
+	}
+
+	@Override
     public boolean isValidRequest(TOMMessage request) {
         logger.debug("Checking request: {} - {}", request.getReqType(),
                 request.getSequence());
@@ -330,8 +335,6 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 			stateLock.lock();
 			ConfidentialMessage r = confidentialExecutor.appExecuteOrdered(request.getPlainData(), request.getShares(),
 					msgCtx);
-			if (r == null)
-				return null;
 			response = composeResponse(r, msgCtx.getSender());
 			stateLock.unlock();
 		} else {
@@ -355,12 +358,13 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		}
 		ConfidentialMessage r = confidentialExecutor.appExecuteUnordered(request.getPlainData(), request.getShares(),
 				msgCtx);
-		if (r == null)
-			return null;
 		return composeResponse(r, msgCtx.getSender());
 	}
 
 	private ServiceContent composeResponse(ConfidentialMessage response, int requester) {
+		if (response == null) {
+			return null;
+		}
 		VerifiableShare[] shares = response.getShares();
 		int nConfidentialData = shares == null ? -1 : shares.length;
 		byte[] plainData = response.getPlainData();
@@ -395,6 +399,11 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		byte[] replicaSpecificContent = serializeReplicaSpecificContent(nConfidentialData, serializedShares,
 				commitments);
 		return new ServiceContent(commonContent, replicaSpecificContent);
+	}
+
+	public void sendMessageToClient(MessageContext receiverMsgCtx, ConfidentialMessage message) {
+		ServiceContent serviceContent = composeResponse(message, receiverMsgCtx.getSender());
+		responseSender.sendResponseTo(receiverMsgCtx, serviceContent);
 	}
 
 	private byte[] serializeReplicaSpecificContent(int nConfidentialData, byte[][] serializedShares,
