@@ -68,10 +68,8 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 									 EncryptedPublishedShares[] shares, byte[] commonData,
 									 Map<Integer, byte[]> privateDataShares) {
         if (serversResponseHandler instanceof PreComputedPlainServersResponseHandler) {
-			System.out.println("Setting precomputed true in PreComputedPlainServersResponseHandler");
 			((PreComputedPlainServersResponseHandler) serversResponseHandler).setPreComputed(true);
 		} else if (serversResponseHandler instanceof PreComputedEncryptedServersResponseHandler) {
-			System.out.println("Setting precomputed true in PreComputedEncryptedServersResponseHandler");
 			((PreComputedEncryptedServersResponseHandler) serversResponseHandler).setPreComputed(true);
 		}
         this.preComputed = true;

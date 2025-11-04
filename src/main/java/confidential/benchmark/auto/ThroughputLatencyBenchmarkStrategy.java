@@ -119,6 +119,15 @@ public class ThroughputLatencyBenchmarkStrategy implements IBenchmarkStrategy, I
 				requestPrivateDataSize, responsePlainDataSize, responsePrivateDataSize,
 				sendOrderedRequest ? "ordered" : "unordered", useHashedResponse ? "hashed" : "full");
 
+		System.out.println("f: " + f);
+		System.out.println("Request plain data size: " + requestPlainDataSize + " bytes");
+		System.out.println("Request private data size: " + requestPrivateDataSize + " bytes");
+		System.out.println("Response plain data size: " + responsePlainDataSize + " bytes");
+		System.out.println("Response private data size: " + responsePrivateDataSize + " bytes");
+		System.out.println("Send ordered request: " + sendOrderedRequest);
+		System.out.println("Use hashed response: " + useHashedResponse);
+		System.out.println("Measure resources: " + measureResources);
+
 		round = 1;
 		while (true) {
 			try {
@@ -303,13 +312,14 @@ public class ThroughputLatencyBenchmarkStrategy implements IBenchmarkStrategy, I
 				String command = clientCommand + clientInitialId + " " + clientsPerProcess
 						+ " " + nRequests + " " + requestPlainDataSize + " " + requestPrivateDataSize
 						+ " " + responsePlainDataSize + " " + responsePrivateDataSize + " " + sendOrderedRequest
-						+ " " + (!isMeasurementWorker) + " " + useHashedResponse + " " + isMeasurementWorker;
+						+ " " + useHashedResponse + " " + (!isMeasurementWorker) + " " + isMeasurementWorker;
+
 				commandInfos[j] = new ProcessInformation(command, ".");
 				totalClientsPerWorker -= clientsPerProcess;
 				clientInitialId += clientsPerProcess;
 			}
 
-			clientWorkers[i].startWorker(50, commandInfos, this);
+			clientWorker.startWorker(50, commandInfos, this);
 		}
 		workersReadyCounter.await();
 	}

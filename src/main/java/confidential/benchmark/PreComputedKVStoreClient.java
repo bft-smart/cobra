@@ -49,9 +49,9 @@ public class PreComputedKVStoreClient {
 			}
 			ConfidentialServiceProxy proxy = new ConfidentialServiceProxy(initialId);
 			if (responsePrivateDataSize == 0)
-				proxy.invokeOrderedHashed(responsePlainData);
+				proxy.invokeOrdered(responsePlainData);
 			else
-				proxy.invokeOrderedHashed(responsePlainData, responsePrivateData);
+				proxy.invokeOrdered(responsePlainData, responsePrivateData);
 			proxy.close();
 		}
 
