@@ -2,7 +2,6 @@ package confidential.benchmark;
 
 import bftsmart.tom.MessageContext;
 import confidential.ConfidentialMessage;
-import confidential.demo.map.client.Operation;
 import confidential.facade.server.ConfidentialServerFacade;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.statemanagement.ConfidentialSnapshot;
@@ -12,29 +11,28 @@ import vss.secretsharing.VerifiableShare;
 
 import java.io.*;
 import java.util.HashSet;
-import java.util.Map;
 import java.util.Set;
-import java.util.TreeMap;
 
 public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecutable {
     private final Logger logger = LoggerFactory.getLogger("demo");
-    private Map<String, VerifiableShare> map;
+	private final Logger measurementLogger = LoggerFactory.getLogger("measurement");
+	private byte[] plainResponse;
+	private VerifiableShare privateResponse;
     private long startTime;
     private long numRequests;
     private final Set<Integer> senders;
-    private double maxThroughput;
 
-    public static void main(String[] args) throws NumberFormatException {
+	public static void main(String[] args) throws NumberFormatException {
         if (args.length != 1) {
             System.out.println("USAGE: confidential.benchmark.ThroughputLatencyKVStoreServer <server id>");
             System.exit(-1);
         }
-        new ThroughputLatencyKVStoreServer(Integer.parseInt(args[0]));
+		int processId = Integer.parseInt(args[0]);
+        new ThroughputLatencyKVStoreServer(processId);
     }
 
     ThroughputLatencyKVStoreServer(int processId) {
-        map = new TreeMap<>();
-        senders = new HashSet<>(1000);
+		senders = new HashSet<>(1000);
         new ConfidentialServerFacade(processId, this);
     }
 
@@ -42,61 +40,39 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
     public ConfidentialMessage appExecuteOrdered(byte[] plainData, VerifiableShare[] shares, MessageContext msgCtx) {
         numRequests++;
         senders.add(msgCtx.getSender());
+		try {
+			boolean isResponse = plainData.length > 0 && plainData[0] == 1;
+			if (isResponse && plainResponse == null && privateResponse == null) {
+				if (plainData.length > 1) {
+					plainResponse = new byte[plainData.length - 1];
+					System.arraycopy(plainData, 1, plainResponse, 0, plainResponse.length);
+				}
+				if (shares != null && shares.length > 0) {
+					privateResponse = shares[0];
+				}
+			}
 
-        try (ByteArrayInputStream bis = new ByteArrayInputStream(plainData);
-             ObjectInput in = new ObjectInputStream(bis)) {
-            Operation op = Operation.getOperation(in.read());
-            String str;
-            VerifiableShare value;
-            switch (op) {
-                case GET:
-                    str = in.readUTF();
-                    value = map.get(str);
-                    if (value != null)
-                        return new ConfidentialMessage(null, value);
-                    else
-                        return new ConfidentialMessage();
-                case PUT:
-                    str = in.readUTF();
-                    map.put(str, shares[0]);
+			if (privateResponse != null) {
+				return new ConfidentialMessage(plainResponse, privateResponse);
+			}
 
-                    return new ConfidentialMessage();
-                case REMOVE:
-                    str = in.readUTF();
-                    value = map.remove(str);
-                    if (value != null)
-                        return new ConfidentialMessage(null, value);
-                    else
-                        return new ConfidentialMessage();
-                case GET_ALL:
-                    if (map.isEmpty())
-                        return new ConfidentialMessage();
-                    VerifiableShare[] allValues = new VerifiableShare[map.size()];
-                    int i = 0;
-                    for (VerifiableShare share : map.values())
-                        allValues[i++] = share;
-                    return new ConfidentialMessage(null, allValues);
-            }
-        } catch (IOException e) {
-            logger.error("Failed to attend ordered request from {}", msgCtx.getSender(), e);
-        } finally {
-            printMeasurement();
-        }
-        return null;
+			if (plainResponse != null) {
+				return new ConfidentialMessage(plainResponse);
+			}
+			return new ConfidentialMessage();
+		} finally {
+			printMeasurement();
+		}
     }
 
     private void printMeasurement() {
         long currentTime = System.nanoTime();
-        double deltaTime = (currentTime - startTime) / 1_000_000_000.0;
-        if ((int) (deltaTime / 2) > 0) {
-            long delta = currentTime - startTime;
-            double throughput = numRequests / deltaTime;
-            if (throughput > maxThroughput)
-                maxThroughput = throughput;
-            logger.info("M:(clients[#]|requests[#]|delta[ns]|throughput[ops/s], max[ops/s])>({}|{}|{}|{}|{})",
-                    senders.size(), numRequests, delta, throughput, maxThroughput);
-            //logger.info("Clients: {} | Requests: {} | DeltaTime[s]: {} | Throughput[ops/s]: {} (max: {})",
-            //        senders.size(), numRequests, deltaTime, throughput, maxThroughput);
+		long delta = currentTime - startTime;
+		if (delta >= 2_000_000_000) {
+			measurementLogger.info("M-clients: {}", senders.size());
+			measurementLogger.info("M-delta: {}", delta);
+			measurementLogger.info("M-requests: {}", numRequests);
+
             numRequests = 0;
             startTime = currentTime;
             senders.clear();
@@ -108,50 +84,36 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
         numRequests++;
         senders.add(msgCtx.getSender());
 
-        try (ByteArrayInputStream bis = new ByteArrayInputStream(plainData);
-             ObjectInput in = new ObjectInputStream(bis)) {
-            Operation op = Operation.getOperation(in.read());
-            String str;
-            VerifiableShare value;
-            switch (op) {
-                case GET:
-                    str = in.readUTF();
-                    value = map.get(str);
+		try {
+			if (privateResponse != null) {
+				return new ConfidentialMessage(plainResponse, privateResponse);
+			}
 
-                    if (value != null)
-                        return new ConfidentialMessage(null, value);
-                    else
-                        return new ConfidentialMessage();
-                case GET_ALL:
-                    if (map.isEmpty())
-                        return new ConfidentialMessage();
-                    VerifiableShare[] allValues = (VerifiableShare[]) map.values().toArray();
-                    return new ConfidentialMessage(null, allValues);
-            }
-        } catch (IOException e) {
-            logger.error("Failed to attend unordered request from {}", msgCtx.getSender(), e);
-        } finally {
-            printMeasurement();
-        }
-        return null;
+			if (plainResponse != null) {
+				return new ConfidentialMessage(plainResponse);
+			}
+			return new ConfidentialMessage();
+		} finally {
+			printMeasurement();
+		}
     }
 
     @Override
     public ConfidentialSnapshot getConfidentialSnapshot() {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
-            out.writeInt(map.size());
-            VerifiableShare[] shares = new VerifiableShare[map.size()];
-            int i = 0;
-            for (Map.Entry<String, VerifiableShare> e : map.entrySet()) {
-                out.writeUTF(e.getKey());
-                shares[i++] = e.getValue();
-            }
+			out.writeInt(plainResponse == null ? -1 : plainResponse.length);
+			if (plainResponse != null) {
+				out.write(plainResponse);
+			}
             out.flush();
             bos.flush();
-            return new ConfidentialSnapshot(bos.toByteArray(), shares);
+			if (privateResponse == null) {
+				return new ConfidentialSnapshot(bos.toByteArray());
+			}
+            return new ConfidentialSnapshot(bos.toByteArray(), privateResponse);
         } catch (IOException e) {
-            e.printStackTrace();
+            logger.error("Error while creating snapshot", e);
         }
         return null;
     }
@@ -160,14 +122,17 @@ public class ThroughputLatencyKVStoreServer implements ConfidentialSingleExecuta
     public void installConfidentialSnapshot(ConfidentialSnapshot snapshot) {
         try (ByteArrayInputStream bis = new ByteArrayInputStream(snapshot.getPlainData());
              ObjectInput in = new ObjectInputStream(bis)) {
-            int size = in.readInt();
-            map = new TreeMap<>();
-            VerifiableShare[] shares = snapshot.getShares();
-            for (int i = 0; i < size; i++) {
-                map.put(in.readUTF(), shares[i]);
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
+			int responseSize = in.readInt();
+			if (responseSize != -1) {
+				plainResponse = new byte[responseSize];
+				in.readFully(plainResponse);
+			}
+			VerifiableShare[] shares = snapshot.getShares();
+			if (shares != null && shares.length > 0) {
+				privateResponse = shares[0];
+			}
+		} catch (IOException e) {
+            logger.error("Error while installing snapshot", e);
         }
     }
 }

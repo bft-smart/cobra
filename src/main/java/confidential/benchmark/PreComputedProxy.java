@@ -39,15 +39,13 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
     final ExtendedServiceProxy service;
     private final ClientConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
-    private byte[] orderedCommonData;
-    private byte[] unorderedCommonData;
-    Map<Integer, byte[]> privateData;
+    private byte[] commonData;
+    Map<Integer, byte[]> privateDataShares;
     private boolean preComputed;
     private final boolean isLinearCommitmentScheme;
     private final boolean isSendAllSharesTogether;
-    private byte[] data;
-    private byte[] plainWriteData;
-    private byte[] plainReadData;
+    private byte[] plainData;
+    private byte[] privateData;
     private EncryptedPublishedShares[] shares;
 
     PreComputedProxy(int clientId) throws SecretSharingException {
@@ -66,31 +64,31 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
         service.setInvokeTimeout(60000);
     }
 
-    public void setPreComputedValues(byte[] data, byte[] plainWriteData, byte[] plainReadData,
-                                     EncryptedPublishedShares[] shares, byte[] orderedCommonData,
-                                     Map<Integer, byte[]> privateData,
-                                     byte[] unorderedCommonData) {
-        if (serversResponseHandler instanceof PreComputedPlainServersResponseHandler)
-            ((PreComputedPlainServersResponseHandler)serversResponseHandler).setPreComputed(true);
-        else if (serversResponseHandler instanceof PreComputedEncryptedServersResponseHandler)
-            ((PreComputedEncryptedServersResponseHandler)serversResponseHandler).setPreComputed(true);
+    public void setPreComputedValues(byte[] plainData, byte[] privateData,
+									 EncryptedPublishedShares[] shares, byte[] commonData,
+									 Map<Integer, byte[]> privateDataShares) {
+        if (serversResponseHandler instanceof PreComputedPlainServersResponseHandler) {
+			System.out.println("Setting precomputed true in PreComputedPlainServersResponseHandler");
+			((PreComputedPlainServersResponseHandler) serversResponseHandler).setPreComputed(true);
+		} else if (serversResponseHandler instanceof PreComputedEncryptedServersResponseHandler) {
+			System.out.println("Setting precomputed true in PreComputedEncryptedServersResponseHandler");
+			((PreComputedEncryptedServersResponseHandler) serversResponseHandler).setPreComputed(true);
+		}
         this.preComputed = true;
-        this.data = data;
-        this.plainWriteData = plainWriteData;
-        this.plainReadData = plainReadData;
-        this.shares = shares;
-        this.orderedCommonData = orderedCommonData;
+        this.plainData = plainData;
         this.privateData = privateData;
-        this.unorderedCommonData = unorderedCommonData;
+        this.shares = shares;
+        this.commonData = commonData;
+        this.privateDataShares = privateDataShares;
     }
 
     Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
 		ServiceResponse response;
-        if (preComputed) {
-            byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-			response = service.invokeOrdered(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData,
-					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateData, metadata);
+		byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+		if (preComputed) {
+			response = service.invokeOrdered(commonData,
+					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateDataShares, metadata);
 		} else {
             EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData.length != 0 && shares == null)
@@ -108,7 +106,6 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
                     privateData.put(server, b);
                 }
             }
-            byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
 			response = service.invokeOrdered(commonData, privateData, metadata);
 		}
         return preComputed ? null : composeResponse(response);
@@ -117,10 +114,10 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 	Response invokeOrderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
 		serversResponseHandler.reset();
 		ServiceResponse response;
+		byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
 		if (preComputed) {
-			byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-			response = service.invokeOrderedHashed(confidentialData.length == 0 ? unorderedCommonData : orderedCommonData,
-					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateData, metadata);
+			response = service.invokeOrderedHashed(commonData,
+					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateDataShares, metadata);
 		} else {
 			EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
 			if (confidentialData.length != 0 && shares == null)
@@ -138,8 +135,7 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 					privateData.put(server, b);
 				}
 			}
-			byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-			response = service.invokeOrdered(commonData, privateData, metadata);
+			response = service.invokeOrderedHashed(commonData, privateData, metadata);
 		}
 		return preComputed ? null : composeResponse(response);
 	}
@@ -147,9 +143,10 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
     Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
         serversResponseHandler.reset();
         ServiceResponse response;
-        if (preComputed) {
-            byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-            response = service.invokeUnordered(unorderedCommonData, null, metadata);
+		byte metadata = (byte) (confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
+		if (preComputed) {
+            response = service.invokeUnordered(commonData,
+					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateDataShares, metadata);
         } else {
             EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
             if (confidentialData.length != 0 && shares == null)
@@ -168,7 +165,6 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
                     privateData.put(server, b);
                 }
             }
-            byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
             response = service.invokeUnordered(commonData, privateData, metadata);
         }
 
@@ -178,9 +174,10 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 	Response invokeUnorderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
 		serversResponseHandler.reset();
 		ServiceResponse response;
+		byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
 		if (preComputed) {
-			byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-			response = service.invokeUnorderedHashed(unorderedCommonData, null, metadata);
+			response = service.invokeUnorderedHashed(commonData,
+					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateDataShares, metadata);
 		} else {
 			EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
 			if (confidentialData.length != 0 && shares == null)
@@ -199,8 +196,7 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 					privateData.put(server, b);
 				}
 			}
-			byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
-			response = service.invokeUnordered(commonData, privateData, metadata);
+			response = service.invokeUnorderedHashed(commonData, privateData, metadata);
 		}
 
 		return preComputed ? null : composeResponse(response);
@@ -320,15 +316,18 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 
     private void updatePreComputedValues() {
         try {
-            shares = sharePrivateData(data);
-            orderedCommonData = serializeCommonData(plainWriteData, shares);
-            unorderedCommonData = serializeCommonData(plainReadData, null);
+			if (privateData.length > 0) {
+				shares = sharePrivateData(privateData);
+			}
+            commonData = serializeCommonData(plainData, shares);
             int[] servers = service.getViewManager().getCurrentViewProcesses();
-            privateData = new HashMap<>(servers.length);
-            for (int server : servers) {
-                byte[] b = serializePrivateDataFor(server, shares);
-                privateData.put(server, b);
-            }
+            privateDataShares = new HashMap<>(servers.length);
+			if (privateData.length > 0) {
+				for (int server : servers) {
+					byte[] b = serializePrivateDataFor(server, shares);
+					privateDataShares.put(server, b);
+				}
+			}
         } catch (SecretSharingException e) {
             logger.error("Failed to update precomputed values", e);
         }
