@@ -20,13 +20,13 @@ import java.util.Map;
  *
  * @author robin
  */
-public class EllipticCurveCommitmentScheme implements CommitmentScheme {
+public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	private final ECCurve curve;
 	private final ECPoint generator;
 	private final BigInteger primeFieldOrder;
 
-	public EllipticCurveCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b,
-										 byte[] compressedGenerator) {
+	public ECFeldmanCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b,
+	                                 byte[] compressedGenerator) {
 		this.primeFieldOrder = prime;
 		BigInteger cofactor = prime.divide(order);
 		this.curve = new ECCurve.Fp(prime, a, b, order, cofactor);
@@ -55,7 +55,7 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 		for (int i = 0; i < coefficients.length; i++) {
 			commitment[i] = generator.multiply(coefficients[i]);
 		}
-		return new EllipticCurveCommitment(commitment, curve);
+		return new ECLinearCommitment(commitment, curve);
 	}
 
 	@Override
@@ -82,11 +82,11 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 	public boolean checkValidity(Share share, Commitment commitment) {
 		ECPoint leftSide = generator.multiply(share.getShare());
 		ECPoint rightSide = computeRightSideOfVerification(share.getShareholder(),
-				(EllipticCurveCommitment) commitment);
+				(ECLinearCommitment) commitment);
 		return leftSide.equals(rightSide);
 	}
 
-	private ECPoint computeRightSideOfVerification(BigInteger x, EllipticCurveCommitment commitment) {
+	private ECPoint computeRightSideOfVerification(BigInteger x, ECLinearCommitment commitment) {
 		ECPoint[] c = commitment.getCommitment();
 
 		ECPoint gp = c[c.length - 1];
@@ -103,8 +103,8 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 		ECPoint rightSide = null;
 		for (Commitment commitment : commitments) {
 			if (rightSide == null)
-				rightSide = computeRightSideOfVerification(x, (EllipticCurveCommitment) commitment);
-			else if (!rightSide.equals(computeRightSideOfVerification(x, (EllipticCurveCommitment) commitment)))
+				rightSide = computeRightSideOfVerification(x, (ECLinearCommitment) commitment);
+			else if (!rightSide.equals(computeRightSideOfVerification(x, (ECLinearCommitment) commitment)))
 				return false;
 		}
 		return true;
@@ -117,10 +117,10 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment sumCommitments(Commitment... commitments) throws SecretSharingException {
-		int size = ((EllipticCurveCommitment) commitments[0]).getCommitment().length;
+		int size = ((ECLinearCommitment) commitments[0]).getCommitment().length;
 		ECPoint[][] ecCommitments = new ECPoint[commitments.length][];
 		for (int i = 0; i < commitments.length; i++) {
-			EllipticCurveCommitment lc = (EllipticCurveCommitment)commitments[i];
+			ECLinearCommitment lc = (ECLinearCommitment)commitments[i];
 			if (size != lc.getCommitment().length)
 				throw new SecretSharingException("Commitments must have same size");
 			ecCommitments[i] = lc.getCommitment();
@@ -133,13 +133,13 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 			}
 		}
 
-		return new EllipticCurveCommitment(result, curve);
+		return new ECLinearCommitment(result, curve);
 	}
 
 	@Override
 	public Commitment subtractCommitments(Commitment c1, Commitment c2) throws SecretSharingException {
-		ECPoint[] l1 = ((EllipticCurveCommitment) c1).getCommitment();
-		ECPoint[] l2 = ((EllipticCurveCommitment) c2).getCommitment();
+		ECPoint[] l1 = ((ECLinearCommitment) c1).getCommitment();
+		ECPoint[] l2 = ((ECLinearCommitment) c2).getCommitment();
 		if (l1.length != l2.length)
 			throw new SecretSharingException("Commitments must have same size");
 		ECPoint[] result = new ECPoint[l1.length];
@@ -147,7 +147,7 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 			result[i] = l1[i].subtract(l2[i]);
 		}
 
-		return new EllipticCurveCommitment(result, curve);
+		return new ECLinearCommitment(result, curve);
 	}
 
 	@Override
@@ -176,7 +176,7 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 		CommitmentType commitmentType = CommitmentType.getType(in.read());
 		Commitment result = null;
 		if (commitmentType == CommitmentType.ELLIPTIC_CURVE) {
-			result = new EllipticCurveCommitment(curve);
+			result = new ECLinearCommitment(curve);
 			result.readExternal(in);
 		}
 		return result;

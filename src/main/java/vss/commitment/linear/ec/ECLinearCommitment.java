@@ -14,15 +14,15 @@ import java.util.Arrays;
  * This class stores array of commitment values based on elliptic curve
  * @author robin
  */
-public class EllipticCurveCommitment implements Commitment {
+public class ECLinearCommitment implements Commitment {
 	private ECPoint[] commitment;
 	private final ECCurve curve;
 
-	public EllipticCurveCommitment(ECCurve curve) {
+	public ECLinearCommitment(ECCurve curve) {
 		this.curve = curve;
 	}
 
-	public EllipticCurveCommitment(ECPoint[] commitment, ECCurve curve) {
+	public ECLinearCommitment(ECPoint[] commitment, ECCurve curve) {
 		this.commitment = commitment;
 		this.curve = curve;
 	}
@@ -35,7 +35,7 @@ public class EllipticCurveCommitment implements Commitment {
 	public boolean equals(Object o) {
 		if (this == o) return true;
 		if (o == null || getClass() != o.getClass()) return false;
-		EllipticCurveCommitment that = (EllipticCurveCommitment) o;
+		ECLinearCommitment that = (ECLinearCommitment) o;
 		return Arrays.equals(commitment, that.commitment);
 	}
 

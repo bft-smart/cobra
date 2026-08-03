@@ -5,7 +5,7 @@ import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.KateCommitmentScheme;
-import vss.commitment.linear.ec.EllipticCurveCommitmentScheme;
+import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
 import vss.commitment.linear.FeldmanCommitmentScheme;
 import vss.facade.Mode;
 import vss.facade.SecretSharingException;
@@ -58,7 +58,7 @@ public class VerifiableSecretSharing {
 			BigInteger a = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC", 16);
 			BigInteger b = new BigInteger("5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B", 16);
 			byte[] compressedGenerator = new BigInteger("036B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296", 16).toByteArray();
-			this.commitmentScheme = new EllipticCurveCommitmentScheme(
+			this.commitmentScheme = new ECFeldmanCommitmentScheme(
 					prime,
 					field,
 					a,
