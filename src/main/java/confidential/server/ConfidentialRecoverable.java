@@ -82,6 +82,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		return confidentialityScheme;
 	}
 
+	public InterServersCommunication getInterServersCommunication() {
+		return interServersCommunication;
+	}
+
 	@Override
 	public void setReplicaContext(ReplicaContext replicaContext) {
 		logger.debug("setting replica context");
