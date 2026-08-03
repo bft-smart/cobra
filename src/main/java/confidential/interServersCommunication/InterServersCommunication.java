@@ -21,7 +21,7 @@ public class InterServersCommunication {
     private final Logger logger = LoggerFactory.getLogger("communication");
     private final TOMMessageGenerator tomMessageGenerator;
     private final ServerCommunicationSystem communicationSystem;
-    private final Map<InterServersMessageType, InterServerMessageListener> listeners;
+    private final Map<Byte, InterServerMessageListener> listeners;
     private final CommunicationManager communicationManager;
     private final int pid;
 
@@ -34,7 +34,7 @@ public class InterServersCommunication {
         this.pid = viewController.getStaticConf().getProcessId();
     }
 
-    public synchronized void sendOrdered(InterServersMessageType type, byte metadata, byte[] request,
+    public synchronized void sendOrdered(byte type, byte metadata, byte[] request,
                             int... targets) {
         TOMMessage msg = tomMessageGenerator.getNextOrdered(metadata,
                 serializeRequest(type, request));
@@ -45,21 +45,21 @@ public class InterServersCommunication {
         return communicationManager.registerMessageListener(listener);
     }
 
-    public synchronized void sendUnordered(byte communicationTag, InterServersMessageType type,
+    public synchronized void sendUnordered(byte communicationTag, byte type,
                                            byte[] request, int... targets) {
         byte[] message = serializeInternalRequest(type, request);
         communicationManager.send(communicationTag, new InternalMessage(pid, communicationTag, message), targets);
     }
 
-    public void registerListener(InterServerMessageListener listener, InterServersMessageType messageType,
-                                 InterServersMessageType... moreMessageTypes) {
+    public void registerListener(InterServerMessageListener listener, byte messageType,
+                                 byte... moreMessageTypes) {
         listeners.put(messageType, listener);
-        for (InterServersMessageType type : moreMessageTypes)
+        for (byte type : moreMessageTypes)
             listeners.put(type, listener);
     }
 
     public void messageReceived(byte[] message, MessageContext msgCtx) {
-        InterServersMessageType type = InterServersMessageType.getType(message[0]);
+        byte type = message[0];
         byte[] m = Arrays.copyOfRange(message, 1, message.length);
         InterServerMessageListener listener = listeners.get(type);
         if (listener == null)
@@ -70,25 +70,25 @@ public class InterServersCommunication {
         }
     }
 
-    private byte[] serializeInternalRequest(InterServersMessageType type, byte[] request) {
+    private byte[] serializeInternalRequest(byte type, byte[] request) {
         byte[] result = new byte[request.length + 1];
-        result[0] = (byte) type.ordinal();
+        result[0] = type;
         System.arraycopy(request, 0, result, 1, request.length);
         return result;
     }
 
-    private byte[] serializeRequest(InterServersMessageType type, byte[] request) {
+    private byte[] serializeRequest(byte type, byte[] request) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
             out.write((byte) MessageType.APPLICATION.ordinal());
             out.writeInt(1 + request.length);
-            out.write((byte)type.ordinal());
+            out.write(type);
             out.write(request);
             out.flush();
             bos.flush();
             return bos.toByteArray();
         } catch (IOException e) {
-            e.printStackTrace();
+           	logger.error("Failed to serialize request of type {}", type, e);
         }
         return null;
     }

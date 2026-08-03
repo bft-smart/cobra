@@ -22,6 +22,8 @@ import java.util.concurrent.*;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static confidential.interServersCommunication.InterServersMessageType.*;
+
 public class DistributedPolynomial implements Runnable, InterServerMessageListener {
     private final Logger logger = LoggerFactory.getLogger("polynomial_generation");
     private static final byte[] SEED = "confidential".getBytes();
@@ -51,12 +53,12 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         this.pendingMessages = new LinkedBlockingQueue<>();
         entryLock = new ReentrantLock(true);
         serversCommunication.registerListener(this,
-                InterServersMessageType.POLYNOMIAL_PROPOSAL_SET
+                POLYNOMIAL_PROPOSAL_SET
         );
         MessageListener polynomialMessageListener = new MessageListener(CommunicationTag.POLYNOMIAL) {
             @Override
             public void deliverMessage(InternalMessage message) {
-                InterServersMessageType type = InterServersMessageType.getType(message.getMessage()[0]);
+                byte type = message.getMessage()[0];
                 byte[] m = Arrays.copyOfRange(message.getMessage(), 1, message.getMessage().length);
                 while (!pendingMessages.offer(new InterServerMessageHolder(type, m, null))){
                     logger.debug("Distributed polynomial pending message queue is full");

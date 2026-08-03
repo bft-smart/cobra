@@ -34,6 +34,8 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import static confidential.interServersCommunication.InterServersMessageType.*;
+
 public abstract class PolynomialCreator {
     protected Logger logger = LoggerFactory.getLogger("polynomial_generation");
     protected final PolynomialCreationContext creationContext;
@@ -117,7 +119,7 @@ public abstract class PolynomialCreator {
         return allMembers;
     }
 
-    public void messageReceived(InterServersMessageType type, PolynomialMessage message, int cid) {
+    public void messageReceived(byte type, PolynomialMessage message, int cid) {
         switch (type) {
             case NEW_POLYNOMIAL:
                 processNewPolynomialMessage((NewPolynomialMessage) message);
@@ -152,7 +154,7 @@ public abstract class PolynomialCreator {
         int[] members = getMembers(true);
         logger.debug("Sending NewPolynomialMessage to {} with id {}", Arrays.toString(members),
                 creationContext.getId());
-        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.NEW_POLYNOMIAL,
+        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, NEW_POLYNOMIAL,
                 serialize(newPolynomialMessage), members);
         iHaveSentNewPolyRequest = true;
     }
@@ -197,7 +199,7 @@ public abstract class PolynomialCreator {
         int[] members = getMembers(false);
         logger.debug("Sending ProposalMessage to {} with id {}", Arrays.toString(members),
                 creationContext.getId());
-        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.POLYNOMIAL_PROPOSAL,
+        serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, POLYNOMIAL_PROPOSAL,
                 serialize(myProposal), members);
     }
 
@@ -336,7 +338,7 @@ public abstract class PolynomialCreator {
         try {
             latch.await();
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            logger.error("Interrupted while waiting for proposals to be validated", e);
         }
         if (!isValid.get()) {
             return false;
@@ -356,7 +358,7 @@ public abstract class PolynomialCreator {
                 proposalSetLock.lock();
                 waitingMissingProposalsCondition.await();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                logger.error("Interrupted while waiting for proposals to be validated", e);
             } finally {
                 proposalSetLock.unlock();
             }
@@ -375,7 +377,7 @@ public abstract class PolynomialCreator {
             try {
                 missingProposalsLatch.await();
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                logger.error("Interrupted while waiting for proposals to be validated", e);
             }
         }
         return isValid.get();
@@ -408,7 +410,7 @@ public abstract class PolynomialCreator {
                     e.getValue()
             );
             logger.debug("Asking missing proposal to {} with id {}", e.getKey(), creationContext.getId());
-            serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, InterServersMessageType.POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
+            serversCommunication.sendUnordered(CommunicationTag.POLYNOMIAL, POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
                     serialize(missingProposalRequestMessage), e.getKey());
         }
     }

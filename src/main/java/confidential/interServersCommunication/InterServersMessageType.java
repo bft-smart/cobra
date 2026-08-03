@@ -1,17 +1,9 @@
 package confidential.interServersCommunication;
 
-public enum InterServersMessageType {
-    NEW_POLYNOMIAL,
-    POLYNOMIAL_PROPOSAL,
-    POLYNOMIAL_PROPOSAL_SET,
-    POLYNOMIAL_VOTE,
-    POLYNOMIAL_REQUEST_MISSING_PROPOSALS,
-    POLYNOMIAL_PROCESSED_VOTES,
-    POLYNOMIAL_MISSING_PROPOSALS;
-
-    private static InterServersMessageType[] values = InterServersMessageType.values();
-
-    public static InterServersMessageType getType(int ordinal) {
-        return values[ordinal];
-    }
+public class InterServersMessageType {
+    public static final byte NEW_POLYNOMIAL = 0;
+    public static final byte POLYNOMIAL_PROPOSAL = 1;
+    public static final byte POLYNOMIAL_PROPOSAL_SET = 2;
+    public static final byte POLYNOMIAL_REQUEST_MISSING_PROPOSALS = 3;
+    public static final byte POLYNOMIAL_MISSING_PROPOSALS = 4;
 }
