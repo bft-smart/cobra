@@ -70,13 +70,19 @@ public final class Configuration {
 				String value = tokens[1].trim();
 				switch (propertyName) {
 					case "cobra.vss.scheme":
-						if (value.equals("linear"))
-							vssScheme = Constants.VALUE_FELDMAN_SCHEME;
-						else if (value.equals("dl_kate"))
-							vssScheme = Constants.VALUE_DL_KZG_SCHEME;
-						else
-							throw new IllegalArgumentException("Property cobra.vss.scheme " +
-									"has invalid value");
+						switch (value) {
+							case "linear":
+								vssScheme = Constants.VALUE_FELDMAN_SCHEME;
+								break;
+							case "ec_linear":
+								vssScheme = Constants.VALUE_EC_FELDMAN_SCHEME;
+								break;
+							case "dl_kate":
+								vssScheme = Constants.VALUE_DL_KZG_SCHEME;
+								break;
+							default:
+								throw new IllegalArgumentException("Property cobra.vss.scheme has invalid value");
+						}
 						break;
 					case "cobra.vss.prime_field":
 						primeField = value;

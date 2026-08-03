@@ -1,4 +1,4 @@
-package vss.commitment.ellipticCurve;
+package vss.commitment.linear.ec;
 
 import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;

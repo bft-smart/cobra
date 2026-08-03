@@ -5,6 +5,7 @@ import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.KateCommitmentScheme;
+import vss.commitment.linear.ec.EllipticCurveCommitmentScheme;
 import vss.commitment.linear.FeldmanCommitmentScheme;
 import vss.facade.Mode;
 import vss.facade.SecretSharingException;
@@ -47,10 +48,23 @@ public class VerifiableSecretSharing {
 
         String commitmentSchemeName = properties.getProperty(Constants.TAG_COMMITMENT_SCHEME);
         if (commitmentSchemeName.equals(Constants.VALUE_FELDMAN_SCHEME)) {
-            BigInteger p = new BigInteger(properties.getProperty(Constants.TAG_PRIME_FIELD), 16);
-            BigInteger generator = new BigInteger(properties.getProperty(Constants.TAG_GENERATOR), 16);
-            this.commitmentScheme = new FeldmanCommitmentScheme(p, generator);
-            this.field = new BigInteger(properties.getProperty(Constants.TAG_SUB_FIELD), 16);
+			BigInteger p = new BigInteger(properties.getProperty(Constants.TAG_PRIME_FIELD), 16);
+			BigInteger generator = new BigInteger(properties.getProperty(Constants.TAG_GENERATOR), 16);
+			this.commitmentScheme = new FeldmanCommitmentScheme(p, generator);
+			this.field = new BigInteger(properties.getProperty(Constants.TAG_SUB_FIELD), 16);
+		} else if (commitmentSchemeName.equals(Constants.VALUE_EC_FELDMAN_SCHEME)) {
+			BigInteger prime = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF", 16);
+			this.field = new BigInteger("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16);
+			BigInteger a = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC", 16);
+			BigInteger b = new BigInteger("5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B", 16);
+			byte[] compressedGenerator = new BigInteger("036B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296", 16).toByteArray();
+			this.commitmentScheme = new EllipticCurveCommitmentScheme(
+					prime,
+					field,
+					a,
+					b,
+					compressedGenerator
+			);
         } else if (commitmentSchemeName.equals(Constants.VALUE_DL_KZG_SCHEME)) {
             KateCommitmentScheme kateCommitmentScheme = new KateCommitmentScheme(threshold, shareholders);
             this.field = kateCommitmentScheme.getPrimeFieldOrder();

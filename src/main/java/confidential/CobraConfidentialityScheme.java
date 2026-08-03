@@ -54,7 +54,7 @@ public abstract class CobraConfidentialityScheme {
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
         properties.put(Constants.TAG_COMMITMENT_SCHEME, configuration.getVssScheme());
-        if (configuration.getVssScheme().equals("1")) {
+        if (configuration.getVssScheme().equals(Constants.VALUE_FELDMAN_SCHEME)) {
             properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
             properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
             properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
@@ -66,7 +66,7 @@ public abstract class CobraConfidentialityScheme {
         }
         vss = new VSSFacade(properties, shareholders);
         keysManager = new KeysManager();
-        isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
+        isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals(Constants.VALUE_FELDMAN_SCHEME);
     }
 
 	public InterpolationStrategy getInterpolationStrategy() {
