@@ -53,7 +53,7 @@ public class CommitmentBenchmark {
             BigInteger p = new BigInteger(configuration.getPrimeField(), 16);
             BigInteger generator = new BigInteger(configuration.getGenerator(), 16);
             commitmentScheme = new FeldmanCommitmentScheme(p, generator);
-        } else if (commitmentSchemeName.equals("constant")) {
+        } else if (commitmentSchemeName.equals("dl_kzg")) {
             commitmentScheme = new KateCommitmentScheme(threshold, shareholders);
         } else
             throw new IllegalStateException("Commitment scheme is unknown");

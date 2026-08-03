@@ -1,5 +1,7 @@
 package confidential;
 
+import vss.Constants;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
@@ -69,9 +71,9 @@ public final class Configuration {
 				switch (propertyName) {
 					case "cobra.vss.scheme":
 						if (value.equals("linear"))
-							vssScheme = "1";
-						else if (value.equals("constant"))
-							vssScheme = "2";
+							vssScheme = Constants.VALUE_FELDMAN_SCHEME;
+						else if (value.equals("dl_kate"))
+							vssScheme = Constants.VALUE_DL_KZG_SCHEME;
 						else
 							throw new IllegalArgumentException("Property cobra.vss.scheme " +
 									"has invalid value");

@@ -12,5 +12,5 @@ public class Constants {
 
     public final static String TAG_COMMITMENT_SCHEME = "commitmentScheme";
     public final static String VALUE_FELDMAN_SCHEME = "1";
-    public final static String VALUE_KATE_SCHEME = "2";
+    public final static String VALUE_DL_KZG_SCHEME = "2";
 }

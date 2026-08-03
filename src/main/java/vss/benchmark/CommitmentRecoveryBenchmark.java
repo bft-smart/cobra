@@ -61,7 +61,7 @@ public class CommitmentRecoveryBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, "AES");
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
+        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_DL_KZG_SCHEME);
 
         VSSFacade vssFacade = new VSSFacade(properties, shareholders);
         System.out.println("Warming up (" + warmUpIterations + " iterations)");

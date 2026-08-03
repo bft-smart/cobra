@@ -51,7 +51,7 @@ public class VerifiableSecretSharing {
             BigInteger generator = new BigInteger(properties.getProperty(Constants.TAG_GENERATOR), 16);
             this.commitmentScheme = new FeldmanCommitmentScheme(p, generator);
             this.field = new BigInteger(properties.getProperty(Constants.TAG_SUB_FIELD), 16);
-        } else if (commitmentSchemeName.equals(Constants.VALUE_KATE_SCHEME)) {
+        } else if (commitmentSchemeName.equals(Constants.VALUE_DL_KZG_SCHEME)) {
             KateCommitmentScheme kateCommitmentScheme = new KateCommitmentScheme(threshold, shareholders);
             this.field = kateCommitmentScheme.getPrimeFieldOrder();
             this.commitmentScheme = kateCommitmentScheme;

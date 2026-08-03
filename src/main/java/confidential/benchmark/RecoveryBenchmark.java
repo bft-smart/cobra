@@ -71,8 +71,8 @@ public class RecoveryBenchmark {
 
         if (commitmentSchemeName.equals("linear")) {
             properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
-        } else if (commitmentSchemeName.equals("constant")) {
-            properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_KATE_SCHEME);
+        } else if (commitmentSchemeName.equals("dl_kzg")) {
+            properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_DL_KZG_SCHEME);
         } else
             throw new IllegalStateException("Commitment scheme is unknown");
 
