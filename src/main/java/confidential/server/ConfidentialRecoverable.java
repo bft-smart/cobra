@@ -78,6 +78,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		this.isCombinePrivateAndCommonData = Configuration.getInstance().isSendAllSharesTogether();
 	}
 
+	public ServerConfidentialityScheme getConfidentialityScheme() {
+		return confidentialityScheme;
+	}
+
 	@Override
 	public void setReplicaContext(ReplicaContext replicaContext) {
 		logger.debug("setting replica context");

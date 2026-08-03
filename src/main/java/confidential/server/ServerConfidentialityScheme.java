@@ -39,11 +39,7 @@ public class ServerConfidentialityScheme extends CobraConfidentialityScheme {
         return new VerifiableShare(share, commitment, privateShares.getSharedData());
     }
 
-    public CommitmentScheme getCommitmentScheme() {
-        return vss.getCommitmentScheme();
-    }
-
-    public InterpolationStrategy getInterpolationStrategy() {
+	public InterpolationStrategy getInterpolationStrategy() {
         return vss.getInterpolationStrategy();
     }
 
