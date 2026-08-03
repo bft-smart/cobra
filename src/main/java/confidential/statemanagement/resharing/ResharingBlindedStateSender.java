@@ -41,7 +41,7 @@ public class ResharingBlindedStateSender extends BlindedStateSender {
         Iterator<Share> shareIterator = shares.iterator();
         Iterator<Commitment> commitmentsIterator = commitments.iterator();
         CountDownLatch latch = new CountDownLatch(nShares);
-        BigInteger field = confidentialityScheme.getField();
+        BigInteger field = confidentialityScheme.getSubPrimeFieldOrder();
         CommitmentScheme commitmentScheme = confidentialityScheme.getCommitmentScheme();
         for (int i = 0; i < nShares; i++) {
             VerifiableShare blindingShare = blindingShares[i];

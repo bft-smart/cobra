@@ -39,14 +39,6 @@ public class ServerConfidentialityScheme extends CobraConfidentialityScheme {
         return new VerifiableShare(share, commitment, privateShares.getSharedData());
     }
 
-	public InterpolationStrategy getInterpolationStrategy() {
-        return vss.getInterpolationStrategy();
-    }
-
-    public BigInteger getField() {
-        return vss.getField();
-    }
-
     public BigInteger getMyShareholderId() {
         return me;
     }

@@ -73,7 +73,7 @@ public abstract class PolynomialCreator {
         this.creationContext = creationContext;
         this.processId = processId;
         this.shareholderId = confidentialityScheme.getMyShareholderId();
-        this.field = confidentialityScheme.getField();
+        this.field = confidentialityScheme.getSubPrimeFieldOrder();
         this.confidentialityScheme = confidentialityScheme;
         this.rndGenerator = rndGenerator;
         this.commitmentScheme = confidentialityScheme.getCommitmentScheme();

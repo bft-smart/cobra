@@ -5,6 +5,7 @@ import vss.Constants;
 import vss.commitment.CommitmentScheme;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
+import vss.interpolation.InterpolationStrategy;
 import vss.secretsharing.Share;
 
 import javax.crypto.BadPaddingException;
@@ -67,6 +68,18 @@ public abstract class CobraConfidentialityScheme {
         keysManager = new KeysManager();
         isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
     }
+
+	public InterpolationStrategy getInterpolationStrategy() {
+		return vss.getInterpolationStrategy();
+	}
+
+	public BigInteger getSubPrimeFieldOrder() {
+		return vss.getField();
+	}
+
+	public BigInteger getPrimeFieldOrder() {
+		return vss.getCommitmentScheme().getPrimeFieldOrder();
+	}
 
     public boolean isLinearCommitmentScheme() {
         return isLinearCommitmentScheme;

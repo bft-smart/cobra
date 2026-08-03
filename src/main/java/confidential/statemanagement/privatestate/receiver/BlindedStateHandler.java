@@ -58,7 +58,7 @@ public abstract class BlindedStateHandler extends Thread {
         super("Blinded State Handler Thread");
         int pid = svController.getStaticConf().getProcessId();
         this.shareholderId = confidentialityScheme.getMyShareholderId();
-        this.field = confidentialityScheme.getField();
+        this.field = confidentialityScheme.getSubPrimeFieldOrder();
         this.stateReceivedListener = stateReceivedListener;
         this.corruptedServers = new AtomicInteger(0);
         this.f = f;

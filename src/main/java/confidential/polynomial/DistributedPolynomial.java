@@ -42,7 +42,7 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
     public DistributedPolynomial(ServerViewController svController, InterServersCommunication serversCommunication,
                                  ServerConfidentialityScheme confidentialityScheme) {
         this.serversCommunication = serversCommunication;
-        this.field = confidentialityScheme.getField();
+        this.field = confidentialityScheme.getSubPrimeFieldOrder();
         this.confidentialityScheme = confidentialityScheme;
         this.rndGenerator = new SecureRandom(SEED);
         this.polynomialCreators = new ConcurrentHashMap<>();

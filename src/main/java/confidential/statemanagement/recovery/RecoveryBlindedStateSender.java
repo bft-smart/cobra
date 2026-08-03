@@ -39,7 +39,7 @@ public class RecoveryBlindedStateSender extends BlindedStateSender {
         Iterator<Share> shareIterator = shares.iterator();
         Iterator<Commitment> commitmentsIterator = commitments.iterator();
         CountDownLatch latch = new CountDownLatch(nShares);
-        BigInteger field = confidentialityScheme.getField();
+        BigInteger field = confidentialityScheme.getSubPrimeFieldOrder();
         int recoveringServer = blindedStateReceivers[0];
         for (int i = 0; i < nShares; i++) {
             VerifiableShare blindingShare = blindingShares[i];
