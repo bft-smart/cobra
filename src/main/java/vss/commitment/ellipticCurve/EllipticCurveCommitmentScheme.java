@@ -23,9 +23,11 @@ import java.util.Map;
 public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 	private final ECCurve curve;
 	private final ECPoint generator;
+	private final BigInteger primeFieldOrder;
 
 	public EllipticCurveCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b,
 										 byte[] compressedGenerator) {
+		this.primeFieldOrder = prime;
 		BigInteger cofactor = prime.divide(order);
 		this.curve = new ECCurve.Fp(prime, a, b, order, cofactor);
 		this.generator = curve.decodePoint(compressedGenerator);
@@ -37,6 +39,11 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 
 	public ECPoint decodePoint(byte[] encodedPoint) {
 		return curve.decodePoint(encodedPoint);
+	}
+
+	@Override
+	public BigInteger getPrimeFieldOrder() {
+		return primeFieldOrder;
 	}
 
 	@Override

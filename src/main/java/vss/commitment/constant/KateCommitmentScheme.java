@@ -37,6 +37,7 @@ public class KateCommitmentScheme implements CommitmentScheme {
         }
     }
 
+	@Override
     public BigInteger getPrimeFieldOrder() {
         return pairing.getOrder();
     }

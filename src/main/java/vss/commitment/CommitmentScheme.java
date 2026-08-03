@@ -16,6 +16,13 @@ import java.util.Map;
  * @author Robin
  */
 public interface CommitmentScheme {
+
+	/**
+	 * Returns the prime field order of the group used for commitments
+	 * @return prime field order
+	 */
+	BigInteger getPrimeFieldOrder();
+
     /**
      * Generates commitment for given polynomial
      * @param polynomial Polynomial

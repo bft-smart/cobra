@@ -33,7 +33,12 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
         this.generator = generator;
     }
 
-    @Override
+	@Override
+	public BigInteger getPrimeFieldOrder() {
+		return p;
+	}
+
+	@Override
     public Commitment generateCommitments(Polynomial polynomial, BigInteger... additionalShareholders) {
         BigInteger[] coefficients = polynomial.getCoefficients();
         int degree = polynomial.getDegree();
