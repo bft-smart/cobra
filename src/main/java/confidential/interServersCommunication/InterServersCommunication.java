@@ -45,10 +45,10 @@ public class InterServersCommunication {
         return communicationManager.registerMessageListener(listener);
     }
 
-    public synchronized void sendUnordered(CommunicationTag tag, InterServersMessageType type,
+    public synchronized void sendUnordered(byte communicationTag, InterServersMessageType type,
                                            byte[] request, int... targets) {
         byte[] message = serializeInternalRequest(type, request);
-        communicationManager.send(tag, new InternalMessage(pid, tag, message), targets);
+        communicationManager.send(communicationTag, new InternalMessage(pid, communicationTag, message), targets);
     }
 
     public void registerListener(InterServerMessageListener listener, InterServersMessageType messageType,

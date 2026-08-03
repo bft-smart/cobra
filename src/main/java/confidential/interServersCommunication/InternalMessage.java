@@ -8,14 +8,14 @@ import java.util.Arrays;
 
 public class InternalMessage implements Externalizable {
     private int sender;
-    private CommunicationTag tag;
+    private byte communicationTag;
     private byte[] message;
 
     public InternalMessage() {}
 
-    public InternalMessage(int sender, CommunicationTag tag, byte[] message) {
+    public InternalMessage(int sender, byte communicationTag, byte[] message) {
         this.sender = sender;
-        this.tag = tag;
+        this.communicationTag = communicationTag;
         this.message = message;
     }
 
@@ -23,8 +23,8 @@ public class InternalMessage implements Externalizable {
         return sender;
     }
 
-    public CommunicationTag getTag() {
-        return tag;
+    public byte getCommunicationTag() {
+        return communicationTag;
     }
 
     public byte[] getMessage() {
@@ -34,7 +34,7 @@ public class InternalMessage implements Externalizable {
     @Override
     public void writeExternal(ObjectOutput out) throws IOException {
         out.writeInt(sender);
-        out.write(tag.ordinal());
+        out.write(communicationTag);
         out.writeInt(message == null ? -1 : message.length);
         if (message != null)
             out.write(message);
@@ -43,7 +43,7 @@ public class InternalMessage implements Externalizable {
     @Override
     public void readExternal(ObjectInput in) throws IOException, ClassNotFoundException {
         sender = in.readInt();
-        tag = CommunicationTag.getTag(in.read());
+        communicationTag = (byte) in.read();
         int size = in.readInt();
         if (size != -1) {
             message = new byte[size];
@@ -55,7 +55,7 @@ public class InternalMessage implements Externalizable {
     public String toString() {
         return "InternalMessage{" +
                 "sender=" + sender +
-                ", tag=" + tag +
+                ", tag=" + communicationTag +
                 ", message=" + Arrays.toString(message) +
                 '}';
     }

@@ -11,7 +11,7 @@ public class CommunicationManager extends Thread {
     private final Logger logger = LoggerFactory.getLogger("communication");
     private boolean doWork;
     private final LinkedBlockingQueue<InternalMessage> inQueue;
-    private final HashMap<CommunicationTag, MessageListener> messageListeners;
+    private final HashMap<Byte, MessageListener> messageListeners;
     private final ConnectionManager connectionManager;
 
     public CommunicationManager(ServerViewController svController) {
@@ -28,7 +28,7 @@ public class CommunicationManager extends Thread {
     }
 
     public boolean registerMessageListener(MessageListener listener) {
-        CommunicationTag tag = listener.getTag();
+        byte tag = listener.getCommunicationTag();
         if (messageListeners.containsKey(tag))
             return false;
         messageListeners.put(tag, listener);
@@ -41,10 +41,10 @@ public class CommunicationManager extends Thread {
             try {
                 InternalMessage message = inQueue.take();
 
-                logger.debug("Received a message with tag {}", message.getTag());
-                MessageListener listener = messageListeners.get(message.getTag());
+                logger.debug("Received a message with tag {}", message.getCommunicationTag());
+                MessageListener listener = messageListeners.get(message.getCommunicationTag());
                 if (listener == null) {
-                    logger.warn("There is no listener for tag {}", message.getTag());
+                    logger.warn("There is no listener for tag {}", message.getCommunicationTag());
                     continue;
                 }
                 listener.messageReceived(message);
@@ -57,8 +57,8 @@ public class CommunicationManager extends Thread {
         logger.debug("Exiting communication manager thread");
     }
 
-    public void send(CommunicationTag tag, InternalMessage message, int... targets) {
-        connectionManager.send(tag, message, targets);
+    public void send(byte communicationTag, InternalMessage message, int... targets) {
+        connectionManager.send(communicationTag, message, targets);
     }
 
     public void shutdown() {

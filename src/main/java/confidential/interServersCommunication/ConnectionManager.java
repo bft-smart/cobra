@@ -112,7 +112,7 @@ public class ConnectionManager extends Thread {
         }
     }
 
-    public void send(CommunicationTag tag, InternalMessage message, int... targets) {
+    public void send(byte communicationTag, InternalMessage message, int... targets) {
         try (ByteArrayOutputStream bOut = new ByteArrayOutputStream(512);
              ObjectOutput out = new ObjectOutputStream(bOut)) {
             message.writeExternal(out);
@@ -130,14 +130,14 @@ public class ConnectionManager extends Thread {
                 int target = targets[targetIndex];
                 if (target == me) {
                     inQueue.put(message);
-                    logger.debug("Queueing (delivering) my own message with tag {}", tag);
+                    logger.debug("Queueing (delivering) my own message with communicationTag {}", communicationTag);
                 } else {
-                    logger.debug("Sending message to {} with tag {}", target, tag);
+                    logger.debug("Sending message to {} with communicationTag {}", target, communicationTag);
                     getConnection(target).send(data);
                 }
             }
         } catch (IOException e) {
-            logger.error("Failed to serialize message with tag {}", tag, e);
+            logger.error("Failed to serialize message with communicationTag {}", communicationTag, e);
         } catch (InterruptedException e) {
             logger.error("Failed to insert message into inQueue", e);
         }
