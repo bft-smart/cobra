@@ -163,7 +163,36 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
         return new LinearCommitments(result);
     }
 
-    @Override
+	@Override
+	public Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		BigInteger[] rawCommitments = ((LinearCommitments) commitment).getCommitments();
+		BigInteger[] newCommitments = new BigInteger[rawCommitments.length + 1];
+		System.arraycopy(rawCommitments, 0, newCommitments, 0, rawCommitments.length);
+		newCommitments[newCommitments.length - 1] = generator.modPow(constant, primeFieldOrder).multiply(rawCommitments[rawCommitments.length - 1]).mod(primeFieldOrder);
+		return new LinearCommitments(newCommitments);
+	}
+
+	@Override
+	public Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		BigInteger[] rawCommitments = ((LinearCommitments) commitment).getCommitments();
+		BigInteger[] newCommitments = new BigInteger[rawCommitments.length + 1];
+		System.arraycopy(rawCommitments, 0, newCommitments, 0, rawCommitments.length);
+		newCommitments[newCommitments.length - 1] = rawCommitments[rawCommitments.length - 1]
+				.multiply(generator.modPow(constant, primeFieldOrder).modInverse(primeFieldOrder)).mod(primeFieldOrder);
+		return new LinearCommitments(newCommitments);
+	}
+
+	@Override
+	public Commitment multiplyByConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		BigInteger[] rawCommitments = ((LinearCommitments) commitment).getCommitments();
+		BigInteger[] result = new BigInteger[rawCommitments.length];
+		for (int i = 0; i < rawCommitments.length; i++) {
+			result[i] = rawCommitments[i].modPow(constant, primeFieldOrder);
+		}
+		return new LinearCommitments(result);
+	}
+
+	@Override
     public Commitment extractCommitment(BigInteger shareholder, Commitment commitment) {
         return commitment;
     }

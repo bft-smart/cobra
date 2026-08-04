@@ -104,6 +104,33 @@ public interface CommitmentScheme {
      */
     Commitment subtractCommitments(Commitment c1, Commitment c2) throws SecretSharingException;
 
+	/**
+	 * Add a constant to commitment
+	 * @param commitment Commitment
+	 * @param constant Constant to add
+	 * @return Commitment with constant added
+	 * @throws SecretSharingException
+	 */
+	Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException;
+
+	/**
+	 * Subtract a constant to commitment
+	 * @param commitment Commitment
+	 * @param constant Constant to add
+	 * @return Commitment with constant added
+	 * @throws SecretSharingException
+	 */
+	Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException;
+
+	/**
+	 * Multiply commitment by constant
+	 * @param commitment Commitment to multiply
+	 * @param constant Constant to multiply by
+	 * @return Commitment multiplied by constant
+	 * @throws SecretSharingException
+	 */
+	Commitment multiplyByConstant(Commitment commitment, BigInteger constant) throws SecretSharingException;
+
     /**
      * Given global commitment, extract commitment for a specific shareholder
      * @param shareholder Shareholder

@@ -141,10 +141,33 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 		return new RawLinearCommitment(result);
 	}
 
+	@Override
+	public Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		byte[][] rawCommitments = ((RawLinearCommitment) commitment).getCommitment();
+		byte[][] newCommitments = new byte[rawCommitments.length][];
+		for (int i = 0; i < rawCommitments.length; i++) {
+			newCommitments[i] = Arrays.copyOf(rawCommitments[i], rawCommitments[i].length);
+		}
+		byte[] commitmentToAdd = new byte[newCommitments.length - 1];
+		newCommitments[newCommitments.length - 1] = mathUtil.add(commitmentToAdd, mathUtil.multiply(constant));
+		return new RawLinearCommitment(newCommitments);
+	}
+
+	@Override
+	public Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		byte[][] rawCommitments = ((RawLinearCommitment) commitment).getCommitment();
+		byte[][] newCommitments = new byte[rawCommitments.length][];
+		for (int i = 0; i < rawCommitments.length; i++) {
+			newCommitments[i] = Arrays.copyOf(rawCommitments[i], rawCommitments[i].length);
+		}
+		byte[] commitmentToAdd = new byte[newCommitments.length - 1];
+		newCommitments[newCommitments.length - 1] = mathUtil.subtract(commitmentToAdd, mathUtil.multiply(constant));
+		return new RawLinearCommitment(newCommitments);
+	}
+
 
 	public Commitment multiplyByConstant(Commitment commitment, BigInteger constant) {
-		RawLinearCommitment linearCommitments = (RawLinearCommitment) commitment;
-		byte[][] commitments = linearCommitments.getCommitment();
+		byte[][] commitments = ((RawLinearCommitment) commitment).getCommitment();
 		byte[][] newCommitments = new byte[commitments.length][];
 		for (int i = 0; i < commitments.length; i++) {
 			newCommitments[i] = mathUtil.multiply(commitments[i], constant);
@@ -188,40 +211,5 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 	public void writeCommitment(Commitment commitment, ObjectOutput out) throws IOException {
 		out.write(commitment.getCommitmentType().ordinal());
 		commitment.writeExternal(out);
-	}
-
-
-	public Commitment subtractCommitments(Commitment... commitments) throws SecretSharingException {
-		int size = ((RawLinearCommitment) commitments[0]).getCommitment().length;
-		byte[][][] linearCommitments = new byte[commitments.length][][];
-		for (int i = 0; i < commitments.length; i++) {
-			RawLinearCommitment lc = (RawLinearCommitment)commitments[i];
-			if (size != lc.getCommitment().length)
-				throw new SecretSharingException("Commitments must have same size");
-			linearCommitments[i] = lc.getCommitment();
-		}
-
-		byte[][] result = new byte[size][];
-
-		for (byte[][] l : linearCommitments) {
-			for (int j = 0; j < l.length; j++) {
-				if (result[j] == null) {
-					result[j] = l[j];
-				} else {
-					result[j] = mathUtil.subtract(result[j], l[j]);
-				}
-			}
-		}
-
-		return new RawLinearCommitment(result);
-	}
-
-	public Commitment exponentCommitment(BigInteger dValue, Commitment commitment) {
-		byte[][] commitments = ((RawLinearCommitment) commitment).getCommitment();
-		byte[][] result = new byte[commitments.length][];
-		for (int i = 0; i < result.length; i++) {
-			result[i] = mathUtil.multiply(commitments[i], dValue);
-		}
-		return new RawLinearCommitment(result);
 	}
 }

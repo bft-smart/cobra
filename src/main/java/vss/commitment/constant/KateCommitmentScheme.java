@@ -169,7 +169,22 @@ public class KateCommitmentScheme implements CommitmentScheme {
         return null;
     }
 
-    private CommitmentType getCommitmentType(Commitment[] commitments) {
+	@Override
+	public Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		throw new UnsupportedOperationException("TODO");
+	}
+
+	@Override
+	public Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		throw new UnsupportedOperationException("TODO");
+	}
+
+	@Override
+	public Commitment multiplyByConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
+		throw new UnsupportedOperationException("TODO");
+	}
+
+	private CommitmentType getCommitmentType(Commitment[] commitments) {
         CommitmentType firstType = null;
         for (Commitment commitment : commitments) {
             if (firstType == null) {
