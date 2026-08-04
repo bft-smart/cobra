@@ -1,11 +1,14 @@
 package confidential;
 
 import bftsmart.reconfiguration.views.View;
+import confidential.encrypted.EncryptedPublishedShares;
 import vss.Constants;
 import vss.commitment.CommitmentScheme;
+import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.interpolation.InterpolationStrategy;
+import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
 
 import javax.crypto.BadPaddingException;
@@ -23,7 +26,7 @@ import java.util.concurrent.locks.ReentrantLock;
 /**
  * @author Robin
  */
-public abstract class CobraConfidentialityScheme {
+public class CobraConfidentialityScheme {
     protected final VSSFacade vss;
     private final Map<Integer, BigInteger> serverToShareholder;
     private final Map<BigInteger, Integer> shareholderToServer;
@@ -64,6 +67,39 @@ public abstract class CobraConfidentialityScheme {
         keysManager = new KeysManager();
         isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals(Constants.VALUE_FELDMAN_SCHEME);
     }
+
+	/**
+	 * Returns encrypted shares of the secret
+	 * @param secret Secret to share
+	 * @return Encrypted shares
+	 * @throws SecretSharingException See {@link vss.facade.VSSFacade}.share()
+	 */
+	public EncryptedPublishedShares share(byte[] secret, Mode mode) throws SecretSharingException {
+		OpenPublishedShares openShares = vss.share(secret, mode, threshold);
+
+		Share[] shares = openShares.getShares();
+		Map<Integer, byte[]> encryptedShares = new HashMap<>(shares.length);
+
+		BigInteger shareholder;
+		int server;
+		byte[] encryptedShare;
+		for (Share share : shares) {
+			shareholder = share.getShareholder();
+			server = getProcess(shareholder);
+			encryptedShare = encryptShareFor(server, share);
+			encryptedShares.put(server, encryptedShare);
+		}
+
+		return new EncryptedPublishedShares(encryptedShares, openShares.getCommitments(),
+				openShares.getSharedData());
+	}
+
+	public byte[] combine(OpenPublishedShares shares, Mode mode) throws SecretSharingException {
+		byte[] b = vss.combine(shares, mode, threshold);
+		if (b == null || b.length == 0)
+			System.out.println("Confidential data is null");
+		return b;
+	}
 
 	public InterpolationStrategy getInterpolationStrategy() {
 		return vss.getInterpolationStrategy();

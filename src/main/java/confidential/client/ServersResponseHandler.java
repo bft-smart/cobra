@@ -5,6 +5,7 @@ import bftsmart.tom.util.Extractor;
 import bftsmart.tom.util.HashedExtractor;
 import bftsmart.tom.util.ServiceContent;
 import bftsmart.tom.util.ServiceResponse;
+import confidential.CobraConfidentialityScheme;
 import confidential.ConfidentialMessage;
 import confidential.ExtractedResponse;
 import org.slf4j.Logger;
@@ -31,7 +32,7 @@ import java.util.*;
 public abstract class ServersResponseHandler implements Comparator<ServiceContent>, Extractor, HashedExtractor {
 	protected final Logger logger = LoggerFactory.getLogger("confidential");
 	protected CommitmentScheme commitmentScheme;
-	protected ClientConfidentialityScheme confidentialityScheme;
+	protected CobraConfidentialityScheme confidentialityScheme;
 	private final Map<ServiceContent, ConfidentialMessage> responses;
 	private final Map<ConfidentialMessage, Integer> responseHashes;
 
@@ -40,7 +41,7 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 		this.responseHashes = new HashMap<>();
 	}
 
-	public void setClientConfidentialityScheme(ClientConfidentialityScheme confidentialityScheme) {
+	public void setCobraConfidentialityScheme(CobraConfidentialityScheme confidentialityScheme) {
 		this.confidentialityScheme = confidentialityScheme;
 		this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
 	}

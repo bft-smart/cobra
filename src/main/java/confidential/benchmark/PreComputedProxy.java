@@ -4,11 +4,7 @@ import bftsmart.reconfiguration.IClientSideReconfigurationListener;
 import bftsmart.reconfiguration.views.View;
 import bftsmart.tom.ExtendedServiceProxy;
 import bftsmart.tom.util.ServiceResponse;
-import confidential.Configuration;
-import confidential.ExtractedResponse;
-import confidential.MessageType;
-import confidential.Metadata;
-import confidential.client.ClientConfidentialityScheme;
+import confidential.*;
 import confidential.client.Response;
 import confidential.client.ServersResponseHandler;
 import confidential.encrypted.EncryptedPublishedShares;
@@ -37,7 +33,7 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
     private final Logger logger = LoggerFactory.getLogger("confidential");
 
     final ExtendedServiceProxy service;
-    private final ClientConfidentialityScheme confidentialityScheme;
+    private final CobraConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
     private byte[] commonData;
     Map<Integer, byte[]> privateDataShares;
@@ -57,8 +53,8 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
         }
         this.service = new ExtendedServiceProxy(clientId, serversResponseHandler,
                 serversResponseHandler, serversResponseHandler);
-        this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
-        serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
+        this.confidentialityScheme = new CobraConfidentialityScheme(service.getViewManager().getCurrentView());
+        serversResponseHandler.setCobraConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
         isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
         service.setInvokeTimeout(60000);

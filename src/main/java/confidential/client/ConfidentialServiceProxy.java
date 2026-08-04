@@ -2,10 +2,7 @@ package confidential.client;
 
 import bftsmart.tom.ExtendedServiceProxy;
 import bftsmart.tom.util.ServiceResponse;
-import confidential.Configuration;
-import confidential.ExtractedResponse;
-import confidential.MessageType;
-import confidential.Metadata;
+import confidential.*;
 import confidential.encrypted.EncryptedPublishedShares;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -26,7 +23,7 @@ import java.util.Map;
 public class ConfidentialServiceProxy {
     private final Logger logger = LoggerFactory.getLogger("confidential");
     private final ExtendedServiceProxy service;
-    private final ClientConfidentialityScheme confidentialityScheme;
+    private final CobraConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
     private final boolean isLinearCommitmentScheme;
     private final boolean isSendAllSharesTogether;
@@ -47,8 +44,8 @@ public class ConfidentialServiceProxy {
 		}
         this.service = new ExtendedServiceProxy(clientId, serversResponseHandler,
                 serversResponseHandler, serversResponseHandler);
-        this.confidentialityScheme = new ClientConfidentialityScheme(service.getViewManager().getCurrentView());
-        serversResponseHandler.setClientConfidentialityScheme(confidentialityScheme);
+        this.confidentialityScheme = new CobraConfidentialityScheme(service.getViewManager().getCurrentView());
+        serversResponseHandler.setCobraConfidentialityScheme(confidentialityScheme);
         isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
         isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
