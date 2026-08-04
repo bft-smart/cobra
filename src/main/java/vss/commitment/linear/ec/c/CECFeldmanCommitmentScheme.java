@@ -148,7 +148,7 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 		for (int i = 0; i < rawCommitments.length; i++) {
 			newCommitments[i] = Arrays.copyOf(rawCommitments[i], rawCommitments[i].length);
 		}
-		byte[] commitmentToAdd = new byte[newCommitments.length - 1];
+		byte[] commitmentToAdd = rawCommitments[newCommitments.length - 1];
 		newCommitments[newCommitments.length - 1] = mathUtil.add(commitmentToAdd, mathUtil.multiply(constant));
 		return new RawLinearCommitment(newCommitments);
 	}
@@ -160,7 +160,7 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 		for (int i = 0; i < rawCommitments.length; i++) {
 			newCommitments[i] = Arrays.copyOf(rawCommitments[i], rawCommitments[i].length);
 		}
-		byte[] commitmentToAdd = new byte[newCommitments.length - 1];
+		byte[] commitmentToAdd = rawCommitments[newCommitments.length - 1];
 		newCommitments[newCommitments.length - 1] = mathUtil.subtract(commitmentToAdd, mathUtil.multiply(constant));
 		return new RawLinearCommitment(newCommitments);
 	}

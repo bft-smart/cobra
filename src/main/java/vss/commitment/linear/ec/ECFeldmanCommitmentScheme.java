@@ -131,7 +131,8 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 			ecCommitments[i] = lc.getCommitment();
 		}
 
-		ECPoint[] result = ecCommitments[0];
+		ECPoint[] result = new ECPoint[size];
+		System.arraycopy(ecCommitments[0], 0, result, 0, size);
 		for (int i = 1; i < ecCommitments.length; i++) {
 			for (int j = 0; j < size; j++) {
 				result[j] = result[j].add(ecCommitments[i][j]);
@@ -158,7 +159,7 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	@Override
 	public Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
 		ECPoint[] rawCommitments = ((ECLinearCommitment) commitment).getCommitment();
-		ECPoint[] newCommitments = new ECPoint[rawCommitments.length + 1];
+		ECPoint[] newCommitments = new ECPoint[rawCommitments.length];
 		System.arraycopy(rawCommitments, 0, newCommitments, 0, rawCommitments.length);
 		newCommitments[newCommitments.length - 1] = generator.multiply(constant).add(rawCommitments[rawCommitments.length - 1]);
 		return new ECLinearCommitment(newCommitments, curve);
@@ -167,7 +168,7 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	@Override
 	public Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
 		ECPoint[] rawCommitments = ((ECLinearCommitment) commitment).getCommitment();
-		ECPoint[] newCommitments = new ECPoint[rawCommitments.length + 1];
+		ECPoint[] newCommitments = new ECPoint[rawCommitments.length];
 		System.arraycopy(rawCommitments, 0, newCommitments, 0, rawCommitments.length);
 		newCommitments[newCommitments.length - 1] = rawCommitments[rawCommitments.length - 1].subtract(generator.multiply(constant));
 		return new ECLinearCommitment(newCommitments, curve);
