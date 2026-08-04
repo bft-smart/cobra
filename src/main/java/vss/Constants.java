@@ -14,4 +14,5 @@ public class Constants {
     public final static String VALUE_FELDMAN_SCHEME = "1";
     public final static String VALUE_DL_KZG_SCHEME = "2";
 	public final static String VALUE_EC_FELDMAN_SCHEME = "3";
+	public final static String VALUE_C_EC_FELDMAN_SCHEME = "4";
 }

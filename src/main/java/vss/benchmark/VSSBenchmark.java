@@ -5,7 +5,10 @@ import vss.commitment.CommitmentScheme;
 import vss.commitment.constant.KateCommitmentScheme;
 import vss.commitment.linear.FeldmanCommitmentScheme;
 import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
+import vss.commitment.linear.ec.c.CECFeldmanCommitmentScheme;
 import vss.facade.SecretSharingException;
+import vss.parameters.DHRFC5114Modp2048p256;
+import vss.parameters.ECSecp256r1;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 
@@ -23,7 +26,7 @@ public class VSSBenchmark {
 	public static void main(String[] args) throws SecretSharingException {
 		if (args.length != 4) {
 			System.out.println("USAGE: ... vss.benchmark.VSSBenchmark <threshold> " +
-					"<commitment scheme: linear | ec_linear | dl_kzg>" +
+					"<commitment scheme: linear | ec_linear | c_ec_linear | dl_kzg> " +
 					"<warm up iterations> <test iterations>");
 			System.exit(-1);
 		}
@@ -39,43 +42,38 @@ public class VSSBenchmark {
 			shareholders[i] = BigInteger.valueOf(i + 1);
 		}
 
-		CommitmentScheme commitmentScheme = null;
-
 		System.out.println("t = " + threshold);
 		System.out.println("n = " + n);
-		BigInteger primeField;
+
+		CommitmentScheme commitmentScheme;
 		switch (commitmentSchemeType) {
 			case "linear":
-				primeField = new BigInteger("87A8E61DB4B6663CFFBBD19C651959998CEEF608660DD0F25D2CEED4435E3B00E00DF8F1D61957D4FAF7DF4561B2AA3016C3D91134096FAA3BF4296D830E9A7C209E0C6497517ABD5A8A9D306BCF67ED91F9E6725B4758C022E0B1EF4275BF7B6C5BFC11D45F9088B941F54EB1E59BB8BC39A0BF12307F5C4FDB70C581B23F76B63ACAE1CAA6B7902D52526735488A0EF13C6D9A51BFA4AB3AD8347796524D8EF6A167B5A41825D967E144E5140564251CCACB83E6B486F6B3CA3F7971506026C0B857F689962856DED4010ABD0BE621C3A3960A54E710C375F26375D7014103A4B54330C198AF126116D2276E11715F693877FAD7EF09CADB094AE91E1A1597", 16);
-				subPrimeField = new BigInteger("8CF83642A709A097B447997640129DA299B1A47D1EB3750BA308B0FE64F5FBD3", 16);
-				BigInteger generator = new BigInteger("3FB32C9B73134D0B2E77506660EDBD484CA7B18F21EF205407F4793A1A0BA12510DBC15077BE463FFF4FED4AAC0BB555BE3A6C1B0C6B47B1BC3773BF7E8C6F62901228F8C28CBB18A55AE31341000A650196F931C77A57F2DDF463E5E9EC144B777DE62AAAB8A8628AC376D282D6ED3864E67982428EBC831D14348F6F2F9193B5045AF2767164E1DFC967C1FB3F2E55A4BD1BFFE83B9C80D052B985D182EA0ADB2A3B7313D3FE14C8484B1E052588B9B7D2BBD2DF016199ECD06E1557CD0915B3353BBB64E0EC377FD028370DF92B52C7891428CDC67EB6184B523D1DB246C32F63078490F00EF8D647D148D47954515E2327CFEF98C582664B4C0F6CC41659", 16);
-				commitmentScheme = new FeldmanCommitmentScheme(primeField, generator);
+				commitmentScheme = new FeldmanCommitmentScheme(
+						DHRFC5114Modp2048p256.primeField,
+						DHRFC5114Modp2048p256.generator,
+						DHRFC5114Modp2048p256.subPrimeField);
 				break;
 			case "ec_linear":
-				primeField = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF", 16);
-				subPrimeField = new BigInteger("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16);
-				BigInteger a = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC", 16);
-				BigInteger b = new BigInteger("5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B", 16);
-				byte[] compressedGenerator = new BigInteger("036B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296", 16).toByteArray();
-
 				commitmentScheme = new ECFeldmanCommitmentScheme(
-						primeField,
-						subPrimeField,
-						a,
-						b,
-						compressedGenerator
+						ECSecp256r1.primeField,
+						ECSecp256r1.subPrimeField,
+						ECSecp256r1.a,
+						ECSecp256r1.b,
+						ECSecp256r1.compressedGenerator
 				);
 				break;
+			case "c_ec_linear":
+				commitmentScheme = new CECFeldmanCommitmentScheme();
+				break;
 			case "dl_kzg":
-				KateCommitmentScheme kateCommitmentScheme = new KateCommitmentScheme(threshold, shareholders);
-				subPrimeField = kateCommitmentScheme.getPrimeFieldOrder();
-				commitmentScheme = kateCommitmentScheme;
+				commitmentScheme = new KateCommitmentScheme(threshold, shareholders);
 				break;
 			default:
-				System.out.println("Unknown commitment scheme type: " + commitmentSchemeType);
-				System.exit(-1);
+				throw new IllegalArgumentException("Unknown commitment scheme type: " + commitmentSchemeType);
 		}
-
+		subPrimeField = commitmentScheme.getSubPrimeFieldOrder();
+		System.out.println("Prime field order: " + commitmentScheme.getPrimeFieldOrder().toString(16));
+		System.out.println("Sub-prime field order: " + commitmentScheme.getSubPrimeFieldOrder().toString(16));
 		System.out.println("Warming up (" + warmUpIterations + " iterations)");
 		if (warmUpIterations > 0)
 			runTests(warmUpIterations, false, threshold, shareholders, commitmentScheme);

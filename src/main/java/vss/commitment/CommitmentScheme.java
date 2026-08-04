@@ -23,6 +23,12 @@ public interface CommitmentScheme {
 	 */
 	BigInteger getPrimeFieldOrder();
 
+	/**
+	 * Return the sub prime field order of the group used for commitments
+	 * @return sub prime field order
+	 */
+	BigInteger getSubPrimeFieldOrder();
+
     /**
      * Generates commitment for given polynomial
      * @param polynomial Polynomial

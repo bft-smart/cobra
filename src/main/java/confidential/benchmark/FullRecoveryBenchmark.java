@@ -69,9 +69,6 @@ public class FullRecoveryBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
-        properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
-        properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
 
         if (commitmentSchemeName.equals("linear")) {
             properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
@@ -88,10 +85,10 @@ public class FullRecoveryBenchmark {
         vandermondeMatrix = new BigInteger[rows][columns];
         BigInteger[] matrixInitValues = new BigInteger[columns];
         for (int i = 0; i < columns; i++) {
-            matrixInitValues[i] = getRandomNumber(vssFacade.getField().bitLength() - 1);
+            matrixInitValues[i] = getRandomNumber(vssFacade.getSubPrimeFieldOrder().bitLength() - 1);
         }
 
-        BigInteger field = vssFacade.getField();
+        BigInteger field = vssFacade.getSubPrimeFieldOrder();
         for (int r = 0; r < rows; r++) {
             BigInteger exponent = BigInteger.valueOf(r);
             for (int c = 0; c < columns; c++) {
@@ -110,7 +107,7 @@ public class FullRecoveryBenchmark {
     private static void runTests(int nTests, boolean printResults, int nSecrets,
                                  VSSFacade vssFacade) throws SecretSharingException, InterruptedException {
         int recoveryShareholderIndex = 0;
-        BigInteger field = vssFacade.getField();
+        BigInteger field = vssFacade.getSubPrimeFieldOrder();
         CommitmentScheme commitmentScheme = vssFacade.getCommitmentScheme();
 
         byte[] secret = new byte[1024];
@@ -484,7 +481,7 @@ public class FullRecoveryBenchmark {
     }
 
     private static Polynomial createRecoveryPolynomialFor(int recoveryShareholderIndex, VSSFacade vssFacade) {
-        Polynomial tempPolynomial = new Polynomial(vssFacade.getField(), threshold,
+        Polynomial tempPolynomial = new Polynomial(vssFacade.getSubPrimeFieldOrder(), threshold,
                 BigInteger.ZERO, rndGenerator);
         BigInteger independentTerm =
                 tempPolynomial.evaluateAt(shareholders[recoveryShareholderIndex]).negate();
@@ -493,7 +490,7 @@ public class FullRecoveryBenchmark {
                 tempCoefficients.length - tempPolynomial.getDegree() - 1,
                 tempCoefficients.length - 1);
 
-        return new Polynomial(vssFacade.getField(), independentTerm, coefficients);
+        return new Polynomial(vssFacade.getSubPrimeFieldOrder(), independentTerm, coefficients);
     }
 
     private static BigInteger getRandomNumber(int numBits) {

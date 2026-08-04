@@ -14,9 +14,6 @@ public final class Configuration {
 	private long renewalPeriod;
 	private boolean renewalActive;
 	private String vssScheme;
-	private String primeField;
-	private String subPrimeField;
-	private String generator;
 	private String dataEncryptionAlgorithm = "AES";
 	private String shareEncryptionAlgorithm = "AES";
 	private int recoveryPort;
@@ -77,21 +74,15 @@ public final class Configuration {
 							case "ec_linear":
 								vssScheme = Constants.VALUE_EC_FELDMAN_SCHEME;
 								break;
+							case "c_ec_linear":
+								vssScheme = Constants.VALUE_C_EC_FELDMAN_SCHEME;
+								break;
 							case "dl_kate":
 								vssScheme = Constants.VALUE_DL_KZG_SCHEME;
 								break;
 							default:
 								throw new IllegalArgumentException("Property cobra.vss.scheme has invalid value");
 						}
-						break;
-					case "cobra.vss.prime_field":
-						primeField = value;
-						break;
-					case "cobra.vss.sub_field":
-						subPrimeField = value;
-						break;
-					case "cobra.vss.generator":
-						generator = value;
 						break;
 					case "cobra.vss.data_encryption_algorithm":
 						dataEncryptionAlgorithm = value;
@@ -149,18 +140,6 @@ public final class Configuration {
 
 	public String getVssScheme() {
 		return vssScheme;
-	}
-
-	public String getPrimeField() {
-		return primeField;
-	}
-
-	public String getSubPrimeField() {
-		return subPrimeField;
-	}
-
-	public String getGenerator() {
-		return generator;
 	}
 
 	public String getDataEncryptionAlgorithm() {

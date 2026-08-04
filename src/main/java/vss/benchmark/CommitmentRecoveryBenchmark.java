@@ -83,7 +83,7 @@ public class CommitmentRecoveryBenchmark {
             if (printResults)
                 System.out.println("============= " + faultyC + " faulty commitments" +
                         " =============");
-            BigInteger field = vss.getField();
+            BigInteger field = vss.getSubPrimeFieldOrder();
             CommitmentScheme commitmentScheme = vss.getCommitmentScheme();
             BigInteger secret = new BigInteger(field.bitLength() - 2, rndGenerator);
             Polynomial secretPolynomial = new Polynomial(field, threshold, secret,

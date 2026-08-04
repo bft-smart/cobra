@@ -26,16 +26,23 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
      * p and q are prime numbers.
      */
     private final BigInteger generator;
-    private final BigInteger p;
+    private final BigInteger primeFieldOrder;
+    private final BigInteger subPrimeFieldOrder;
 
-    public FeldmanCommitmentScheme(BigInteger p, BigInteger generator) {
-        this.p = p;
+    public FeldmanCommitmentScheme(BigInteger primeFieldOrder, BigInteger generator, BigInteger subPrimeFieldOrder) {
+        this.primeFieldOrder = primeFieldOrder;
         this.generator = generator;
+        this.subPrimeFieldOrder = subPrimeFieldOrder;
     }
 
 	@Override
 	public BigInteger getPrimeFieldOrder() {
-		return p;
+		return primeFieldOrder;
+	}
+
+	@Override
+	public BigInteger getSubPrimeFieldOrder() {
+		return subPrimeFieldOrder;
 	}
 
 	@Override
@@ -45,29 +52,27 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
 
         BigInteger[] commitments = new BigInteger[degree + 1];
         for (int i = coefficients.length - degree - 1, j = 0; i < coefficients.length; i++, j++) {
-            commitments[j] = generator.modPow(coefficients[i], p);
+            commitments[j] = generator.modPow(coefficients[i], primeFieldOrder);
         }
         return new LinearCommitments(commitments);
     }
 
     @Override
     public void startVerification(Commitment commitment) {
-
     }
 
     @Override
     public void endVerification() {
-
     }
 
     @Override
     public void addShareholder(BigInteger shareholder) {
-
+		throw new UnsupportedOperationException("TODO");
     }
 
     @Override
     public void removeShareholder(BigInteger shareholder) {
-
+		throw new UnsupportedOperationException("TODO");
     }
 
     /**
@@ -81,7 +86,7 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
     @Override
     public boolean checkValidity(Share share, Commitment commitment) {
         LinearCommitments commitments = (LinearCommitments)commitment;
-        BigInteger gs = generator.modPow(share.getShare(), p);
+        BigInteger gs = generator.modPow(share.getShare(), primeFieldOrder);
         BigInteger gp = computeRightSideOfVerification(share.getShareholder(), commitments);
 
         return gs.equals(gp);
@@ -98,8 +103,8 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
 
         BigInteger gp = BigInteger.ONE;
         for (int j = 0,t = c.length - 1; j < c.length; j++, t--) {
-            BigInteger ij = x.modPow(BigInteger.valueOf(t), p); //TODO pre-compute
-            gp = gp.multiply(c[j].modPow(ij, p)).mod(p);
+            BigInteger ij = x.modPow(BigInteger.valueOf(t), primeFieldOrder); //TODO pre-compute
+            gp = gp.multiply(c[j].modPow(ij, primeFieldOrder)).mod(primeFieldOrder);
         }
 
         return gp;
@@ -137,7 +142,7 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
         Arrays.fill(result, BigInteger.ONE);
         for (BigInteger[] l : linearCommitments) {
             for (int j = 0; j < l.length; j++) {
-                result[j] = result[j].multiply(l[j]).mod(p);
+                result[j] = result[j].multiply(l[j]).mod(primeFieldOrder);
             }
         }
 
@@ -152,7 +157,7 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
             throw new SecretSharingException("Commitments must have same size");
         BigInteger[] result = new BigInteger[l1.length];
         for (int i = 0; i < result.length; i++) {
-            result[i] = l1[i].multiply(l2[i].modInverse(p)).mod(p);
+            result[i] = l1[i].multiply(l2[i].modInverse(primeFieldOrder)).mod(primeFieldOrder);
         }
 
         return new LinearCommitments(result);

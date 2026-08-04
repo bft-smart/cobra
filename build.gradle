@@ -119,4 +119,7 @@ dependencies {
 
     // https://mvnrepository.com/artifact/com.google.code.gson/gson
     implementation 'com.google.code.gson:gson:2.8.8'
+
+    // JNA
+    implementation 'net.java.dev.jna:jna:5.14.0'
 }

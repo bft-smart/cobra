@@ -28,7 +28,7 @@ public class PolynomialsEquivalence {
         }
 
         BigInteger x = BigInteger.ZERO;
-        CommitmentScheme feldmanCommitmentScheme = new FeldmanCommitmentScheme(p, generator);
+        CommitmentScheme feldmanCommitmentScheme = new FeldmanCommitmentScheme(p, generator, field);
         System.out.println("Testing Feldman Commitment Scheme");
         test(feldmanCommitmentScheme, x);
         CommitmentScheme kateCommitmentScheme = new KateCommitmentScheme(threshold, shareholders);

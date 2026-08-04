@@ -54,11 +54,7 @@ public abstract class CobraConfidentialityScheme {
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
         properties.put(Constants.TAG_COMMITMENT_SCHEME, configuration.getVssScheme());
-        if (configuration.getVssScheme().equals(Constants.VALUE_FELDMAN_SCHEME)) {
-            properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
-            properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
-            properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
-        }
+
         try {
             cipher = Cipher.getInstance(configuration.getShareEncryptionAlgorithm());
         } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
@@ -74,11 +70,11 @@ public abstract class CobraConfidentialityScheme {
 	}
 
 	public BigInteger getSubPrimeFieldOrder() {
-		return vss.getField();
+		return vss.getSubPrimeFieldOrder();
 	}
 
 	public BigInteger getPrimeFieldOrder() {
-		return vss.getCommitmentScheme().getPrimeFieldOrder();
+		return vss.getPrimeFieldOrder();
 	}
 
     public boolean isLinearCommitmentScheme() {

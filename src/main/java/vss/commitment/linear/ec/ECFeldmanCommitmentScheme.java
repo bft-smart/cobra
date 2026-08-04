@@ -24,10 +24,12 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	private final ECCurve curve;
 	private final ECPoint generator;
 	private final BigInteger primeFieldOrder;
+	private final BigInteger subPrimeFieldOrder;
 
 	public ECFeldmanCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b,
 	                                 byte[] compressedGenerator) {
 		this.primeFieldOrder = prime;
+		this.subPrimeFieldOrder = order;
 		BigInteger cofactor = prime.divide(order);
 		this.curve = new ECCurve.Fp(prime, a, b, order, cofactor);
 		this.generator = curve.decodePoint(compressedGenerator);
@@ -47,6 +49,11 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	}
 
 	@Override
+	public BigInteger getSubPrimeFieldOrder() {
+		return subPrimeFieldOrder;
+	}
+
+	@Override
 	public Commitment generateCommitments(Polynomial polynomial, BigInteger... additionalShareholders) {
 		BigInteger[] coefficients = polynomial.getCoefficients();
 		int degree = polynomial.getDegree();
@@ -60,22 +67,20 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public void startVerification(Commitment commitment) {
-
 	}
 
 	@Override
 	public void endVerification() {
-
 	}
 
 	@Override
 	public void addShareholder(BigInteger shareholder) {
-
+		throw new UnsupportedOperationException("TODO");
 	}
 
 	@Override
 	public void removeShareholder(BigInteger shareholder) {
-
+		throw new UnsupportedOperationException("TODO");
 	}
 
 	@Override

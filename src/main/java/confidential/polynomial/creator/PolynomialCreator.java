@@ -96,7 +96,7 @@ public abstract class PolynomialCreator {
         this.validProposals = ConcurrentHashMap.newKeySet(maxMessages);
         this.invalidProposals = ConcurrentHashMap.newKeySet(maxMessages);
         this.newPolynomialRequestsFrom = ConcurrentHashMap.newKeySet(maxMessages);
-        this.p = new BigInteger(Configuration.getInstance().getPrimeField(), 16);
+        this.p = confidentialityScheme.getPrimeFieldOrder();
     }
 
     private static int[] computeAllUniqueMembers(PolynomialCreationContext creationContext) {

@@ -36,7 +36,7 @@ public class CorrectPolynomialInterpolationBenchmark {
             if (printResults)
                 System.out.println("============= first " + faultyShares + " faulty shares =============");
 
-            CommitmentScheme commitmentScheme = new FeldmanCommitmentScheme(p, generator);
+            CommitmentScheme commitmentScheme = new FeldmanCommitmentScheme(p, generator, field);
             Measurement mCommitmentsGeneration = new Measurement(nTests);
             Measurement mFeldmanReconstruction = new Measurement(nTests);
             Measurement mMixSchemeReconstruction = new Measurement(nTests);

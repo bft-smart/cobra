@@ -7,10 +7,13 @@ import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.KateCommitmentScheme;
 import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
 import vss.commitment.linear.FeldmanCommitmentScheme;
+import vss.commitment.linear.ec.c.CECFeldmanCommitmentScheme;
 import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 import vss.interpolation.InterpolationStrategy;
 import vss.interpolation.LagrangeInterpolation;
+import vss.parameters.DHRFC5114Modp2048p256;
+import vss.parameters.ECSecp256r1;
 import vss.polynomial.Polynomial;
 
 import javax.crypto.*;
@@ -29,7 +32,7 @@ import java.util.concurrent.locks.ReentrantLock;
  */
 public class VerifiableSecretSharing {
     private final String dataEncryptionAlgorithm;
-    private final BigInteger field;
+    private final BigInteger subPrimeFieldOrder;
     private final SecureRandom rndGenerator;
     private final Cipher dataCipher;
     protected Map<Integer, BigInteger> shareholders;
@@ -47,33 +50,35 @@ public class VerifiableSecretSharing {
         this.dataEncryptionAlgorithm = properties.getProperty(Constants.TAG_DATA_ENCRYPTION_ALGORITHM);
 
         String commitmentSchemeName = properties.getProperty(Constants.TAG_COMMITMENT_SCHEME);
-        if (commitmentSchemeName.equals(Constants.VALUE_FELDMAN_SCHEME)) {
-			BigInteger p = new BigInteger(properties.getProperty(Constants.TAG_PRIME_FIELD), 16);
-			BigInteger generator = new BigInteger(properties.getProperty(Constants.TAG_GENERATOR), 16);
-			this.commitmentScheme = new FeldmanCommitmentScheme(p, generator);
-			this.field = new BigInteger(properties.getProperty(Constants.TAG_SUB_FIELD), 16);
-		} else if (commitmentSchemeName.equals(Constants.VALUE_EC_FELDMAN_SCHEME)) {
-			BigInteger prime = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF", 16);
-			this.field = new BigInteger("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16);
-			BigInteger a = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC", 16);
-			BigInteger b = new BigInteger("5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B", 16);
-			byte[] compressedGenerator = new BigInteger("036B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296", 16).toByteArray();
-			this.commitmentScheme = new ECFeldmanCommitmentScheme(
-					prime,
-					field,
-					a,
-					b,
-					compressedGenerator
-			);
-        } else if (commitmentSchemeName.equals(Constants.VALUE_DL_KZG_SCHEME)) {
-            KateCommitmentScheme kateCommitmentScheme = new KateCommitmentScheme(threshold, shareholders);
-            this.field = kateCommitmentScheme.getPrimeFieldOrder();
-            this.commitmentScheme = kateCommitmentScheme;
-        } else
-            throw new SecretSharingException("Unknown commitment scheme: " + commitmentSchemeName);
+		switch (commitmentSchemeName) {
+		    case Constants.VALUE_FELDMAN_SCHEME:
+				this.commitmentScheme = new FeldmanCommitmentScheme(
+						DHRFC5114Modp2048p256.primeField,
+						DHRFC5114Modp2048p256.generator,
+						DHRFC5114Modp2048p256.subPrimeField);
+				break;
+		    case Constants.VALUE_EC_FELDMAN_SCHEME:
+				this.commitmentScheme = new ECFeldmanCommitmentScheme(
+						ECSecp256r1.primeField,
+						ECSecp256r1.subPrimeField,
+						ECSecp256r1.a,
+						ECSecp256r1.b,
+						ECSecp256r1.compressedGenerator
+				);
+				break;
+			case Constants.VALUE_C_EC_FELDMAN_SCHEME:
+				this.commitmentScheme = new CECFeldmanCommitmentScheme();
+				break;
+		    case Constants.VALUE_DL_KZG_SCHEME:
+				this.commitmentScheme = new KateCommitmentScheme(threshold, shareholders);
+				break;
+			default:
+				throw new SecretSharingException("Unknown commitment scheme: " + commitmentSchemeName);
+		}
 
-        this.rndGenerator = new SecureRandom();
-        this.interpolationStrategy = new LagrangeInterpolation(field);
+		this.subPrimeFieldOrder = commitmentScheme.getSubPrimeFieldOrder();
+		this.rndGenerator = new SecureRandom();
+        this.interpolationStrategy = new LagrangeInterpolation(subPrimeFieldOrder);
 
         this.corruptedShareholders = new HashSet<>();
 
@@ -143,8 +148,12 @@ public class VerifiableSecretSharing {
         this.threshold = newThreshold;
     }
 
-    public BigInteger getField() {
-        return field;
+	public BigInteger getPrimeFieldOrder() {
+		return commitmentScheme.getPrimeFieldOrder();
+	}
+
+    public BigInteger getSubPrimeFieldOrder() {
+        return commitmentScheme.getSubPrimeFieldOrder();
     }
 
     /**
@@ -165,7 +174,7 @@ public class VerifiableSecretSharing {
             switch (mode) {
                 case LARGE_SECRET:
                     //generating a random encryption key
-                    secretAsNumber = new BigInteger(field.bitLength() - 1, rndGenerator);
+                    secretAsNumber = new BigInteger(subPrimeFieldOrder.bitLength() - 1, rndGenerator);
                     //Encrypting data
                     byte[] secretKeyBytes = messageDigest.digest(secretAsNumber.toByteArray());
 
@@ -174,14 +183,14 @@ public class VerifiableSecretSharing {
                     break;
                 case SMALL_SECRET:
                     secretAsNumber = new BigInteger(data);
-                    if (secretAsNumber.compareTo(BigInteger.ZERO) < 0 || secretAsNumber.compareTo(field) >= 0)
+                    if (secretAsNumber.compareTo(BigInteger.ZERO) < 0 || secretAsNumber.compareTo(subPrimeFieldOrder) >= 0)
                         throw new SecretSharingException("Encoded secret data is out of the interval [0, field[");
                     break;
                 default:
                     throw new SecretSharingException("Unsupported mode " + mode);
             }
 
-            Polynomial polynomial = new Polynomial(field, threshold, secretAsNumber, rndGenerator);
+            Polynomial polynomial = new Polynomial(subPrimeFieldOrder, threshold, secretAsNumber, rndGenerator);
             Commitment commitments = commitmentScheme.generateCommitments(polynomial);
 
             //calculating shares
@@ -221,7 +230,7 @@ public class VerifiableSecretSharing {
             if (!corruptedShareholders.contains(share.getShareholder()))
                 minimumShares[j++] = share;
         }
-        Polynomial polynomial = new Polynomial(field, minimumShares);
+        Polynomial polynomial = new Polynomial(subPrimeFieldOrder, minimumShares);
         if (polynomial.getDegree() != threshold) {
             minimumShares = new Share[threshold + 1];
             int counter = 0;

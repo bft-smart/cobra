@@ -39,10 +39,15 @@ public class KateCommitmentScheme implements CommitmentScheme {
 
 	@Override
     public BigInteger getPrimeFieldOrder() {
-        return pairing.getOrder();
+        throw new UnsupportedOperationException("TODO");
     }
 
-    @Override
+	@Override
+	public BigInteger getSubPrimeFieldOrder() {
+		return pairing.getOrder();
+	}
+
+	@Override
     public Commitment generateCommitments(Polynomial polynomial, BigInteger... additionalShareholders) {
         BigInteger[] coefficients = polynomial.getCoefficients();
         BigInteger[] c = Arrays.copyOf(coefficients, coefficients.length);
@@ -91,12 +96,12 @@ public class KateCommitmentScheme implements CommitmentScheme {
 
     @Override
     public void addShareholder(BigInteger shareholder) {
-
+		throw new UnsupportedOperationException("TODO");
     }
 
     @Override
     public void removeShareholder(BigInteger shareholder) {
-
+		throw new UnsupportedOperationException("TODO");
     }
 
     @Override

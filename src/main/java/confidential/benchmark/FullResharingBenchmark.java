@@ -75,9 +75,6 @@ public class FullResharingBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(oldThreshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
-        properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
-        properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
 
         if (commitmentSchemeName.equals("linear")) {
             properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
@@ -99,7 +96,7 @@ public class FullResharingBenchmark {
 
     private static void runTests(int nTests, boolean printResults, int nSecrets,
                                  VSSFacade vssFacade) throws SecretSharingException, InterruptedException {
-        BigInteger field = vssFacade.getField();
+        BigInteger field = vssFacade.getSubPrimeFieldOrder();
         CommitmentScheme commitmentScheme = vssFacade.getCommitmentScheme();
         BigInteger q = getRandomNumber(field.bitLength() - 1);
 

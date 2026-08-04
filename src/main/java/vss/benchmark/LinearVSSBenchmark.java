@@ -64,7 +64,7 @@ public class LinearVSSBenchmark {
 
         rndGenerator = new SecureRandom("ola".getBytes());
         dataCipher = Cipher.getInstance("AES");
-        commitmentScheme = new FeldmanCommitmentScheme(p, generator);
+        commitmentScheme = new FeldmanCommitmentScheme(p, generator, field);
         interpolationStrategy = new LagrangeInterpolation(field);
         messageDigest = MessageDigest.getInstance("SHA-256");
         corruptedShareholders = new HashSet<>();

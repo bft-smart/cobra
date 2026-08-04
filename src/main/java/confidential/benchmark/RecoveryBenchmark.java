@@ -65,9 +65,6 @@ public class RecoveryBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
-        properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
-        properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
 
         if (commitmentSchemeName.equals("linear")) {
             properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
@@ -90,7 +87,7 @@ public class RecoveryBenchmark {
     private static void runTests(int nTests, boolean printResults, int nSecrets,
                                  VSSFacade vssFacade) throws SecretSharingException, InterruptedException {
         int recoveryShareholderIndex = 0;
-        BigInteger field = vssFacade.getField();
+        BigInteger field = vssFacade.getSubPrimeFieldOrder();
         CommitmentScheme commitmentScheme = vssFacade.getCommitmentScheme();
 
         Polynomial r =
@@ -322,7 +319,7 @@ public class RecoveryBenchmark {
     }
 
     private static Polynomial createRecoveryPolynomialFor(int recoveryShareholderIndex, VSSFacade vssFacade) {
-        Polynomial tempPolynomial = new Polynomial(vssFacade.getField(), threshold,
+        Polynomial tempPolynomial = new Polynomial(vssFacade.getSubPrimeFieldOrder(), threshold,
                 BigInteger.ZERO, rndGenerator);
         BigInteger independentTerm =
                 tempPolynomial.evaluateAt(shareholders[recoveryShareholderIndex]).negate();
@@ -331,6 +328,6 @@ public class RecoveryBenchmark {
                 tempCoefficients.length - tempPolynomial.getDegree() - 1,
                 tempCoefficients.length - 1);
 
-        return new Polynomial(vssFacade.getField(), independentTerm, coefficients);
+        return new Polynomial(vssFacade.getSubPrimeFieldOrder(), independentTerm, coefficients);
     }
 }
