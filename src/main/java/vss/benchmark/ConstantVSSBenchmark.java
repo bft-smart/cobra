@@ -78,7 +78,7 @@ public class ConstantVSSBenchmark {
         }
 
         commitmentScheme = new KateCommitmentScheme(threshold, tempShareholders);
-        field = ((KateCommitmentScheme)commitmentScheme).getPrimeFieldOrder();
+        field = commitmentScheme.getPrimeFieldOrder();
         messageDigest = MessageDigest.getInstance("SHA-256");
         rndGenerator = new SecureRandom("ola".getBytes());
         interpolationStrategy = new LagrangeInterpolation(field);

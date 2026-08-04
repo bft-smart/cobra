@@ -3,6 +3,7 @@ package vss.secretsharing;
 import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentSchemeFactory;
 import vss.commitment.CommitmentUtils;
 import vss.commitment.constant.KateCommitmentScheme;
 import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
@@ -50,31 +51,7 @@ public class VerifiableSecretSharing {
         this.dataEncryptionAlgorithm = properties.getProperty(Constants.TAG_DATA_ENCRYPTION_ALGORITHM);
 
         String commitmentSchemeName = properties.getProperty(Constants.TAG_COMMITMENT_SCHEME);
-		switch (commitmentSchemeName) {
-		    case Constants.VALUE_FELDMAN_SCHEME:
-				this.commitmentScheme = new FeldmanCommitmentScheme(
-						DHRFC5114Modp2048p256.primeField,
-						DHRFC5114Modp2048p256.generator,
-						DHRFC5114Modp2048p256.subPrimeField);
-				break;
-		    case Constants.VALUE_EC_FELDMAN_SCHEME:
-				this.commitmentScheme = new ECFeldmanCommitmentScheme(
-						ECSecp256r1.primeField,
-						ECSecp256r1.subPrimeField,
-						ECSecp256r1.a,
-						ECSecp256r1.b,
-						ECSecp256r1.compressedGenerator
-				);
-				break;
-			case Constants.VALUE_C_EC_FELDMAN_SCHEME:
-				this.commitmentScheme = new CECFeldmanCommitmentScheme();
-				break;
-		    case Constants.VALUE_DL_KZG_SCHEME:
-				this.commitmentScheme = new KateCommitmentScheme(threshold, shareholders);
-				break;
-			default:
-				throw new SecretSharingException("Unknown commitment scheme: " + commitmentSchemeName);
-		}
+		this.commitmentScheme = CommitmentSchemeFactory.createCommitmentScheme(commitmentSchemeName, threshold, shareholders);
 
 		this.subPrimeFieldOrder = commitmentScheme.getSubPrimeFieldOrder();
 		this.rndGenerator = new SecureRandom();

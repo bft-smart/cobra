@@ -2,13 +2,8 @@ package vss.benchmark;
 
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.constant.KateCommitmentScheme;
-import vss.commitment.linear.FeldmanCommitmentScheme;
-import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
-import vss.commitment.linear.ec.c.CECFeldmanCommitmentScheme;
+import vss.commitment.CommitmentSchemeFactory;
 import vss.facade.SecretSharingException;
-import vss.parameters.DHRFC5114Modp2048p256;
-import vss.parameters.ECSecp256r1;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 
@@ -45,32 +40,9 @@ public class VSSBenchmark {
 		System.out.println("t = " + threshold);
 		System.out.println("n = " + n);
 
-		CommitmentScheme commitmentScheme;
-		switch (commitmentSchemeType) {
-			case "linear":
-				commitmentScheme = new FeldmanCommitmentScheme(
-						DHRFC5114Modp2048p256.primeField,
-						DHRFC5114Modp2048p256.generator,
-						DHRFC5114Modp2048p256.subPrimeField);
-				break;
-			case "ec_linear":
-				commitmentScheme = new ECFeldmanCommitmentScheme(
-						ECSecp256r1.primeField,
-						ECSecp256r1.subPrimeField,
-						ECSecp256r1.a,
-						ECSecp256r1.b,
-						ECSecp256r1.compressedGenerator
-				);
-				break;
-			case "c_ec_linear":
-				commitmentScheme = new CECFeldmanCommitmentScheme();
-				break;
-			case "dl_kzg":
-				commitmentScheme = new KateCommitmentScheme(threshold, shareholders);
-				break;
-			default:
-				throw new IllegalArgumentException("Unknown commitment scheme type: " + commitmentSchemeType);
-		}
+		CommitmentScheme commitmentScheme = CommitmentSchemeFactory.createCommitmentScheme(commitmentSchemeType,
+				threshold, shareholders);
+
 		subPrimeField = commitmentScheme.getSubPrimeFieldOrder();
 		System.out.println("Prime field order: " + commitmentScheme.getPrimeFieldOrder().toString(16));
 		System.out.println("Sub-prime field order: " + commitmentScheme.getSubPrimeFieldOrder().toString(16));

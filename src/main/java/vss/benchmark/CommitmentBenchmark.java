@@ -2,13 +2,8 @@ package vss.benchmark;
 
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.constant.KateCommitmentScheme;
-import vss.commitment.linear.FeldmanCommitmentScheme;
-import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
-import vss.commitment.linear.ec.c.CECFeldmanCommitmentScheme;
+import vss.commitment.CommitmentSchemeFactory;
 import vss.facade.SecretSharingException;
-import vss.parameters.DHRFC5114Modp2048p256;
-import vss.parameters.ECSecp256r1;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
 
@@ -49,32 +44,8 @@ public class CommitmentBenchmark {
             shareholders[i] = shareholder;
         }
 
-        CommitmentScheme commitmentScheme;
-		switch (commitmentSchemeName) {
-		    case "linear":
-				commitmentScheme = new FeldmanCommitmentScheme(
-						DHRFC5114Modp2048p256.primeField,
-						DHRFC5114Modp2048p256.generator,
-						DHRFC5114Modp2048p256.subPrimeField);
-				break;
-		    case "ec_linear":
-				commitmentScheme = new ECFeldmanCommitmentScheme(
-						ECSecp256r1.primeField,
-						ECSecp256r1.subPrimeField,
-						ECSecp256r1.a,
-						ECSecp256r1.b,
-						ECSecp256r1.compressedGenerator
-				);
-				break;
-		    case "c_ec_linear":
-				commitmentScheme = new CECFeldmanCommitmentScheme();
-				break;
-		    case "dl_kzg":
-				commitmentScheme = new KateCommitmentScheme(threshold, shareholders);
-				break;
-		    default:
-			    throw new IllegalStateException("Commitment scheme is unknown");
-	    }
+        CommitmentScheme commitmentScheme = CommitmentSchemeFactory.createCommitmentScheme(commitmentSchemeName,
+				threshold, shareholders);
 
 		field = commitmentScheme.getSubPrimeFieldOrder();
         rndGenerator = new SecureRandom("ola".getBytes());
