@@ -4,6 +4,7 @@ import confidential.Configuration;
 import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentUtils;
 
@@ -63,7 +64,20 @@ public class BlindedDataSender extends Thread {
 
     @Override
     public void run() {
-        boolean usingLinearScheme = Configuration.getInstance().getVssScheme().equals("1");
+		String commitmentSchemeType = Configuration.getInstance().getCommitmentSchemeType();
+		boolean usingLinearScheme;
+		switch (commitmentSchemeType) {
+			case Constants.VALUE_FELDMAN_SCHEME:
+			case Constants.VALUE_EC_FELDMAN_SCHEME:
+			case Constants.VALUE_C_EC_FELDMAN_SCHEME:
+				usingLinearScheme = true;
+				break;
+			case Constants.VALUE_DL_KZG_SCHEME:
+				usingLinearScheme = false;
+				break;
+			default:
+				throw new IllegalStateException("Unknown commitment scheme " + commitmentSchemeType);
+		}
         try {
             //Waiting for common state
             lock.lock();

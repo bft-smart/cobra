@@ -13,7 +13,7 @@ public final class Configuration {
 			"config" + File.separator + "cobra.config";
 	private long renewalPeriod;
 	private boolean renewalActive;
-	private String vssScheme;
+	private String commitmentSchemeType;
 	private String dataEncryptionAlgorithm = "AES";
 	private String shareEncryptionAlgorithm = "AES";
 	private int recoveryPort;
@@ -69,16 +69,16 @@ public final class Configuration {
 					case "cobra.vss.scheme":
 						switch (value) {
 							case "linear":
-								vssScheme = Constants.VALUE_FELDMAN_SCHEME;
+								commitmentSchemeType = Constants.VALUE_FELDMAN_SCHEME;
 								break;
 							case "ec_linear":
-								vssScheme = Constants.VALUE_EC_FELDMAN_SCHEME;
+								commitmentSchemeType = Constants.VALUE_EC_FELDMAN_SCHEME;
 								break;
 							case "c_ec_linear":
-								vssScheme = Constants.VALUE_C_EC_FELDMAN_SCHEME;
+								commitmentSchemeType = Constants.VALUE_C_EC_FELDMAN_SCHEME;
 								break;
 							case "dl_kate":
-								vssScheme = Constants.VALUE_DL_KZG_SCHEME;
+								commitmentSchemeType = Constants.VALUE_DL_KZG_SCHEME;
 								break;
 							default:
 								throw new IllegalArgumentException("Property cobra.vss.scheme has invalid value");
@@ -138,8 +138,8 @@ public final class Configuration {
 		return renewalActive;
 	}
 
-	public String getVssScheme() {
-		return vssScheme;
+	public String getCommitmentSchemeType() {
+		return commitmentSchemeType;
 	}
 
 	public String getDataEncryptionAlgorithm() {

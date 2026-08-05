@@ -38,7 +38,7 @@ public class FullRecoveryBenchmark {
         if (args.length != 7) {
             System.out.println("USAGE: ... confidential.benchmark.FullRecoveryBenchmark " +
                     "<threshold> <num secrets> <warm up iterations> <test iterations> " +
-                    "<num processing threads> <verify correctness> <commitment scheme -> linear|constant>");
+                    "<num processing threads> <verify correctness> <commitment scheme -> linear|ec_linear|c_ec_linear|dl_kzg>");
             System.exit(-1);
         }
 
@@ -69,13 +69,7 @@ public class FullRecoveryBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-
-        if (commitmentSchemeName.equals("linear")) {
-            properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
-        } else if (commitmentSchemeName.equals("dl_kzg")) {
-            properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_DL_KZG_SCHEME);
-        } else
-            throw new IllegalStateException("Commitment scheme is unknown");
+		properties.put(Constants.TAG_COMMITMENT_SCHEME, commitmentSchemeName);
 
         rndGenerator = new SecureRandom("ola".getBytes());
         VSSFacade vssFacade = new VSSFacade(properties, shareholders);

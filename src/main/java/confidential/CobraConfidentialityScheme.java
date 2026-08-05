@@ -52,11 +52,12 @@ public class CobraConfidentialityScheme {
 
         threshold = view.getF();
         Configuration configuration = Configuration.getInstance();
+		String commitmentSchemeType = configuration.getCommitmentSchemeType();
 
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, configuration.getVssScheme());
+        properties.put(Constants.TAG_COMMITMENT_SCHEME, commitmentSchemeType);
 
         try {
             cipher = Cipher.getInstance(configuration.getShareEncryptionAlgorithm());
@@ -65,7 +66,19 @@ public class CobraConfidentialityScheme {
         }
         vss = new VSSFacade(properties, shareholders);
         keysManager = new KeysManager();
-        isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals(Constants.VALUE_FELDMAN_SCHEME);
+
+		switch (commitmentSchemeType) {
+			case Constants.VALUE_FELDMAN_SCHEME:
+			case Constants.VALUE_EC_FELDMAN_SCHEME:
+			case Constants.VALUE_C_EC_FELDMAN_SCHEME:
+				isLinearCommitmentScheme = true;
+				break;
+			case Constants.VALUE_DL_KZG_SCHEME:
+				isLinearCommitmentScheme = false;
+				break;
+				default:
+					throw new SecretSharingException("Unknown commitment scheme " + commitmentSchemeType);
+		}
     }
 
 	/**

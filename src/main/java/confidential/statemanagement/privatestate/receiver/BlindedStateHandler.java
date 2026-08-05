@@ -75,7 +75,7 @@ public abstract class BlindedStateHandler extends Thread {
         this.blindedSharesSize = new HashMap<>(quorum);
         this.correctBlindedSharesSize = -1;
 
-        if (Configuration.getInstance().getVssScheme().equals("1")) {//linear scheme
+        if (confidentialityScheme.isLinearCommitmentScheme()) {//linear scheme
             this.commitmentsHandler = new LinearCommitmentHandler(f, quorum, stateSenderReplica);
         } else {
             this.commitmentsHandler = new ConstantCommitmentHandler(quorum, confidentialityScheme);

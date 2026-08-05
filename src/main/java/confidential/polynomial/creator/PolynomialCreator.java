@@ -1,7 +1,6 @@
 package confidential.polynomial.creator;
 
 import bftsmart.tom.util.TOMUtil;
-import confidential.Configuration;
 import confidential.Metadata;
 import confidential.interServersCommunication.CommunicationTag;
 import confidential.interServersCommunication.InterServersCommunication;
@@ -12,7 +11,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.linear.LinearCommitments;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
@@ -61,8 +59,7 @@ public abstract class PolynomialCreator {
     protected final DistributedPolynomial distributedPolynomial;
     private boolean iHaveSentNewPolyRequest;
     private final Lock lock;
-    private final BigInteger p;
-    private final Lock proposalSetLock = new ReentrantLock(true);
+	private final Lock proposalSetLock = new ReentrantLock(true);
     private final Condition waitingMissingProposalsCondition = proposalSetLock.newCondition();
 
     PolynomialCreator(PolynomialCreationContext creationContext,
@@ -96,8 +93,7 @@ public abstract class PolynomialCreator {
         this.validProposals = ConcurrentHashMap.newKeySet(maxMessages);
         this.invalidProposals = ConcurrentHashMap.newKeySet(maxMessages);
         this.newPolynomialRequestsFrom = ConcurrentHashMap.newKeySet(maxMessages);
-        this.p = confidentialityScheme.getPrimeFieldOrder();
-    }
+	}
 
     private static int[] computeAllUniqueMembers(PolynomialCreationContext creationContext) {
         int totalMembers = 0;
@@ -527,38 +523,41 @@ public abstract class PolynomialCreator {
 
     private VerifiableShare[] computeResultUsingVandermondeMatrix(BigInteger[] points, Commitment[] commitments,
                                                                   boolean combineCommitments) {
-        logger.debug("Using vandermonde matrix for polynomial creation {}", creationContext.getId());
-        BigInteger[][] vandermondeMatrix = distributedPolynomial.getVandermondeMatrix();
-        int rows = vandermondeMatrix.length;
-        int columns = vandermondeMatrix[0].length;
-        VerifiableShare[] result = new VerifiableShare[vandermondeMatrix.length];
-        Commitment resultCommitment;
-        BigInteger[] linearCommitments;
+        try {
+			logger.debug("Using vandermonde matrix for polynomial creation {}", creationContext.getId());
+			BigInteger[][] vandermondeMatrix = distributedPolynomial.getVandermondeMatrix();
+			int rows = vandermondeMatrix.length;
+			int columns = vandermondeMatrix[0].length;
+			VerifiableShare[] result = new VerifiableShare[vandermondeMatrix.length];
+			Commitment resultCommitment;
 
-        for (int r = 0; r < rows; r++) {
-            BigInteger temp = BigInteger.ZERO;
-            linearCommitments = new BigInteger[faultsThreshold + 1];
-            Arrays.fill(linearCommitments, BigInteger.ONE);
-            for (int c = 0; c < columns; c++) {
-                temp = temp.add(vandermondeMatrix[r][c].multiply(points[c])).mod(field);
-                if (combineCommitments) {
-                    BigInteger x = vandermondeMatrix[r][c];
-                    BigInteger[] tempC = ((LinearCommitments) commitments[c]).getCommitments();
-                    for (int i = 0; i < tempC.length; i++) {
-                        linearCommitments[i] = linearCommitments[i].multiply(tempC[i].modPow(x, p)).mod(p);
-                    }
-                }
-            }
-            if (combineCommitments) {
-                resultCommitment = new LinearCommitments(linearCommitments);
-            } else {
-                resultCommitment = commitments[r];
-            }
-            result[r] = new VerifiableShare(new Share(shareholderId, temp), resultCommitment, null);
-        }
+			for (int r = 0; r < rows; r++) {
+				BigInteger temp = BigInteger.ZERO;
+				Commitment[] transformedCommitment = null;
+				if (combineCommitments) {
+					transformedCommitment = new Commitment[columns];
+				}
+				for (int c = 0; c < columns; c++) {
+					BigInteger x = vandermondeMatrix[r][c];
+					temp = temp.add(x.multiply(points[c])).mod(field);
+					if (combineCommitments) {
+						transformedCommitment[c] = commitmentScheme.multiplyByConstant(commitments[c], x);
+					}
+				}
+				if (combineCommitments) {
+					resultCommitment = commitmentScheme.sumCommitments(transformedCommitment);
+				} else {
+					resultCommitment = commitments[r];
+				}
+				result[r] = new VerifiableShare(new Share(shareholderId, temp), resultCommitment, null);
+			}
 
-        return result;
-    }
+			return result;
+		} catch (SecretSharingException e) {
+			logger.error("Failed to compute result using Vandermonde matrix", e);
+			return null;
+		}
+	}
 
     private byte[] serialize(PolynomialMessage message) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();

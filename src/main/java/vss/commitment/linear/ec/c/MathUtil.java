@@ -111,7 +111,7 @@ public class MathUtil {
 	}
 
 	public BigInteger multiplyWithBase(BigInteger exponent) {
-		byte[] encodedExponent = bigIntegerToLittleEndian32(exponent);
+		byte[] encodedExponent = bigIntegerToLittleEndian32(exponent.mod(subPrimeFieldOrder));
 		byte[] result = new byte[32];
 		int status = sodium.crypto_scalarmult_ed25519_noclamp(result, encodedExponent, generator);
 		if (status != 0) {
@@ -121,7 +121,7 @@ public class MathUtil {
 	}
 
 	public BigInteger multiplyBigInteger(BigInteger exponent) {
-		byte[] encodedExponent = bigIntegerToLittleEndian32(exponent);
+		byte[] encodedExponent = bigIntegerToLittleEndian32(exponent.mod(subPrimeFieldOrder));
 		byte[] result = new byte[32];
 		int status = sodium.crypto_scalarmult_ed25519_base_noclamp(result, encodedExponent);
 		if (status != 0) {
@@ -134,7 +134,7 @@ public class MathUtil {
 		if (exponent.equals(BigInteger.ZERO)) {
 			return Arrays.copyOf(ED25519_IDENTITY_POINT, 32);
 		}
-		byte[] encodedExponent = bigIntegerToLittleEndian32(exponent);
+		byte[] encodedExponent = bigIntegerToLittleEndian32(exponent.mod(subPrimeFieldOrder));
 		byte[] result = new byte[32];
 		int status = sodium.crypto_scalarmult_ed25519_base_noclamp(result, encodedExponent);
 		if (status != 0) {
@@ -147,7 +147,7 @@ public class MathUtil {
 		if (Arrays.equals(encodedBase, ED25519_IDENTITY_POINT) || scalar.equals(BigInteger.ZERO)) {
 			return Arrays.copyOf(ED25519_IDENTITY_POINT, 32);
 		}
-		byte[] encodedScalar = bigIntegerToLittleEndian32(scalar);
+		byte[] encodedScalar = bigIntegerToLittleEndian32(scalar.mod(subPrimeFieldOrder));
 		byte[] result = new byte[32];
 		int status = sodium.crypto_scalarmult_ed25519_noclamp(result, encodedScalar, encodedBase);
 		if (status != 0) {

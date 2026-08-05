@@ -6,6 +6,7 @@ import confidential.Configuration;
 import confidential.statemanagement.utils.HashThread;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentUtils;
 
@@ -52,13 +53,26 @@ public class BlindedDataReceiver extends Thread {
             if (serverSocket != null && serverSocket.isBound())
                 serverSocket.close();
         } catch (IOException e) {
-            e.printStackTrace();
+           	logger.error("Failed to close server socket.", e);
         }
     }
 
     @Override
     public void run() {
-        boolean usingLinearScheme = Configuration.getInstance().getVssScheme().equals("1");
+		String commitmentSchemeType = Configuration.getInstance().getCommitmentSchemeType();
+		boolean usingLinearScheme;
+		switch (commitmentSchemeType) {
+			case Constants.VALUE_FELDMAN_SCHEME:
+			case Constants.VALUE_EC_FELDMAN_SCHEME:
+			case Constants.VALUE_C_EC_FELDMAN_SCHEME:
+				usingLinearScheme = true;
+				break;
+			case Constants.VALUE_DL_KZG_SCHEME:
+				usingLinearScheme = false;
+				break;
+			default:
+				throw new IllegalStateException("Unknown commitment scheme " + commitmentSchemeType);
+		}
 
         try (ServerSocket serverSocket = new ServerSocket()) {
             this.serverSocket = serverSocket;
