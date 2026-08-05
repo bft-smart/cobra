@@ -1,14 +1,17 @@
 package confidential.server;
 
-import bftsmart.reconfiguration.BatchReconfigurationRequest;
 import bftsmart.reconfiguration.IReconfigurationListener;
+import bftsmart.reconfiguration.ReconfigureRequest;
+import bftsmart.reconfiguration.ServerViewController;
 import bftsmart.statemanagement.ApplicationState;
 import bftsmart.statemanagement.StateManager;
 import bftsmart.tom.MessageContext;
 import bftsmart.tom.ReplicaContext;
 import bftsmart.tom.core.messages.TOMMessage;
-import bftsmart.tom.core.messages.TOMMessageType;
-import bftsmart.tom.server.*;
+import bftsmart.tom.server.IResponseSender;
+import bftsmart.tom.server.ProposeRequestVerifier;
+import bftsmart.tom.server.Recoverable;
+import bftsmart.tom.server.SingleExecutable;
 import bftsmart.tom.server.defaultservices.CommandsInfo;
 import bftsmart.tom.server.defaultservices.DefaultApplicationState;
 import bftsmart.tom.util.ServiceContent;
@@ -635,24 +638,26 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	@Override
 	public void onReconfigurationRequest(TOMMessage reconfigurationRequest) {
 		logger.info("onReconfigurationRequest");
-		BatchReconfigurationRequest request =
-				(BatchReconfigurationRequest)TOMUtil.getObject(reconfigurationRequest.getCommonContent());
-		int newF;
-		Set<Integer> joiningServers = new HashSet<>(request.getJoiningServers().size());
-		Set<Integer> leavingServers = new HashSet<>(request.getLeavingServers());
+		ReconfigureRequest request =
+				(ReconfigureRequest)TOMUtil.getObject(reconfigurationRequest.getCommonContent());
+		Set<Integer> joiningServers = new HashSet<>();
+		Set<Integer> leavingServers = new HashSet<>();
+		int newF = -1;
 
-		for (String joiningServer : request.getJoiningServers()) {
-			int pid = Integer.parseInt(joiningServer.split(":")[0]);
-			joiningServers.add(pid);
-			BigInteger shareholder = BigInteger.valueOf(pid + 1);
-			try {
-				confidentialityScheme.addShareholder(pid, shareholder);
-			} catch (SecretSharingException e) {
-				logger.error("Failed to add new server as shareholder", e);
+		for (Integer key : request.getProperties().keySet()) {
+			String value = request.getProperties().get(key);
+
+			if (key == ServerViewController.ADD_SERVER) {
+				int pid = Integer.parseInt(value.split(":")[0]);
+				joiningServers.add(pid);
+				// same addShareholder logic as before
+			} else if (key == ServerViewController.REMOVE_SERVER) {
+				leavingServers.add(Integer.parseInt(value));
+			} else if (key == ServerViewController.CHANGE_F) {
+				newF = Integer.parseInt(value);
 			}
 		}
 
-		newF = request.getF();
 		stateManager.setReconfigurationParameters(newF, joiningServers, leavingServers);
 	}
 

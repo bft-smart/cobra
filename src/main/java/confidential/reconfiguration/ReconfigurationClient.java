@@ -1,11 +1,10 @@
 package confidential.reconfiguration;
 
-import bftsmart.reconfiguration.BatchReconfiguration;
+import bftsmart.reconfiguration.Reconfiguration;
 import bftsmart.reconfiguration.ReconfigureReply;
 import bftsmart.reconfiguration.views.View;
 import com.google.gson.Gson;
 import com.google.gson.stream.JsonReader;
-import confidential.Metadata;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
@@ -18,7 +17,7 @@ public class ReconfigurationClient {
 		int id = Integer.parseInt(args[0]);
 		String reconfigurationFile = args[1];
 
-		BatchReconfiguration rec = new BatchReconfiguration(id, "", null);
+		Reconfiguration rec = new Reconfiguration(id, "", null);
 		rec.connect();
 		try {
 			Gson gson = new Gson();
@@ -34,22 +33,9 @@ public class ReconfigurationClient {
 				}
 			if (rInfo.f > 0)
 				rec.setF(rInfo.f);
-			ReconfigureReply r = rec.execute((byte) Metadata.DOES_NOT_VERIFY.ordinal());
+			ReconfigureReply r = rec.execute();
 			View v = r.getView();
 			System.out.println("New view: " + v);
-            /*if (rInfo.add_servers != null) {//TODO remove
-                for (Server addServer : rInfo.add_servers) {
-                    try {
-                        String srcFile = "C:\\Users\\robin\\Desktop\\cobra\\rep0\\config\\currentView";
-                        String dstFolder = "C:\\Users\\robin\\Desktop\\cobra\\rep"+ addServer.id +"\\config";
-                        String[] a = { "CMD", "/C", "COPY", "/Y", srcFile, dstFolder };
-                        Process p = Runtime.getRuntime().exec(a);
-                        p.waitFor();
-                    } catch (IOException | InterruptedException e) {
-                        e.printStackTrace();
-                    }
-                }
-            }*/
 		} catch (FileNotFoundException e) {
 			throw new RuntimeException("Couldn't find the reconfiguration file " + reconfigurationFile, e);
 		}finally {
