@@ -2,6 +2,7 @@ package vss.commitment.linear.ec.c;
 
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentSchemeType;
 import vss.commitment.CommitmentType;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
@@ -19,6 +20,11 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	public CECFeldmanCommitmentScheme() {
 		this.mathUtil = new MathUtil();
+	}
+
+	@Override
+	public CommitmentSchemeType getCommitmentSchemeType() {
+		return CommitmentSchemeType.C_EC_FELDMAN_SCHEME;
 	}
 
 	public BigInteger getPrimeFieldOrder() {
@@ -43,14 +49,6 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 	}
 
 	@Override
-	public void startVerification(Commitment commitment) {
-	}
-
-	@Override
-	public void endVerification() {
-	}
-
-	@Override
 	public void addShareholder(BigInteger shareholder) {
 		throw new UnsupportedOperationException("TODO");
 	}
@@ -60,16 +58,8 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 		throw new UnsupportedOperationException("TODO");
 	}
 
-	@Override
-	public boolean checkValidity(Share share, Commitment commitment) {
-		byte[] leftSide = mathUtil.multiply(share.getShare());
-		byte[] rightSize = computeRightSideOfVerification(share.getShareholder(), (RawLinearCommitment) commitment);
-
-		return Arrays.equals(leftSide, rightSize);
-	}
-
 	public byte[] computeRightSideOfVerification(BigInteger shareholder, RawLinearCommitment commitment) {
-		byte[][] commitments = commitment.getCommitment();
+		byte[][] commitments = commitment.getCommitments();
 
 		byte[] gp = commitments[commitments.length - 1];
 		for (int i = 0; i < commitments.length - 1; i++) {
@@ -97,18 +87,21 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public boolean checkValidityWithoutPreComputation(Share share, Commitment commitment) {
-		return checkValidity(share, commitment);
+		byte[] leftSide = mathUtil.multiply(share.getShare());
+		byte[] rightSize = computeRightSideOfVerification(share.getShareholder(), (RawLinearCommitment) commitment);
+
+		return Arrays.equals(leftSide, rightSize);
 	}
 
 	@Override
 	public Commitment sumCommitments(Commitment... commitments) throws SecretSharingException {
-		int size = ((RawLinearCommitment) commitments[0]).getCommitment().length;
+		int size = ((RawLinearCommitment) commitments[0]).getCommitments().length;
 		byte[][][] ecCommitments = new byte[commitments.length][][];
 		for (int i = 0; i < commitments.length; i++) {
 			RawLinearCommitment c = (RawLinearCommitment) commitments[i];
-			if (size != c.getCommitment().length)
+			if (size != c.getCommitments().length)
 				throw new SecretSharingException("Commitments must have same size");
-			ecCommitments[i] = c.getCommitment();
+			ecCommitments[i] = c.getCommitments();
 		}
 
 		byte[][] result = null;
@@ -129,8 +122,8 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment subtractCommitments(Commitment c1, Commitment c2) throws SecretSharingException {
-		byte[][] l1 = ((RawLinearCommitment) c1).getCommitment();
-		byte[][] l2 = ((RawLinearCommitment) c2).getCommitment();
+		byte[][] l1 = ((RawLinearCommitment) c1).getCommitments();
+		byte[][] l2 = ((RawLinearCommitment) c2).getCommitments();
 		if (l1.length != l2.length)
 			throw new SecretSharingException("Commitments must have same size");
 
@@ -143,7 +136,7 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
-		byte[][] rawCommitments = ((RawLinearCommitment) commitment).getCommitment();
+		byte[][] rawCommitments = ((RawLinearCommitment) commitment).getCommitments();
 		byte[][] newCommitments = new byte[rawCommitments.length][];
 		for (int i = 0; i < rawCommitments.length; i++) {
 			newCommitments[i] = Arrays.copyOf(rawCommitments[i], rawCommitments[i].length);
@@ -155,7 +148,7 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
-		byte[][] rawCommitments = ((RawLinearCommitment) commitment).getCommitment();
+		byte[][] rawCommitments = ((RawLinearCommitment) commitment).getCommitments();
 		byte[][] newCommitments = new byte[rawCommitments.length][];
 		for (int i = 0; i < rawCommitments.length; i++) {
 			newCommitments[i] = Arrays.copyOf(rawCommitments[i], rawCommitments[i].length);
@@ -167,7 +160,7 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 
 	public Commitment multiplyByConstant(Commitment commitment, BigInteger constant) {
-		byte[][] commitments = ((RawLinearCommitment) commitment).getCommitment();
+		byte[][] commitments = ((RawLinearCommitment) commitment).getCommitments();
 		byte[][] newCommitments = new byte[commitments.length][];
 		for (int i = 0; i < commitments.length; i++) {
 			newCommitments[i] = mathUtil.multiply(commitments[i], constant);
@@ -190,10 +183,17 @@ public class CECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment recoverCommitment(BigInteger newShareholder, Map<BigInteger, Commitment> commitments) throws SecretSharingException {
+		Commitment selectedCommitment = null;
+		int selectedCommitmentHash = -1;
 		for (Commitment value : commitments.values()) {
-			return value;
+			if (selectedCommitment == null) {
+				selectedCommitment = value;
+				selectedCommitmentHash = value.consistentHash();
+			} else if (selectedCommitmentHash != value.consistentHash()) {
+				throw new SecretSharingException("Commitments are different");
+			}
 		}
-		return null;
+		return selectedCommitment;
 	}
 
 	@Override

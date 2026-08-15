@@ -77,8 +77,11 @@ public final class Configuration {
 							case "c_ec_linear":
 								commitmentSchemeType = Constants.VALUE_C_EC_FELDMAN_SCHEME;
 								break;
-							case "dl_kate":
+							case "dl_kzg":
 								commitmentSchemeType = Constants.VALUE_DL_KZG_SCHEME;
+								break;
+							case "ped_kzg":
+								commitmentSchemeType = Constants.VALUE_PED_KZG_SCHEME;
 								break;
 							default:
 								throw new IllegalArgumentException("Property cobra.vss.scheme has invalid value");

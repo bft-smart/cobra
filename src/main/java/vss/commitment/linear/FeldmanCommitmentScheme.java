@@ -2,8 +2,8 @@ package vss.commitment.linear;
 
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentSchemeType;
 import vss.commitment.CommitmentType;
-import vss.commitment.constant.ShareCommitment;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
@@ -36,6 +36,11 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
     }
 
 	@Override
+	public CommitmentSchemeType getCommitmentSchemeType() {
+		return CommitmentSchemeType.FELDMAN_SCHEME;
+	}
+
+	@Override
 	public BigInteger getPrimeFieldOrder() {
 		return primeFieldOrder;
 	}
@@ -57,15 +62,7 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
         return new LinearCommitments(commitments);
     }
 
-    @Override
-    public void startVerification(Commitment commitment) {
-    }
-
-    @Override
-    public void endVerification() {
-    }
-
-    @Override
+	@Override
     public void addShareholder(BigInteger shareholder) {
 		throw new UnsupportedOperationException("TODO");
     }
@@ -75,24 +72,7 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
 		throw new UnsupportedOperationException("TODO");
     }
 
-    /**
-     * P(x)=atx^t + ... + a1x^1 + a0
-     * commitment = [g^at, ..., g^a1, g^a0]
-     * verification of share (i, P(i)): g^P(i) ?= (g^at)^(i^t) * ... * (g^a1)^(i^1) * (g^a0)
-     * @param share Share to verify
-     * @param commitment Commitment of the polynomial
-     * @return True if share is on polynomial, false otherwise
-     */
-    @Override
-    public boolean checkValidity(Share share, Commitment commitment) {
-        LinearCommitments commitments = (LinearCommitments)commitment;
-        BigInteger gs = generator.modPow(share.getShare(), primeFieldOrder);
-        BigInteger gp = computeRightSideOfVerification(share.getShareholder(), commitments);
-
-        return gs.equals(gp);
-    }
-
-    /**
+	/**
      * Returns (g^at)^(i^t) * ... * (g^a1)^(i^1) * (g^a0)
      * @param x Shareholder ID
      * @param commitments Feldman's commitment
@@ -124,7 +104,11 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
 
     @Override
     public boolean checkValidityWithoutPreComputation(Share share, Commitment commitment) {
-        return checkValidity(share, commitment);
+		LinearCommitments commitments = (LinearCommitments)commitment;
+		BigInteger gs = generator.modPow(share.getShare(), primeFieldOrder);
+		BigInteger gp = computeRightSideOfVerification(share.getShareholder(), commitments);
+
+		return gs.equals(gp);
     }
 
     @Override
@@ -206,11 +190,18 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
     }
 
     @Override
-    public Commitment recoverCommitment(BigInteger newShareholder, Map<BigInteger, Commitment> commitments) {
-        for (Commitment value : commitments.values()) {
-            return value;
-        }
-        return null;
+    public Commitment recoverCommitment(BigInteger newShareholder, Map<BigInteger, Commitment> commitments) throws SecretSharingException {
+		Commitment selectedCommitment = null;
+		int selectedCommitmentHash = -1;
+		for (Commitment value : commitments.values()) {
+			if (selectedCommitment == null) {
+				selectedCommitment = value;
+				selectedCommitmentHash = value.consistentHash();
+			} else if (selectedCommitmentHash != value.consistentHash()) {
+				throw new SecretSharingException("Commitments are different");
+			}
+		}
+		return selectedCommitment;
     }
 
     @Override
@@ -219,12 +210,10 @@ public class FeldmanCommitmentScheme implements CommitmentScheme {
         Commitment result = null;
         switch (commitmentType) {
             case LINEAR:
-                result = new LinearCommitments();
+			case SHARE_COMMITMENT:
+				result = new LinearCommitments();
                 break;
-            case SHARE_COMMITMENT:
-                result = new ShareCommitment();
-                break;
-        }
+		}
         if (result == null)
             return null;
         result.readExternal(in);

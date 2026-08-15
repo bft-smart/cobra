@@ -6,6 +6,7 @@ import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.privatestate.receiver.BlindedStateHandler;
 import confidential.statemanagement.privatestate.receiver.StateReceivedListener;
 import vss.commitment.Commitment;
+import vss.commitment.CommitmentSchemeType;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
 import vss.secretsharing.Share;
@@ -148,8 +149,8 @@ public class RecoveryBlindedStateHandler extends BlindedStateHandler {
                 shareNumber = interpolationStrategy.interpolateAt(shareholderId, recoveringShares);
             } else {
                 shareNumber = polynomial.evaluateAt(shareholderId);
-                int minNumberOfCommitments = corruptedServers >= f ? f : f + 1;
-                validCommitments = new HashMap<>(minNumberOfCommitments);
+				int minNumberOfCommitments = getMinNumberOfCommitments(corruptedServers);
+				validCommitments = new HashMap<>(minNumberOfCommitments);
 
                 for (Share recoveringShare : recoveringShares) {
                     validCommitments.put(recoveringShare.getShareholder(),
@@ -191,4 +192,22 @@ public class RecoveryBlindedStateHandler extends BlindedStateHandler {
             return null;
         }
     }
+
+	private int getMinNumberOfCommitments(int corruptedServers) {
+		int minNumberOfCommitments;
+		if (corruptedServers >= f) {
+			if (commitmentScheme.getCommitmentSchemeType() == CommitmentSchemeType.DL_KZG_SCHEME) {
+				minNumberOfCommitments = f;
+			} else {//PED_ZKG_SCHEME
+				minNumberOfCommitments = f + 1;
+			}
+		} else {
+			if (commitmentScheme.getCommitmentSchemeType() == CommitmentSchemeType.DL_KZG_SCHEME) {
+				minNumberOfCommitments = f + 1;
+			} else {//PED_ZKG_SCHEME
+				minNumberOfCommitments = f + 2;
+			}
+		}
+		return minNumberOfCommitments;
+	}
 }

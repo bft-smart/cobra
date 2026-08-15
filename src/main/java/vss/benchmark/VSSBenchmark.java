@@ -4,134 +4,261 @@ import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.CommitmentSchemeFactory;
 import vss.facade.SecretSharingException;
+import vss.interpolation.InterpolationStrategy;
+import vss.interpolation.LagrangeInterpolation;
 import vss.polynomial.Polynomial;
+import vss.secretsharing.OpenPublishedShares;
 import vss.secretsharing.Share;
+import vss.secretsharing.VerifiableShare;
 
+import javax.crypto.*;
+import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
-import java.security.SecureRandom;
-import java.util.Arrays;
+import java.security.*;
+import java.util.*;
 
-/**
- * @author robin
- */
 public class VSSBenchmark {
-	private static BigInteger subPrimeField;
-	private static final SecureRandom rndGenerator = new SecureRandom();
+    private static final int nDecimals = 4;
+    private static BigInteger field;
+    private static Map<Integer, BigInteger> shareholders;
+    private static final String dataEncryptionAlgorithm = "AES";
+    private static Cipher dataCipher;
+    private static SecureRandom rndGenerator;
+    private static CommitmentScheme commitmentScheme;
+    private static InterpolationStrategy interpolationStrategy;
+    private static Set<BigInteger> corruptedShareholders;
+    private static Measurement mShareGeneration;
+    private static Measurement mCommitmentsGeneration;
+    private static Measurement mShareValidation;
+    private static Measurement mSharesCombine;
+    private static int threshold;
+    private static MessageDigest messageDigest;
 
-	public static void main(String[] args) throws SecretSharingException {
-		if (args.length != 4) {
-			System.out.println("USAGE: ... vss.benchmark.VSSBenchmark <threshold> " +
-					"<commitment scheme: linear | ec_linear | c_ec_linear | dl_kzg> " +
-					"<warm up iterations> <test iterations>");
-			System.exit(-1);
-		}
+    public static void main(String[] args) throws NoSuchPaddingException, NoSuchAlgorithmException, SecretSharingException {
+        if (args.length != 8) {
+            System.out.println("USAGE: ... vss.benchmark.LinearVSSBenchmark " +
+                    "<threshold> " +
+                    "<num secrets> <secret size> <warm up iterations> <test iterations> " +
+                    "<min number of faulty shareholders> <max number of faulty shareholders> " +
+					"<commitment scheme type: linear|ec_linear|c_ec_linear|dl_kzg|ped_kzg>");
+            System.exit(-1);
+        }
 
-		int threshold = Integer.parseInt(args[0]);
-		int n = 3 * threshold + 1;
-		String commitmentSchemeType = args[1];
-		int warmUpIterations = Integer.parseInt(args[2]);
-		int testIterations = Integer.parseInt(args[3]);
+        threshold = Integer.parseInt(args[0]);
+        int n = 3 * threshold + 1;
+        int quorum = 2 * threshold + 1;
+        int nSecrets = Integer.parseInt(args[1]);
+        int secretSize = Integer.parseInt(args[2]);
+        int warmUpIterations = Integer.parseInt(args[3]);
+        int nTests = Integer.parseInt(args[4]);
+        int minFaultyShares = Integer.parseInt(args[5]);
+        int maxFaultyShares = Integer.parseInt(args[6]);
+        String commitmentSchemeType = args[7];
 
-		BigInteger[] shareholders = new BigInteger[n];
-		for (int i = 0; i < shareholders.length; i++) {
-			shareholders[i] = BigInteger.valueOf(i + 1);
-		}
+        if (minFaultyShares < 0 || minFaultyShares > threshold || minFaultyShares > maxFaultyShares)
+            throw new IllegalArgumentException("min number of faulty shareholders is out of range");
+
+        if (maxFaultyShares > threshold)
+            throw new IllegalArgumentException("max number of faulty shareholders is out of range");
+
 
 		System.out.println("t = " + threshold);
 		System.out.println("n = " + n);
+		System.out.println("quorum = " + quorum);
+		System.out.println("number of secrets = " + nSecrets);
+		System.out.println("secret size = " + secretSize);
+		System.out.println();
 
-		CommitmentScheme commitmentScheme = CommitmentSchemeFactory.createCommitmentScheme(commitmentSchemeType,
-				threshold, shareholders);
+		shareholders = new HashMap<>(n);
+		BigInteger[] shareholdersArray = new BigInteger[n];
+		for (int i = 0; i < n; i++) {
+			shareholders.put(i, BigInteger.valueOf(i + 1));
+			shareholdersArray[i] = BigInteger.valueOf(i + 1);
+		}
 
-		subPrimeField = commitmentScheme.getSubPrimeFieldOrder();
-		System.out.println("Prime field order: " + commitmentScheme.getPrimeFieldOrder().toString(16));
-		System.out.println("Sub-prime field order: " + commitmentScheme.getSubPrimeFieldOrder().toString(16));
-		System.out.println("Warming up (" + warmUpIterations + " iterations)");
-		if (warmUpIterations > 0)
-			runTests(warmUpIterations, false, threshold, shareholders, commitmentScheme);
-		System.out.println("Running test (" + testIterations + " iterations)");
-		if (testIterations > 0)
-			runTests(testIterations, true, threshold, shareholders, commitmentScheme);
-	}
+		rndGenerator = new SecureRandom("ola".getBytes());
+		dataCipher = Cipher.getInstance("AES");
+		commitmentScheme = CommitmentSchemeFactory.createCommitmentScheme(commitmentSchemeType, threshold, shareholdersArray);
+		field = commitmentScheme.getSubPrimeFieldOrder();
+		interpolationStrategy = new LagrangeInterpolation(field);
+		messageDigest = MessageDigest.getInstance("SHA-256");
+		corruptedShareholders = new HashSet<>();
 
-	private static void runTests(int nTests, boolean printResults, int t, BigInteger[] shareholders,
-	                             CommitmentScheme commitmentScheme) throws SecretSharingException {
+        System.out.println("Warming up (" + warmUpIterations + " iterations)");
+        if (warmUpIterations > 0)
+            runTests(warmUpIterations, false, minFaultyShares, maxFaultyShares, quorum,
+                    nSecrets, secretSize);
+        System.out.println("Running test (" + nTests + " iterations)");
+        if (nTests > 0)
+            runTests(nTests, true, minFaultyShares, maxFaultyShares,
+                    quorum, nSecrets, secretSize);
+    }
 
-		long[] secretSharingTimes = new long[nTests];
-		long[] commitmentGenerationTimes = new long[nTests];
-		long[] commitmentVerificationTimes = new long[nTests];
-		long[] combineTimes = new long[nTests];
-		long start, end;
-		for (int nT = 0; nT < nTests; nT++) {
-			long secretSharingTime;
-			long commitmentGenerationTime;
-			long commitmentVerificationTime;
-			long combineTime;
+    private static void runTests(int nTests, boolean printResults, int minFaultyShares,
+                                 int maxFaultyShares, int quorum, int nSecrets, int secretSize) throws SecretSharingException {
+        Random rnd = new Random();
+        for (int faultyShares = minFaultyShares; faultyShares <= maxFaultyShares; faultyShares++) {
+            if (printResults) {
+                System.out.println("============= first " + faultyShares + " faulty shares =============");
+            }
+            mShareGeneration = new Measurement(nTests);
+            mCommitmentsGeneration = new Measurement(nTests);
+            mShareValidation = new Measurement(nTests);
+            mSharesCombine = new Measurement(nTests);
 
-			BigInteger rndNumber = getRandomNumber(subPrimeField);
+            for (int tn = 0; tn < nTests; tn++) {
+                corruptedShareholders.clear();
+                Set<BigInteger> corruptedShareholders = new HashSet<>();
+                for (int j = 0; j < nSecrets; j++) {
+                    byte[] secret = new byte[secretSize];
+                    rnd.nextBytes(secret);
+                    OpenPublishedShares privateShares = share(secret);
 
-			start = System.nanoTime();
-			Polynomial polynomial = new Polynomial(subPrimeField, t, rndNumber, rndGenerator);
-			Share[] shares = new Share[shareholders.length];
-			for (int i = 0; i < shareholders.length; i++) {
-				BigInteger shareholder = shareholders[i];
-				shares[i] = new Share(shareholder, polynomial.evaluateAt(shareholder));
+                    Share[] shares = new Share[quorum];
+                    int k = 0;
+
+                    Iterator<BigInteger> it = shareholders.values().iterator();
+                    while (k < quorum){
+                        BigInteger shareholder = it.next();
+                        if (corruptedShareholders.contains(shareholder)) {
+                            continue;
+                        }
+                        VerifiableShare vs = extractShare(privateShares, shareholder);
+                        shares[k++] = vs.getShare();
+                    }
+
+                    //corrupting share
+                    if (corruptedShareholders.size() < faultyShares) {
+                        shares[threshold + 1].setShare(BigInteger.ZERO);
+                        corruptedShareholders.add(shares[threshold + 1].getShareholder());
+                    }
+
+                    OpenPublishedShares openShares = new OpenPublishedShares(shares, privateShares.getCommitments(), privateShares.getSharedData());
+                    byte[] recoveredSecret = combine(openShares);
+                    if (!Arrays.equals(recoveredSecret, secret))
+                        throw new RuntimeException("Recovered Secret is different");
+                }
+
+            }
+            double shareGeneration = mShareGeneration.getAverageInMillis(nDecimals);
+            double commitmentsGeneration = mCommitmentsGeneration.getAverageInMillis(nDecimals);
+            double sharesVerification = mShareValidation.getAverageInMillis(nDecimals);
+            double secretReconstruction = mSharesCombine.getAverageInMillis(nDecimals);
+
+            if (printResults) {
+                System.out.println("Share generation[ms]: " + shareGeneration);
+				System.out.println("Commitments generation[ms]: " + commitmentsGeneration);
+				System.out.println("Share total[ms]: " + (shareGeneration + commitmentsGeneration));
+				System.out.println();
+				System.out.println("Shares verification[ms]: " + sharesVerification);
+				System.out.println("Secret reconstruction[ms]: " + secretReconstruction);
+				System.out.println("Combine total[ms]: " + (sharesVerification + secretReconstruction));
+				if (faultyShares < maxFaultyShares) {
+					System.out.println();
+				}
 			}
-			end = System.nanoTime();
-			secretSharingTime = end - start;
+        }
+    }
 
-			start = System.nanoTime();
-			Commitment commitment = commitmentScheme.generateCommitments(polynomial);
-			end = System.nanoTime();
-			commitmentGenerationTime = end - start;
+    private static OpenPublishedShares share(byte[] data) throws SecretSharingException {
+        try {
+            mShareGeneration.start();
+            //Encrypting data
+            BigInteger secretAsNumber = new BigInteger(field.bitLength() - 1, rndGenerator);
+            byte[] secretKeyBytes = messageDigest.digest(secretAsNumber.toByteArray());
 
-			start = System.nanoTime();
-			boolean isValid = commitmentScheme.checkValidityWithoutPreComputation(shares[0], commitment);
-			end = System.nanoTime();
-			commitmentVerificationTime = end - start;
-			if (!isValid)
-				throw new IllegalStateException("Commitment is invalid");
+            SecretKey key = new SecretKeySpec(secretKeyBytes, dataEncryptionAlgorithm);
+            byte[] sharedData = encrypt(dataCipher, data, key);
 
-			Share[] minNumberOfShares = new Share[t + 1];
-			System.arraycopy(shares, 0, minNumberOfShares, 0, t + 1);
+            //applying secret sharing scheme to encryption key
+            Polynomial polynomial = new Polynomial(field, threshold, secretAsNumber, rndGenerator);
+            mShareGeneration.stop();
+            mCommitmentsGeneration.start();
+            Commitment commitments = commitmentScheme.generateCommitments(polynomial);
+            //Polynomial polynomial = createPolynomialOfSecret(secretAsNumber, coefficients);
+            mCommitmentsGeneration.stop();
+            mShareGeneration.start();
+            //calculating shares
+            Share[] shares = new Share[shareholders.size()];
+            BigInteger shareholder;
+            Iterator<BigInteger> it = shareholders.values().iterator();
+            for (int i = 0; i < shareholders.size(); i++) {
+                shareholder = it.next();
+                shares[i] = new Share(shareholder, polynomial.evaluateAt(shareholder));
+            }
+            mShareGeneration.stop();
+            return new OpenPublishedShares(shares, commitments, sharedData);
+        } catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
+            throw new SecretSharingException("Error while creating shares.", e);
+        }
+    }
 
-			start = System.nanoTime();
-			Polynomial reconstructedPolynomial = new Polynomial(subPrimeField, minNumberOfShares);
-			BigInteger reconstructedSecret = reconstructedPolynomial.evaluateAt(BigInteger.ZERO);
-			if (!reconstructedSecret.equals(rndNumber)) {
-				throw new IllegalStateException("Reconstructed secret does not match original secret");
-			}
-			end = System.nanoTime();
-			combineTime = end - start;
-			secretSharingTimes[nT] = secretSharingTime;
-			commitmentGenerationTimes[nT] = commitmentGenerationTime;
-			commitmentVerificationTimes[nT] = commitmentVerificationTime;
-			combineTimes[nT] = combineTime;
-		}
+    private static VerifiableShare extractShare(OpenPublishedShares openShares, BigInteger shareholder) throws SecretSharingException {
+        Share share = openShares.getShareOf(shareholder);
+        if (share == null)
+            throw new SecretSharingException("Share not found");
+        return new VerifiableShare(share, openShares.getCommitments(), openShares.getSharedData());
+    }
 
-		if (printResults) {
-			double secretSharingTime = computeAverage(secretSharingTimes);
-			double commitmentGenerationTime = computeAverage(commitmentGenerationTimes);
-			double commitmentVerificationTime = computeAverage(commitmentVerificationTimes);
-			double combineTime = computeAverage(combineTimes);
+    private static byte[] combine(OpenPublishedShares openShares) throws SecretSharingException {
+        BigInteger secretKeyAsNumber;
+        mSharesCombine.start();
+        Share[] shares = openShares.getShares();
+        Share[] minimumShares = new Share[corruptedShareholders.size() < threshold ? threshold + 2 : threshold + 1];
+        for (int i = 0, j = 0; i < shares.length && j < minimumShares.length; i++) {
+            Share share = shares[i];
+            if (!corruptedShareholders.contains(share.getShareholder()))
+                minimumShares[j++] = share;
+        }
+        Polynomial polynomial = new Polynomial(field, minimumShares);
+        mSharesCombine.stop();
+        if (polynomial.getDegree() != threshold) {
+            minimumShares = new Share[threshold + 1];
+            int counter = 0;
+            mShareValidation.start();
+            for (Share share : shares) {
+                if (corruptedShareholders.contains(share.getShareholder()))
+                    continue;
 
-			System.out.printf("Secret sharing: %.6f ms\n", secretSharingTime);
-			System.out.printf("Commitment generation: %.6f ms\n", commitmentGenerationTime);
-			System.out.printf("Commitment verification (1 share): %.6f ms\n", commitmentVerificationTime);
-			System.out.printf("Combine (t+1 shares): %.6f ms\n", combineTime);
-		}
-	}
+                boolean valid = commitmentScheme.checkValidityWithoutPreComputation(share, openShares.getCommitments());
 
-	private static double computeAverage(long[] values) {
-		return (double) Arrays.stream(values).sum() / (double)values.length / 1000000.0D;
-	}
+                if (counter <= threshold && valid)
+                    minimumShares[counter++] = share;
+                if (!valid)
+                    corruptedShareholders.add(share.getShareholder());
+            }
+            mShareValidation.stop();
 
-	private static BigInteger getRandomNumber(BigInteger field) {
-		BigInteger rndBig = new BigInteger(field.bitLength() - 1, rndGenerator);
-		if (rndBig.compareTo(BigInteger.ZERO) == 0) {
-			rndBig = rndBig.add(BigInteger.ONE);
-		}
+            if (counter <= threshold) {
+                throw new SecretSharingException("Not enough valid shares!");
+            }
+            mSharesCombine.start();
+            secretKeyAsNumber = interpolationStrategy.interpolateAt(BigInteger.ZERO, minimumShares);
+        } else {
+            mSharesCombine.start();
+            secretKeyAsNumber = polynomial.getConstant();
+        }
 
-		return rndBig;
-	}
+        byte[] keyBytes = messageDigest.digest(secretKeyAsNumber.toByteArray());
+        SecretKey secretKey = new SecretKeySpec(keyBytes, dataEncryptionAlgorithm);
+        try {
+            byte[] b = decrypt(dataCipher, openShares.getSharedData(), secretKey);
+            mSharesCombine.stop();
+            return b;
+        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+            throw new SecretSharingException("Error while decrypting secret!", e);
+        }
+    }
+
+    private static byte[] encrypt(Cipher cipher, byte[] data, Key encryptionKey) throws InvalidKeyException,
+            BadPaddingException, IllegalBlockSizeException {
+        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
+        return cipher.doFinal(data);
+    }
+
+    private static byte[] decrypt(Cipher cipher, byte[] data, Key decryptionKey) throws InvalidKeyException,
+            BadPaddingException, IllegalBlockSizeException {
+        cipher.init(Cipher.DECRYPT_MODE, decryptionKey);
+        return cipher.doFinal(data);
+    }
 }

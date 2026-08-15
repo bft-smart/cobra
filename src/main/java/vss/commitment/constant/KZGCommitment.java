@@ -1,5 +1,6 @@
 package vss.commitment.constant;
 
+import sun.reflect.generics.tree.Tree;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentType;
 
@@ -15,13 +16,13 @@ import java.util.TreeMap;
 /**
  * @author Robin
  */
-public class ConstantCommitment implements Commitment {
+public class KZGCommitment implements Commitment {
     private byte[] commitment;
     private TreeMap<Integer, byte[]> witnesses;
 
-    public ConstantCommitment() {}
+    public KZGCommitment() {}
 
-    public ConstantCommitment(byte[] commitment, TreeMap<Integer, byte[]> witnesses) {
+    public KZGCommitment(byte[] commitment, TreeMap<Integer, byte[]> witnesses) {
         if (commitment == null) {
             throw new IllegalArgumentException("Commitment is null!");
         }
@@ -48,7 +49,7 @@ public class ConstantCommitment implements Commitment {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        ConstantCommitment that = (ConstantCommitment) o;
+        KZGCommitment that = (KZGCommitment) o;
         return Arrays.equals(commitment, that.commitment) &&
                 witnesses.equals(that.witnesses);
     }
@@ -99,14 +100,14 @@ public class ConstantCommitment implements Commitment {
 
     @Override
     public boolean isOfSameSecret(Commitment commitment) {
-        if (commitment instanceof ShareCommitment)
-            return Arrays.equals(this.commitment, ((ShareCommitment)commitment).getCommitment());
-        else if (commitment instanceof ConstantCommitment)
-            return Arrays.equals(this.commitment, ((ConstantCommitment)commitment).commitment);
+        if (commitment instanceof ShareKZGCommitment)
+            return Arrays.equals(this.commitment, ((ShareKZGCommitment)commitment).getCommitment());
+        else if (commitment instanceof KZGCommitment)
+            return Arrays.equals(this.commitment, ((KZGCommitment)commitment).commitment);
         return false;
     }
 
-    public Map<Integer, byte[]> getWitnesses() {
+    public TreeMap<Integer, byte[]> getWitnesses() {
         return witnesses;
     }
 

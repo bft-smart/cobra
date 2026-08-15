@@ -27,7 +27,7 @@ public class ECLinearCommitment implements Commitment {
 		this.curve = curve;
 	}
 
-	public ECPoint[] getCommitment() {
+	public ECPoint[] getCommitments() {
 		return commitment;
 	}
 

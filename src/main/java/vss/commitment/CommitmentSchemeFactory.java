@@ -1,7 +1,8 @@
 package vss.commitment;
 
 import vss.Constants;
-import vss.commitment.constant.KateCommitmentScheme;
+import vss.commitment.constant.dl.DLKZGCommitmentScheme;
+import vss.commitment.constant.ped.PedKZGCommitmentScheme;
 import vss.commitment.linear.FeldmanCommitmentScheme;
 import vss.commitment.linear.ec.ECFeldmanCommitmentScheme;
 import vss.commitment.linear.ec.c.CECFeldmanCommitmentScheme;
@@ -14,6 +15,7 @@ public class CommitmentSchemeFactory {
 
 	public static CommitmentScheme createCommitmentScheme(String commitmentSchemeType,
 	                                                      int threshold, BigInteger[] shareholders) {
+
 		switch (commitmentSchemeType) {
 			case Constants.VALUE_FELDMAN_SCHEME:
 				return new FeldmanCommitmentScheme(
@@ -32,7 +34,9 @@ public class CommitmentSchemeFactory {
 			case Constants.VALUE_C_EC_FELDMAN_SCHEME:
 				return new CECFeldmanCommitmentScheme();
 			case Constants.VALUE_DL_KZG_SCHEME:
-				return new KateCommitmentScheme(threshold, shareholders);
+				return new DLKZGCommitmentScheme(threshold, shareholders);
+			case Constants.VALUE_PED_KZG_SCHEME:
+				return new PedKZGCommitmentScheme(threshold, shareholders);
 			default:
 				throw new IllegalArgumentException("Unknown commitmentSchemeType " + commitmentSchemeType);
 		}

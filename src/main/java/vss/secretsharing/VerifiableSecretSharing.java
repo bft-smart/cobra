@@ -212,18 +212,17 @@ public class VerifiableSecretSharing {
             minimumShares = new Share[threshold + 1];
             int counter = 0;
 
-            commitmentScheme.startVerification(openShares.getCommitments());
             for (Share share : shares) {
                 if (corruptedShareholders.contains(share.getShareholder()))
                     continue;
-                boolean valid = commitmentScheme.checkValidity(share, commitments);
+                boolean valid = commitmentScheme.checkValidityWithoutPreComputation(share, commitments);
 
                 if (counter <= threshold && valid)
                     minimumShares[counter++] = share;
                 if (!valid)
                     corruptedShareholders.add(share.getShareholder());
             }
-            commitmentScheme.endVerification();
+
             if (counter <= threshold)
                 throw new SecretSharingException("Not enough valid shares!");
             secretKeyAsNumber = interpolationStrategy.interpolateAt(BigInteger.ZERO, minimumShares);

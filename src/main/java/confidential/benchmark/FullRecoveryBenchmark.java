@@ -365,16 +365,14 @@ public class FullRecoveryBenchmark {
                             Commitment verificationCommitment =
                                     commitmentScheme.sumCommitments(rCommitment,
                                             combinedCommitment);
-                            commitmentScheme.startVerification(verificationCommitment);
                             int j = 0;
                             for (Map.Entry<BigInteger, Share> entry : allRecoveringShares.entrySet()) {
-                                if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
+                                if (commitmentScheme.checkValidityWithoutPreComputation(entry.getValue(), verificationCommitment)) {
                                     recoveringShares[j++] = entry.getValue();
                                 } else {
                                     corruptedServers.add(entry.getValue().getShareholder());
                                 }
                             }
-                            commitmentScheme.endVerification();
                             shareNumber =
                                     vssFacade.getInterpolationStrategy().interpolateAt(shareholders[recoveryShareholderIndex], recoveringShares);
                         } else {
@@ -478,7 +476,7 @@ public class FullRecoveryBenchmark {
         Polynomial tempPolynomial = new Polynomial(vssFacade.getSubPrimeFieldOrder(), threshold,
                 BigInteger.ZERO, rndGenerator);
         BigInteger independentTerm =
-                tempPolynomial.evaluateAt(shareholders[recoveryShareholderIndex]).negate();
+                tempPolynomial.evaluateAt(shareholders[recoveryShareholderIndex]).negate().mod(vssFacade.getSubPrimeFieldOrder());
         BigInteger[] tempCoefficients = tempPolynomial.getCoefficients();
         BigInteger[] coefficients = Arrays.copyOfRange(tempCoefficients,
                 tempCoefficients.length - tempPolynomial.getDegree() - 1,

@@ -72,7 +72,7 @@ public class RawLinearCommitment implements Commitment {
 		}
 	}
 
-	public byte[][] getCommitment() {
+	public byte[][] getCommitments() {
 		return commitments;
 	}
 }

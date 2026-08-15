@@ -1,15 +1,7 @@
 package confidential;
 
-import vss.commitment.Commitment;
-import vss.commitment.CommitmentType;
-import vss.commitment.constant.ConstantCommitment;
-import vss.commitment.constant.ShareCommitment;
-import vss.commitment.linear.LinearCommitments;
-
 import java.io.BufferedInputStream;
 import java.io.IOException;
-import java.io.ObjectInput;
-import java.io.ObjectOutput;
 
 /**
  * @author Robin

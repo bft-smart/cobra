@@ -11,13 +11,13 @@ import java.util.Arrays;
 /**
  * @author Robin
  */
-public class ShareCommitment implements Commitment {
+public class ShareKZGCommitment implements Commitment {
     private byte[] commitment;
     private byte[] witness;
 
-    public ShareCommitment() {}
+    public ShareKZGCommitment() {}
 
-    public ShareCommitment(byte[] commitment, byte[] witness) {
+    public ShareKZGCommitment(byte[] commitment, byte[] witness) {
         if (commitment == null) {
             throw new IllegalArgumentException("Commitment is null!");
         }
@@ -40,7 +40,7 @@ public class ShareCommitment implements Commitment {
     public boolean equals(Object o) {
         if (this == o) return true;
         if (o == null || getClass() != o.getClass()) return false;
-        ShareCommitment that = (ShareCommitment) o;
+        ShareKZGCommitment that = (ShareKZGCommitment) o;
         return Arrays.equals(commitment, that.commitment) &&
                 Arrays.equals(witness, that.witness);
     }
@@ -64,10 +64,10 @@ public class ShareCommitment implements Commitment {
 
     @Override
     public boolean isOfSameSecret(Commitment commitment) {
-        if (commitment instanceof ShareCommitment)
-            return Arrays.equals(this.commitment, ((ShareCommitment)commitment).commitment);
-        else if (commitment instanceof ConstantCommitment)
-            return Arrays.equals(this.commitment, ((ConstantCommitment)commitment).getCommitment());
+        if (commitment instanceof ShareKZGCommitment)
+            return Arrays.equals(this.commitment, ((ShareKZGCommitment)commitment).commitment);
+        else if (commitment instanceof KZGCommitment)
+            return Arrays.equals(this.commitment, ((KZGCommitment)commitment).getCommitment());
         return false;
     }
 

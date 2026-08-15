@@ -2,6 +2,7 @@ package vss.commitment.constant;
 
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentSchemeType;
 import vss.commitment.CommitmentType;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
@@ -36,6 +37,11 @@ public class KateCommitmentScheme implements CommitmentScheme {
             divisors[i] = divisor;
         }
     }
+
+	@Override
+	public CommitmentSchemeType getCommitmentSchemeType() {
+		return CommitmentSchemeType.DL_KZG_SCHEME;
+	}
 
 	@Override
     public BigInteger getPrimeFieldOrder() {
@@ -76,25 +82,10 @@ public class KateCommitmentScheme implements CommitmentScheme {
             byte[] witness = pairing.createWitnessGivenCoefficients(w);
             witnesses.put(shareholder.hashCode(), witness);
         }
-        return new ConstantCommitment(commitment, witnesses);
+        return new KZGCommitment(commitment, witnesses);
     }
 
-    @Override
-    public void startVerification(Commitment commitment) {
-        byte[] commitmentBytes;
-        if (commitment instanceof ConstantCommitment)
-            commitmentBytes = ((ConstantCommitment)commitment).getCommitment();
-        else
-            commitmentBytes = ((ShareCommitment)commitment).getCommitment();
-        pairing.startVerification(commitmentBytes);
-    }
-
-    @Override
-    public void endVerification() {
-        pairing.endVerification();
-    }
-
-    @Override
+	@Override
     public void addShareholder(BigInteger shareholder) {
 		throw new UnsupportedOperationException("TODO");
     }
@@ -104,22 +95,12 @@ public class KateCommitmentScheme implements CommitmentScheme {
 		throw new UnsupportedOperationException("TODO");
     }
 
-    @Override
-    public boolean checkValidity(Share share, Commitment commitment) {
-        byte[] witness;
-        if (commitment instanceof ConstantCommitment)
-            witness = ((ConstantCommitment)commitment).getWitness(share.getShareholder());
-        else
-            witness = ((ShareCommitment)commitment).getWitness();
-        return pairing.verifyShare(share.getShareholder(), share.getShare(), witness);
-    }
-
-    @Override
+	@Override
     public boolean checkValidityOfPolynomialsProperty(BigInteger x, Commitment... commitments) {
         byte[] partialResult = null;
 
         for (Commitment commitment : commitments) {
-            ConstantCommitment constantCommitment = (ConstantCommitment) commitment;
+            KZGCommitment constantCommitment = (KZGCommitment) commitment;
             if (partialResult == null)
                 partialResult = pairing.computePartialResult(x, constantCommitment);
             else if (!Arrays.equals(partialResult, pairing.computePartialResult(x, constantCommitment)))
@@ -132,12 +113,12 @@ public class KateCommitmentScheme implements CommitmentScheme {
     public boolean checkValidityWithoutPreComputation(Share share, Commitment commitment) {
         byte[] commitmentBytes;
         byte[] witnessBytes;
-        if (commitment instanceof ConstantCommitment) {
-            ConstantCommitment constantCommitment = (ConstantCommitment)commitment;
+        if (commitment instanceof KZGCommitment) {
+            KZGCommitment constantCommitment = (KZGCommitment)commitment;
             commitmentBytes = constantCommitment.getCommitment();
             witnessBytes = constantCommitment.getWitness(share.getShareholder());
         } else {
-            ShareCommitment shareCommitment = (ShareCommitment) commitment;
+            ShareKZGCommitment shareCommitment = (ShareKZGCommitment) commitment;
             commitmentBytes = shareCommitment.getCommitment();
             witnessBytes = shareCommitment.getWitness();
         }
@@ -188,14 +169,14 @@ public class KateCommitmentScheme implements CommitmentScheme {
         CommitmentType firstType = null;
         for (Commitment commitment : commitments) {
             if (firstType == null) {
-                if (commitment instanceof ConstantCommitment)
+                if (commitment instanceof KZGCommitment)
                     firstType = CommitmentType.CONSTANT;
-                else if (commitment instanceof ShareCommitment)
+                else if (commitment instanceof ShareKZGCommitment)
                     firstType = CommitmentType.SHARE_COMMITMENT;
             } else {
-                if (commitment instanceof ConstantCommitment && !firstType.equals(CommitmentType.CONSTANT))
+                if (commitment instanceof KZGCommitment && !firstType.equals(CommitmentType.CONSTANT))
                     return null;
-                else if (commitment instanceof ShareCommitment && !firstType.equals(CommitmentType.SHARE_COMMITMENT))
+                else if (commitment instanceof ShareKZGCommitment && !firstType.equals(CommitmentType.SHARE_COMMITMENT))
                     return null;
             }
         }
@@ -203,19 +184,19 @@ public class KateCommitmentScheme implements CommitmentScheme {
     }
 
     private Commitment subtractShareCommitments(Commitment c1, Commitment c2) {
-        ShareCommitment s1 = (ShareCommitment) c1;
-        ShareCommitment s2 = (ShareCommitment) c2;
+        ShareKZGCommitment s1 = (ShareKZGCommitment) c1;
+        ShareKZGCommitment s2 = (ShareKZGCommitment) c2;
 
         byte[] c = pairing.divideValues(s1.getCommitment(), s2.getCommitment());
         byte[] w = pairing.divideValues(s1.getWitness(), s2.getWitness());
-        return new ShareCommitment(c, w);
+        return new ShareKZGCommitment(c, w);
     }
 
     private Commitment sumShareCommitments(Commitment[] commitments) {
         byte[][] commitmentsBytes = new byte[commitments.length][];
         byte[][] witnesses = new byte[commitments.length][];
         for (int i = 0; i < commitments.length; i++) {
-            ShareCommitment shareCommitment = (ShareCommitment) commitments[i];
+            ShareKZGCommitment shareCommitment = (ShareKZGCommitment) commitments[i];
             witnesses[i] = shareCommitment.getWitness();
             commitmentsBytes[i] = shareCommitment.getCommitment();
         }
@@ -223,12 +204,12 @@ public class KateCommitmentScheme implements CommitmentScheme {
         byte[] commitmentResult = pairing.multiplyValues(commitmentsBytes);
         byte[] witnessResult = pairing.multiplyValues(witnesses);
 
-        return new ShareCommitment(commitmentResult, witnessResult);
+        return new ShareKZGCommitment(commitmentResult, witnessResult);
     }
 
     private Commitment subtractConstantCommitments(Commitment c1, Commitment c2) throws SecretSharingException {
-        ConstantCommitment constantC1 = (ConstantCommitment) c1;
-        ConstantCommitment constantC2 = (ConstantCommitment) c2;
+        KZGCommitment constantC1 = (KZGCommitment) c1;
+        KZGCommitment constantC2 = (KZGCommitment) c2;
         Set<Integer> shareholders = new HashSet<>(constantC1.getWitnesses().keySet());
 
         if (shareholders.size() != constantC2.getWitnesses().keySet().size()) {
@@ -253,16 +234,16 @@ public class KateCommitmentScheme implements CommitmentScheme {
             w.put(e1.getKey(), witness);
         }
 
-        return new ConstantCommitment(c, w);
+        return new KZGCommitment(c, w);
     }
 
     private Commitment sumConstantCommitments(Commitment[] commitments) throws SecretSharingException {
-        ConstantCommitment[] constantCommitments = new ConstantCommitment[commitments.length];
-        Set<Integer> shareholders = new HashSet<>(((ConstantCommitment)commitments[0]).getWitnesses().keySet());
+        KZGCommitment[] constantCommitments = new KZGCommitment[commitments.length];
+        Set<Integer> shareholders = new HashSet<>(((KZGCommitment)commitments[0]).getWitnesses().keySet());
         byte[][] commitmentsBytes = new byte[commitments.length][];
 
         for (int i = 0; i < commitments.length; i++) {
-            ConstantCommitment constantCommitment = (ConstantCommitment)commitments[i];
+            KZGCommitment constantCommitment = (KZGCommitment)commitments[i];
             constantCommitments[i] = constantCommitment;
             Map<Integer, byte[]> witnesses = constantCommitment.getWitnesses();
 
@@ -294,31 +275,31 @@ public class KateCommitmentScheme implements CommitmentScheme {
             witnessesResult.put(entry.getKey(), pairing.multiplyValues(entry.getValue()));
         }
 
-        return new ConstantCommitment(commitmentResult, witnessesResult);
+        return new KZGCommitment(commitmentResult, witnessesResult);
     }
 
     @Override
     public Commitment extractCommitment(BigInteger shareholder, Commitment commitment) {
-        ConstantCommitment constantCommitment = (ConstantCommitment)commitment;
-        return new ShareCommitment(constantCommitment.getCommitment(),
+        KZGCommitment constantCommitment = (KZGCommitment)commitment;
+        return new ShareKZGCommitment(constantCommitment.getCommitment(),
                 constantCommitment.getWitness(shareholder));
     }
 
     /**
-     * @requires Commitments must be of type {@link ShareCommitment}
+     * @requires Commitments must be of type {@link ShareKZGCommitment}
      */
     @Override
     public Commitment combineCommitments(Map<BigInteger, Commitment> commitments) {
         byte[] resultCommitment = null;
         TreeMap<Integer, byte[]> resultWitnesses = new TreeMap<>();
         for (Map.Entry<BigInteger, Commitment> entry : commitments.entrySet()) {
-            ShareCommitment shareCommitment = (ShareCommitment)entry.getValue();
+            ShareKZGCommitment shareCommitment = (ShareKZGCommitment)entry.getValue();
             if (resultCommitment == null)
                 resultCommitment = shareCommitment.getCommitment();
             resultWitnesses.put(entry.getKey().hashCode(),
                     shareCommitment.getWitness());
         }
-        return new ConstantCommitment(resultCommitment, resultWitnesses);
+        return new KZGCommitment(resultCommitment, resultWitnesses);
     }
 
     @Override
@@ -327,8 +308,8 @@ public class KateCommitmentScheme implements CommitmentScheme {
         byte[] recoveredWitness = pairing.recoverWitness(newShareholder, commitments);
         for (Commitment value : commitments.values()) {
             byte[] commitment =
-                    ((ShareCommitment)value).getCommitment();
-            return new ShareCommitment(commitment, recoveredWitness);
+                    ((ShareKZGCommitment)value).getCommitment();
+            return new ShareKZGCommitment(commitment, recoveredWitness);
         }
         return null;
     }
@@ -339,10 +320,10 @@ public class KateCommitmentScheme implements CommitmentScheme {
         Commitment result = null;
         switch (commitmentType) {
             case CONSTANT:
-                result = new ConstantCommitment();
+                result = new KZGCommitment();
                 break;
             case SHARE_COMMITMENT:
-                result = new ShareCommitment();
+                result = new ShareKZGCommitment();
                 break;
         }
         if (result == null)

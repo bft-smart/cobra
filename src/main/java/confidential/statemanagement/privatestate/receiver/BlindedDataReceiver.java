@@ -68,6 +68,7 @@ public class BlindedDataReceiver extends Thread {
 				usingLinearScheme = true;
 				break;
 			case Constants.VALUE_DL_KZG_SCHEME:
+			case Constants.VALUE_PED_KZG_SCHEME:
 				usingLinearScheme = false;
 				break;
 			default:

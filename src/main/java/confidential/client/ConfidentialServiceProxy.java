@@ -8,7 +8,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentUtils;
-import vss.commitment.constant.ConstantCommitment;
+import vss.commitment.constant.KZGCommitment;
+import vss.commitment.constant.ped.PedKZGCommitment;
 import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 
@@ -25,8 +26,7 @@ public class ConfidentialServiceProxy {
     private final ExtendedServiceProxy service;
     private final CobraConfidentialityScheme confidentialityScheme;
     private final ServersResponseHandler serversResponseHandler;
-    private final boolean isLinearCommitmentScheme;
-    private final boolean isSendAllSharesTogether;
+	private final boolean isSendAllSharesTogether;
 
 	public ConfidentialServiceProxy(int clientId) throws SecretSharingException {
 		this(clientId, null);
@@ -46,8 +46,7 @@ public class ConfidentialServiceProxy {
                 serversResponseHandler, serversResponseHandler);
         this.confidentialityScheme = new CobraConfidentialityScheme(service.getViewManager().getCurrentView());
         serversResponseHandler.setCobraConfidentialityScheme(confidentialityScheme);
-        isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
-        isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
+		isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
     }
 
 	public int getProcessId() {
@@ -198,12 +197,25 @@ public class ConfidentialServiceProxy {
                     out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
                     if (encryptedShareBytes != null)
                         out.write(encryptedShareBytes);
-                    if (!isLinearCommitmentScheme) {
-                        ConstantCommitment commitment = (ConstantCommitment)share.getCommitment();
-                        byte[] witness = commitment.getWitness(shareholder);
-                        out.writeInt(witness.length);
-                        out.write(witness);
-                    }
+					Commitment commitment = share.getCommitment();
+					byte[] witness;
+					switch (confidentialityScheme.getCommitmentScheme().getCommitmentSchemeType()) {
+						case DL_KZG_SCHEME:
+							KZGCommitment kzgCommitment = (KZGCommitment) share.getCommitment();
+							witness = kzgCommitment.getWitness(shareholder);
+							out.writeInt(witness.length);
+							out.write(witness);
+							break;
+						case PED_KZG_SCHEME:
+							PedKZGCommitment pedKZGCommitment = (PedKZGCommitment) share.getCommitment();
+							witness = pedKZGCommitment.getWitness(shareholder);
+							byte[] blindingShare = pedKZGCommitment.getBlindingShare(shareholder);
+							out.writeInt(witness.length);
+							out.write(witness);
+							out.writeInt(blindingShare.length);
+							out.write(blindingShare);
+							break;
+					}
                 }
             }
 
@@ -237,13 +249,23 @@ public class ConfidentialServiceProxy {
                         out.writeInt(sharedData == null ? -1 : sharedData.length);
                         if (sharedData != null)
                             out.write(sharedData);
-                        if (isLinearCommitmentScheme)
-                            CommitmentUtils.getInstance().writeCommitment(commitment, out);
-                        else {
-                            byte[] c = ((ConstantCommitment) commitment).getCommitment();
-                            out.writeInt(c.length);
-                            out.write(c);
-                        }
+						switch (confidentialityScheme.getCommitmentScheme().getCommitmentSchemeType()) {
+							case FELDMAN_SCHEME:
+							case EC_FELDMAN_SCHEME:
+							case C_EC_FELDMAN_SCHEME:
+								CommitmentUtils.getInstance().writeCommitment(commitment, out);
+								break;
+							case DL_KZG_SCHEME:
+								byte[] dlC = ((KZGCommitment) commitment).getCommitment();
+								out.writeInt(dlC.length);
+								out.write(dlC);
+								break;
+							case PED_KZG_SCHEME:
+								byte[] pedC = ((PedKZGCommitment) commitment).getCommitment();
+								out.writeInt(pedC.length);
+								out.write(pedC);
+								break;
+						}
                     }
 
                 }

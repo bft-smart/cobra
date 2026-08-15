@@ -34,7 +34,8 @@ import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
 import vss.commitment.CommitmentUtils;
-import vss.commitment.constant.ConstantCommitment;
+import vss.commitment.constant.KZGCommitment;
+import vss.commitment.constant.ped.PedKZGCommitment;
 import vss.facade.SecretSharingException;
 import vss.secretsharing.VerifiableShare;
 
@@ -62,7 +63,6 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	private final boolean useTLSEncryption;
 	private final ConfidentialSingleExecutable confidentialExecutor;
 	private DistributedPolynomial distributedPolynomial;
-	private boolean isLinearCommitmentScheme;
 	private final boolean isCombinePrivateAndCommonData;
 	// Not the best solution. Requests failed during consensus, will not be removed from this map
 	private final Map<Integer, Request> deserializedRequests;
@@ -100,7 +100,6 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		try {
 			this.confidentialityScheme = new ServerConfidentialityScheme(processId, replicaContext.getCurrentView());
 			this.commitmentScheme = confidentialityScheme.getCommitmentScheme();
-			this.isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
 			this.distributedPolynomial = new DistributedPolynomial(replicaContext.getSVController(), interServersCommunication,
 					confidentialityScheme);
 			new Thread(distributedPolynomial, "Distributed polynomial Manager").start();
@@ -549,17 +548,35 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 					encShare = new byte[l];
 					privateIn.readFully(encShare);
 				}
-				Commitment commitment;
-				if (isLinearCommitmentScheme)
-					commitment = CommitmentUtils.getInstance().readCommitment(commonDataStream);
-				else {
-					byte[] c = new byte[commonDataStream.readInt()];
-					commonDataStream.readFully(c);
-					byte[] witness = new byte[privateIn.readInt()];
-					privateIn.readFully(witness);
-					TreeMap<Integer, byte[]> witnesses = new TreeMap<>();
-					witnesses.put(shareholder.hashCode(), witness);
-					commitment = new ConstantCommitment(c, witnesses);
+				Commitment commitment = null;
+				switch (commitmentScheme.getCommitmentSchemeType()) {
+					case FELDMAN_SCHEME:
+					case EC_FELDMAN_SCHEME:
+					case C_EC_FELDMAN_SCHEME:
+						commitment = CommitmentUtils.getInstance().readCommitment(commonDataStream);
+						break;
+					case DL_KZG_SCHEME:
+						byte[] dlC = new byte[commonDataStream.readInt()];
+						commonDataStream.readFully(dlC);
+						byte[] dlWitness = new byte[privateIn.readInt()];
+						privateIn.readFully(dlWitness);
+						TreeMap<Integer, byte[]> dlWitnesses = new TreeMap<>();
+						dlWitnesses.put(shareholder.hashCode(), dlWitness);
+						commitment = new KZGCommitment(dlC, dlWitnesses);
+						break;
+					case PED_KZG_SCHEME:
+						byte[] pedC = new byte[commonDataStream.readInt()];
+						commonDataStream.readFully(pedC);
+						byte[] pedWitness = new byte[privateIn.readInt()];
+						privateIn.readFully(pedWitness);
+						byte[] blindingShare = new byte[privateIn.readInt()];
+						privateIn.readFully(blindingShare);
+						TreeMap<Integer, byte[]> pedWitnesses = new TreeMap<>();
+						pedWitnesses.put(shareholder.hashCode(), pedWitness);
+						TreeMap<Integer, byte[]> blindingShares = new TreeMap<>();
+						blindingShares.put(shareholder.hashCode(), blindingShare);
+						commitment = new PedKZGCommitment(pedC, pedWitnesses, blindingShares);
+						break;
 				}
 				Map<Integer, byte[]> encryptedShares = new HashMap<>(1);
 				encryptedShares.put(processId, encShare);

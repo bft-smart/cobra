@@ -17,6 +17,8 @@ import java.util.Map;
  */
 public interface CommitmentScheme {
 
+	CommitmentSchemeType getCommitmentSchemeType();
+
 	/**
 	 * Returns the prime field order of the group used for commitments
 	 * @return prime field order
@@ -39,19 +41,7 @@ public interface CommitmentScheme {
                                    BigInteger... additionalShareholders);
 
 
-    /**
-     * Start verification of multiple shares
-     *
-     * @param commitment Commitment
-     */
-    void startVerification(Commitment commitment);
-
-    /**
-     * Ends context of multiple verification of shares to start next context
-     */
-    void endVerification();
-
-    /**
+	/**
      * Adds the new shareholder to the current set of shareholders
      * @param shareholder Shareholder
      */
@@ -63,15 +53,7 @@ public interface CommitmentScheme {
      */
     void removeShareholder(BigInteger shareholder);
 
-    /**
-     * Checks if given share is valid
-     * @param share Share to verify
-     * @param commitment Commitment of the polynomial
-     * @return True if share is valid, false otherwise
-     */
-    boolean checkValidity(Share share, Commitment commitment);
-
-    /**
+	/**
      * Check if multiple polynomials have same share without knowing share
      * @param x Shareholder ID
      * @param commitments Commitment of the polynomial containing x's commitment

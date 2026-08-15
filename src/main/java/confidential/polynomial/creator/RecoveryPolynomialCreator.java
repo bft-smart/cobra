@@ -41,7 +41,7 @@ public class RecoveryPolynomialCreator extends PolynomialCreator {
                 //generating polynomial
                 Polynomial tempPolynomial = new Polynomial(field, context.getF(),
                         BigInteger.ZERO, rndGenerator);
-                BigInteger independentTerm = context.getY().subtract(tempPolynomial.evaluateAt(context.getX()));
+                BigInteger independentTerm = context.getY().subtract(tempPolynomial.evaluateAt(context.getX())).mod(field);
                 BigInteger[] tempCoefficients = tempPolynomial.getCoefficients();
                 BigInteger[] coefficients = Arrays.copyOfRange(tempCoefficients,
                         tempCoefficients.length - tempPolynomial.getDegree() - 1, tempCoefficients.length - 1);

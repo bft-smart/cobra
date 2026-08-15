@@ -1,10 +1,13 @@
 package vss.benchmark;
 
+import org.bouncycastle.math.ec.ECPoint;
 import vss.Constants;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
-import vss.commitment.constant.ConstantCommitment;
-import vss.commitment.constant.ShareCommitment;
+import vss.commitment.constant.ShareKZGCommitment;
+import vss.commitment.linear.LinearCommitments;
+import vss.commitment.linear.ec.ECLinearCommitment;
+import vss.commitment.linear.ec.c.RawLinearCommitment;
 import vss.facade.SecretSharingException;
 import vss.facade.VSSFacade;
 import vss.polynomial.Polynomial;
@@ -17,137 +20,150 @@ import java.util.*;
  * @author Robin
  */
 public class CommitmentRecoveryBenchmark {
-    private static SecureRandom rndGenerator;
-    private static int threshold;
-    private static int n;
-    private static BigInteger[] shareholders;
+	private static SecureRandom rndGenerator;
+	private static int threshold;
+	private static int n;
+	private static BigInteger[] shareholders;
 
-    public static void main(String[] args) throws SecretSharingException {
-        if (args.length != 6) {
-            System.out.println("USAGE: ... vss.benchmark.CommitmentRecoveryBenchmark <threshold> " +
-                    "<num secrets> <warm up iterations> <test iterations> " +
-                    "<min number of faulty shareholders> <max number of faulty shareholders");
-            System.exit(-1);
-        }
+	public static void main(String[] args) throws SecretSharingException {
+		if (args.length != 4) {
+			System.out.println("USAGE: ... vss.benchmark.CommitmentRecoveryBenchmark " +
+					"<threshold> " +
+					"<min number of faulty shareholders> <max number of faulty shareholders> " +
+					"<commitment scheme type: linear|ec_linear|c_ec_linear|dl_kzg|ped_kzg>");
+			System.exit(-1);
+		}
 
-        threshold = Integer.parseInt(args[0]);
-        n = 3 * threshold + 1;
-        int quorum = n - threshold;
-        int nSecrets = Integer.parseInt(args[1]);
-        int warmUpIterations = Integer.parseInt(args[2]);
-        int testIterations = Integer.parseInt(args[3]);
-        int minFaultyCommitments = Integer.parseInt(args[4]);
-        int maxFaultyCommitments = Integer.parseInt(args[5]);
+		threshold = Integer.parseInt(args[0]);
+		n = 3 * threshold + 1;
+		int minFaultyCommitments = Integer.parseInt(args[1]);
+		int maxFaultyCommitments = Integer.parseInt(args[2]);
+		String commitmentSchemeType = args[3];
 
-        if (minFaultyCommitments < 0 || minFaultyCommitments > threshold || minFaultyCommitments > maxFaultyCommitments)
-            throw new IllegalArgumentException("min number of faulty shareholders is out of range");
+		if (minFaultyCommitments < 0 || minFaultyCommitments > threshold || minFaultyCommitments > maxFaultyCommitments)
+			throw new IllegalArgumentException("min number of faulty shareholders is out of range");
 
-        if (maxFaultyCommitments > threshold)
-            throw new IllegalArgumentException("max number of faulty shareholders is out of range");
+		if (maxFaultyCommitments > threshold)
+			throw new IllegalArgumentException("max number of faulty shareholders is out of range");
 
-        System.out.println("t = " + threshold);
-        System.out.println("n = " + n);
-        System.out.println("quorum = " + quorum);
-        System.out.println("number of secrets = " + nSecrets);
-        System.out.println();
+		System.out.println("t: " + threshold);
+		System.out.println("n: " + n);
+		System.out.println("commitment scheme type: " + commitmentSchemeType);
+		System.out.println();
 
 
-        rndGenerator = new SecureRandom("ola".getBytes());
-        shareholders = new BigInteger[n];
-        for (int i = 0; i < n; i++) {
-            shareholders[i] = BigInteger.valueOf(i + 1);
-        }
+		rndGenerator = new SecureRandom("ola".getBytes());
+		shareholders = new BigInteger[n];
+		for (int i = 0; i < n; i++) {
+			shareholders[i] = BigInteger.valueOf(i + 1);
+		}
 
-        Properties properties = new Properties();
-        properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
-        properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, "AES");
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_DL_KZG_SCHEME);
+		Properties properties = new Properties();
+		properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
+		properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, "AES");
+		properties.put(Constants.TAG_COMMITMENT_SCHEME, commitmentSchemeType);
 
-        VSSFacade vssFacade = new VSSFacade(properties, shareholders);
-        System.out.println("Warming up (" + warmUpIterations + " iterations)");
-        if (warmUpIterations > 0)
-            runTests(warmUpIterations, false, vssFacade, minFaultyCommitments,
-                    maxFaultyCommitments, quorum,
-                    nSecrets);
-        System.out.println("Running test (" + testIterations + " iterations)");
-        if (testIterations > 0)
-            runTests(testIterations, true, vssFacade, minFaultyCommitments, maxFaultyCommitments,
-                    quorum, nSecrets);
+		VSSFacade vssFacade = new VSSFacade(properties, shareholders);
+		runTests(vssFacade, minFaultyCommitments, maxFaultyCommitments);
+	}
 
-    }
+	private static void runTests(VSSFacade vss, int minFaultyC, int maxFaultyC) {
+		BigInteger field = vss.getSubPrimeFieldOrder();
+		CommitmentScheme commitmentScheme = vss.getCommitmentScheme();
+		for (int faultyC = minFaultyC; faultyC <= maxFaultyC; faultyC++) {
+			if (faultyC > 0)
+				System.out.println();
+			System.out.println("Faulty server(s): " + faultyC);
+			BigInteger secret = new BigInteger(field.bitLength() - 1, rndGenerator);
+			Polynomial secretPolynomial = new Polynomial(field, threshold, secret, rndGenerator);
+			BigInteger recoveryShareholder = shareholders[0];
+			System.out.println("Recovering shareholder: " + recoveryShareholder);
+			Commitment commitment = commitmentScheme.generateCommitments(secretPolynomial);
+			Map<BigInteger, Commitment> commitments = new HashMap<>(n);
 
-    private static void runTests(int nTests, boolean printResults,
-                                 VSSFacade vss, int minFaultyC,
-                                 int maxFaultyC, int quorum, int nSecrets) {
-        for (int faultyC = minFaultyC; faultyC <= maxFaultyC; faultyC++) {
-            if (printResults)
-                System.out.println("============= " + faultyC + " faulty commitments" +
-                        " =============");
-            BigInteger field = vss.getSubPrimeFieldOrder();
-            CommitmentScheme commitmentScheme = vss.getCommitmentScheme();
-            BigInteger secret = new BigInteger(field.bitLength() - 2, rndGenerator);
-            Polynomial secretPolynomial = new Polynomial(field, threshold, secret,
-                    rndGenerator);
-            BigInteger recoveryShareholder = shareholders[0];
-            for (int nT = 0; nT < nTests; nT++) {
-                Set<BigInteger> corruptedShareholders = new HashSet<>(threshold);
-                for (int nS = 0; nS < nSecrets; nS++) {
-                    Commitment commitment =
-                            commitmentScheme.generateCommitments(secretPolynomial);
-                    Map<BigInteger, Commitment> commitments = new HashMap<>(n);
+			for (int i = 0; i < n; i++) {
+				BigInteger shareholder = shareholders[i];
+				if (shareholder.equals(recoveryShareholder))
+					continue;
+				commitments.put(shareholder,
+						commitmentScheme.extractCommitment(shareholder,
+								commitment));
+			}
 
-                    for (int i = 0; i < n; i++) {
-                        BigInteger shareholder = shareholders[i];
-                        if (shareholder.equals(recoveryShareholder))
-                            continue;
-                        if (corruptedShareholders.contains(shareholder))
-                            continue;
-                        commitments.put(shareholder,
-                                commitmentScheme.extractCommitment(shareholder,
-                                        commitment));
-                        if (commitments.size() == threshold + 1)
-                            break;
-                    }
+			//corrupting witnesses
+			Set<BigInteger> corruptedShareholders = new HashSet<>(faultyC);
+			BigInteger donorShareholder;
+			Iterator<BigInteger> it = commitments.keySet().iterator();
+			do {
+				donorShareholder = it.next();
+			} while (donorShareholder.equals(recoveryShareholder));
+			Commitment donorShareCommitment = commitments.get(donorShareholder);
+			int alreadyCorrupted = 0;
+			while (it.hasNext() && alreadyCorrupted < faultyC) {
+				BigInteger corruptedShareholder = it.next();
+				if (corruptedShareholder.equals(recoveryShareholder)) {
+					continue;
+				}
+				Commitment corruptedCommitment = corruptCommitment(donorShareCommitment);
+				commitments.put(corruptedShareholder, corruptedCommitment);
+				corruptedShareholders.add(corruptedShareholder);
+				alreadyCorrupted++;
+				System.out.println("Corrupted commitment of shareholder " + corruptedShareholder);
+			}
 
-                    //corrupting witnesses
-                    BigInteger corruptedShareholder;
-                    if (corruptedShareholders.size() < faultyC) {
-                        corruptedShareholder = commitments.keySet().iterator().next();
-                        System.out.println("Corrupting shareholder: " + corruptedShareholder);
-                        byte[] corruptedWitness = new byte[49];
-                        rndGenerator.nextBytes(corruptedWitness);
-                        commitments.put(corruptedShareholder,
-                                new ShareCommitment(((ConstantCommitment)commitment).getCommitment(), corruptedWitness));
-                        corruptedShareholders.add(corruptedShareholder);
-                    }
+			Commitment recoveredCommitment = null;
+			try {
+				recoveredCommitment = commitmentScheme.recoverCommitment(recoveryShareholder,
+						commitments);
+			} catch (SecretSharingException e) {
+				System.out.println("Found faulty commitments");
+				Map<BigInteger, Commitment> validCommitments = new HashMap<>(threshold + 1);
+				for (Map.Entry<BigInteger, Commitment> entry : commitments.entrySet()) {
+					if (corruptedShareholders.contains(entry.getKey()))
+						continue;
+					validCommitments.put(entry.getKey(), entry.getValue());
+					if (validCommitments.size() == threshold + 1)
+						break;
+				}
 
-                    Commitment recoveredCommitment = null;
-                    try {
-                        recoveredCommitment = commitmentScheme.recoverCommitment(recoveryShareholder,
-                                commitments);
-                    } catch (SecretSharingException e) {
-                        Map<BigInteger, Commitment> validCommitments = new HashMap<>(threshold);
-                        for (Map.Entry<BigInteger, Commitment> entry : commitments.entrySet()) {
-                            if (corruptedShareholders.contains(entry.getKey()))
-                                continue;
-                            validCommitments.put(entry.getKey(), entry.getValue());
-                            if (validCommitments.size() == threshold)
-                                break;
-                        }
-                        try {
-                            recoveredCommitment =
-                                    commitmentScheme.recoverCommitment(recoveryShareholder,
-                                            validCommitments);
-                        } catch (SecretSharingException ex) {
-                            System.err.println("This should not happen");
-                            System.exit(-1);
-                        }
-                    }
+				try {
+					recoveredCommitment =
+							commitmentScheme.recoverCommitment(recoveryShareholder, validCommitments);
+				} catch (SecretSharingException ex) {
+					System.err.println("This should not happen");
+					System.exit(-1);
+				}
+			}
 
-                    if (!recoveredCommitment.equals(commitmentScheme.extractCommitment(recoveryShareholder, commitment)))
-                        throw new IllegalStateException("Commitments are different");
-                }
-            }
-        }
-    }
+			if (!recoveredCommitment.equals(commitmentScheme.extractCommitment(recoveryShareholder, commitment)))
+				throw new IllegalStateException("Commitments are different");
+
+		}
+	}
+
+	private static Commitment corruptCommitment(Commitment donorShareCommitment) {
+		if (donorShareCommitment instanceof LinearCommitments) {
+			LinearCommitments linearCommitment = (LinearCommitments) donorShareCommitment;
+			BigInteger[] commitments = linearCommitment.getCommitments();
+			BigInteger[] copyCommitments = Arrays.copyOf(commitments, commitments.length);
+			copyCommitments[0] = copyCommitments[1];
+			return new LinearCommitments(copyCommitments);
+		} else if (donorShareCommitment instanceof ECLinearCommitment) {
+			ECLinearCommitment ecLinearCommitment = (ECLinearCommitment) donorShareCommitment;
+			ECPoint[] commitments = ecLinearCommitment.getCommitments();
+			ECPoint[] copyCommitments = Arrays.copyOf(commitments, commitments.length);
+			copyCommitments[0] = copyCommitments[1];
+			return new ECLinearCommitment(copyCommitments, copyCommitments[0].getCurve());
+		} else if (donorShareCommitment instanceof RawLinearCommitment) {
+			RawLinearCommitment rawLinearCommitment = (RawLinearCommitment) donorShareCommitment;
+			byte[][] commitments = rawLinearCommitment.getCommitments();
+			byte[][] copyCommitments = Arrays.copyOf(commitments, commitments.length);
+			copyCommitments[0] = copyCommitments[1];
+			return new RawLinearCommitment(copyCommitments);
+		} else if (donorShareCommitment instanceof ShareKZGCommitment) {
+			return donorShareCommitment;
+		} else {
+			throw new IllegalArgumentException("Unknown commitment type");
+		}
+	}
 }

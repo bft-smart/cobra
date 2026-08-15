@@ -64,7 +64,7 @@ public class Pairing {
         return createWitness(stringCoefficients);
     }
 
-    byte[] computePartialResult(BigInteger x, ConstantCommitment commitment) {
+    byte[] computePartialResult(BigInteger x, KZGCommitment commitment) {
        return computePartialVerification(x.toByteArray(), commitment.getCommitment(), commitment.getWitness(x));
     }
 
@@ -92,7 +92,7 @@ public class Pairing {
             byte[][] shareholderAndWitness = new byte[2][];
             shareholderAndWitness[0] = entry.getKey().toByteArray();
             shareholderAndWitness[1] =
-                    ((ShareCommitment)entry.getValue()).getWitness();
+                    ((ShareKZGCommitment)entry.getValue()).getWitness();
             witnesses[i] = shareholderAndWitness;
             i++;
         }

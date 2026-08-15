@@ -27,45 +27,45 @@ import java.util.concurrent.locks.ReentrantLock;
  * @author Robin
  */
 public class CobraConfidentialityScheme {
-    protected final VSSFacade vss;
-    private final Map<Integer, BigInteger> serverToShareholder;
-    private final Map<BigInteger, Integer> shareholderToServer;
-    private final Cipher cipher;
-    private final Lock cipherLock;
-    private final boolean isLinearCommitmentScheme;
-    protected KeysManager keysManager;
-    protected int threshold;
+	protected final VSSFacade vss;
+	private final Map<Integer, BigInteger> serverToShareholder;
+	private final Map<BigInteger, Integer> shareholderToServer;
+	private final Cipher cipher;
+	private final Lock cipherLock;
+	private final boolean isLinearCommitmentScheme;
+	protected KeysManager keysManager;
+	protected int threshold;
 
-    public CobraConfidentialityScheme(View view) throws SecretSharingException {
-        cipherLock = new ReentrantLock(true);
-        int[] processes = view.getProcesses();
-        serverToShareholder = new HashMap<>(processes.length);
-        shareholderToServer = new HashMap<>(processes.length);
-        BigInteger[] shareholders = new BigInteger[processes.length];
-        for (int i = 0; i < processes.length; i++) {
-            int process = processes[i];
-            BigInteger shareholder = BigInteger.valueOf(process + 1);
-            serverToShareholder.put(process, shareholder);
-            shareholderToServer.put(shareholder, process);
-            shareholders[i] = shareholder;
-        }
+	public CobraConfidentialityScheme(View view) throws SecretSharingException {
+		cipherLock = new ReentrantLock(true);
+		int[] processes = view.getProcesses();
+		serverToShareholder = new HashMap<>(processes.length);
+		shareholderToServer = new HashMap<>(processes.length);
+		BigInteger[] shareholders = new BigInteger[processes.length];
+		for (int i = 0; i < processes.length; i++) {
+			int process = processes[i];
+			BigInteger shareholder = BigInteger.valueOf(process + 1);
+			serverToShareholder.put(process, shareholder);
+			shareholderToServer.put(shareholder, process);
+			shareholders[i] = shareholder;
+		}
 
-        threshold = view.getF();
-        Configuration configuration = Configuration.getInstance();
+		threshold = view.getF();
+		Configuration configuration = Configuration.getInstance();
 		String commitmentSchemeType = configuration.getCommitmentSchemeType();
 
-        Properties properties = new Properties();
-        properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
-        properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-        properties.put(Constants.TAG_COMMITMENT_SCHEME, commitmentSchemeType);
+		Properties properties = new Properties();
+		properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
+		properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
+		properties.put(Constants.TAG_COMMITMENT_SCHEME, commitmentSchemeType);
 
-        try {
-            cipher = Cipher.getInstance(configuration.getShareEncryptionAlgorithm());
-        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
-            throw new SecretSharingException("Failed to initialize the cipher");
-        }
-        vss = new VSSFacade(properties, shareholders);
-        keysManager = new KeysManager();
+		try {
+			cipher = Cipher.getInstance(configuration.getShareEncryptionAlgorithm());
+		} catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+			throw new SecretSharingException("Failed to initialize the cipher");
+		}
+		vss = new VSSFacade(properties, shareholders);
+		keysManager = new KeysManager();
 
 		switch (commitmentSchemeType) {
 			case Constants.VALUE_FELDMAN_SCHEME:
@@ -74,12 +74,13 @@ public class CobraConfidentialityScheme {
 				isLinearCommitmentScheme = true;
 				break;
 			case Constants.VALUE_DL_KZG_SCHEME:
+			case Constants.VALUE_PED_KZG_SCHEME:
 				isLinearCommitmentScheme = false;
 				break;
-				default:
-					throw new SecretSharingException("Unknown commitment scheme " + commitmentSchemeType);
+			default:
+				throw new SecretSharingException("Unknown commitment scheme " + commitmentSchemeType);
 		}
-    }
+	}
 
 	/**
 	 * Returns encrypted shares of the secret
@@ -126,97 +127,97 @@ public class CobraConfidentialityScheme {
 		return vss.getPrimeFieldOrder();
 	}
 
-    public boolean isLinearCommitmentScheme() {
-        return isLinearCommitmentScheme;
-    }
+	public boolean isLinearCommitmentScheme() {
+		return isLinearCommitmentScheme;
+	}
 
-    public void addShareholder(int newServer, BigInteger shareholderId) throws SecretSharingException {
-        vss.addShareholder(shareholderId);
-        serverToShareholder.put(newServer, shareholderId);
-        shareholderToServer.put(shareholderId, newServer);
-    }
+	public void addShareholder(int newServer, BigInteger shareholderId) throws SecretSharingException {
+		vss.addShareholder(shareholderId);
+		serverToShareholder.put(newServer, shareholderId);
+		shareholderToServer.put(shareholderId, newServer);
+	}
 
-    public CommitmentScheme getCommitmentScheme() {
-        return vss.getCommitmentScheme();
-    }
+	public CommitmentScheme getCommitmentScheme() {
+		return vss.getCommitmentScheme();
+	}
 
-    public BigInteger getShareholder(int process) {
-        return serverToShareholder.get(process);
-    }
+	public BigInteger getShareholder(int process) {
+		return serverToShareholder.get(process);
+	}
 
-    public int getProcess(BigInteger shareholder) {
-        return shareholderToServer.get(shareholder);
-    }
+	public int getProcess(BigInteger shareholder) {
+		return shareholderToServer.get(shareholder);
+	}
 
-    public void updateParameters(View view) {
-        throw new UnsupportedOperationException("Not implemented");
-    }
+	public void updateParameters(View view) {
+		throw new UnsupportedOperationException("Not implemented");
+	}
 
-    public PublicKey getSigningPublicKeyFor(int id) {
-        return keysManager.getSigningPublicKeyFor(id);
-    }
+	public PublicKey getSigningPublicKeyFor(int id) {
+		return keysManager.getSigningPublicKeyFor(id);
+	}
 
-    public PrivateKey getSigningPrivateKey() {
-        return keysManager.getSigningKey();
-    }
+	public PrivateKey getSigningPrivateKey() {
+		return keysManager.getSigningKey();
+	}
 
-    public byte[] encryptDataFor(int id, byte[] data) {
-        Key encryptionKey = keysManager.getEncryptionKeyFor(id);
+	public byte[] encryptDataFor(int id, byte[] data) {
+		Key encryptionKey = keysManager.getEncryptionKeyFor(id);
 
-        try {
-            return encrypt(data, encryptionKey);
-        } catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
-            return null;
-        }
-    }
+		try {
+			return encrypt(data, encryptionKey);
+		} catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
+			return null;
+		}
+	}
 
-    public byte[] encryptShareFor(int id, Share clearShare) throws SecretSharingException {
-        Key encryptionKey = keysManager.getEncryptionKeyFor(id);
+	public byte[] encryptShareFor(int id, Share clearShare) throws SecretSharingException {
+		Key encryptionKey = keysManager.getEncryptionKeyFor(id);
 
-        try {
-            return encrypt(clearShare.getShare().toByteArray(), encryptionKey);
-        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
-            throw new SecretSharingException("Failed to encrypt share", e);
-        }
-    }
+		try {
+			return encrypt(clearShare.getShare().toByteArray(), encryptionKey);
+		} catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+			throw new SecretSharingException("Failed to encrypt share", e);
+		}
+	}
 
-    public BigInteger decryptShareFor(int id, byte[] encryptedShare) throws SecretSharingException {
-        Key decryptionKey = keysManager.getDecryptionKeyFor(id);
-        try {
-            return new BigInteger(decrypt(encryptedShare, decryptionKey));
-        } catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
-            throw new SecretSharingException("Failed to decrypt share", e);
-        }
-    }
+	public BigInteger decryptShareFor(int id, byte[] encryptedShare) throws SecretSharingException {
+		Key decryptionKey = keysManager.getDecryptionKeyFor(id);
+		try {
+			return new BigInteger(decrypt(encryptedShare, decryptionKey));
+		} catch (InvalidKeyException | BadPaddingException | IllegalBlockSizeException e) {
+			throw new SecretSharingException("Failed to decrypt share", e);
+		}
+	}
 
-    public byte[] decryptData(int id, byte[] encryptedData) {
-        Key decryptionKey = keysManager.getDecryptionKeyFor(id);
-        try {
-            return decrypt(encryptedData, decryptionKey);
-        } catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
-            return null;
-        }
-    }
+	public byte[] decryptData(int id, byte[] encryptedData) {
+		Key decryptionKey = keysManager.getDecryptionKeyFor(id);
+		try {
+			return decrypt(encryptedData, decryptionKey);
+		} catch (BadPaddingException | IllegalBlockSizeException | InvalidKeyException e) {
+			return null;
+		}
+	}
 
-    protected byte[] encrypt(byte[] data, Key encryptionKey) throws InvalidKeyException,
-            BadPaddingException, IllegalBlockSizeException {
-        try {
-            cipherLock.lock();
-            cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
-            return cipher.doFinal(data);
-        } finally {
-            cipherLock.unlock();
-        }
-    }
+	protected byte[] encrypt(byte[] data, Key encryptionKey) throws InvalidKeyException,
+			BadPaddingException, IllegalBlockSizeException {
+		try {
+			cipherLock.lock();
+			cipher.init(Cipher.ENCRYPT_MODE, encryptionKey);
+			return cipher.doFinal(data);
+		} finally {
+			cipherLock.unlock();
+		}
+	}
 
-    protected byte[] decrypt(byte[] data, Key decryptionKey) throws InvalidKeyException,
-            BadPaddingException, IllegalBlockSizeException {
-        try {
-            cipherLock.lock();
-            cipher.init(Cipher.DECRYPT_MODE, decryptionKey);
-            return cipher.doFinal(data);
-        } finally {
-            cipherLock.unlock();
-        }
-    }
+	protected byte[] decrypt(byte[] data, Key decryptionKey) throws InvalidKeyException,
+			BadPaddingException, IllegalBlockSizeException {
+		try {
+			cipherLock.lock();
+			cipher.init(Cipher.DECRYPT_MODE, decryptionKey);
+			return cipher.doFinal(data);
+		} finally {
+			cipherLock.unlock();
+		}
+	}
 }

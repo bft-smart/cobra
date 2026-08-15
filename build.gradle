@@ -19,10 +19,9 @@ compileJava {
 distributions {
     main {
         contents {
-            into('pairing') {
-                from 'pairing'
+            into('kzg') {
+                from 'kzg'
             }
-            from 'pairing_based_execution.sh'
             into('config') {
                 from 'config'
             }

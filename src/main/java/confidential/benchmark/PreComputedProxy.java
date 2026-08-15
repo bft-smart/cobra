@@ -12,7 +12,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentUtils;
-import vss.commitment.constant.ConstantCommitment;
+import vss.commitment.constant.KZGCommitment;
+import vss.commitment.constant.ped.PedKZGCommitment;
 import vss.facade.Mode;
 import vss.facade.SecretSharingException;
 
@@ -30,80 +31,78 @@ import java.util.Set;
  * @author Robin
  */
 public class PreComputedProxy implements IClientSideReconfigurationListener {
-    private final Logger logger = LoggerFactory.getLogger("confidential");
+	private final Logger logger = LoggerFactory.getLogger("confidential");
 
-    final ExtendedServiceProxy service;
-    private final CobraConfidentialityScheme confidentialityScheme;
-    private final ServersResponseHandler serversResponseHandler;
-    private byte[] commonData;
-    Map<Integer, byte[]> privateDataShares;
-    private boolean preComputed;
-    private final boolean isLinearCommitmentScheme;
-    private final boolean isSendAllSharesTogether;
-    private byte[] plainData;
-    private byte[] privateData;
-    private EncryptedPublishedShares[] shares;
+	final ExtendedServiceProxy service;
+	private final CobraConfidentialityScheme confidentialityScheme;
+	private final ServersResponseHandler serversResponseHandler;
+	private byte[] commonData;
+	Map<Integer, byte[]> privateDataShares;
+	private boolean preComputed;
+	private final boolean isSendAllSharesTogether;
+	private byte[] plainData;
+	private byte[] privateData;
+	private EncryptedPublishedShares[] shares;
 
-    PreComputedProxy(int clientId) throws SecretSharingException {
-        if (Configuration.getInstance().useTLSEncryption()) {
-            serversResponseHandler = new PreComputedPlainServersResponseHandler();
-        } else {
-            serversResponseHandler =
-                    new PreComputedEncryptedServersResponseHandler(clientId);
-        }
-        this.service = new ExtendedServiceProxy(clientId, serversResponseHandler,
-                serversResponseHandler, serversResponseHandler);
-        this.confidentialityScheme = new CobraConfidentialityScheme(service.getViewManager().getCurrentView());
-        serversResponseHandler.setCobraConfidentialityScheme(confidentialityScheme);
-        isLinearCommitmentScheme = confidentialityScheme.isLinearCommitmentScheme();
-        isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
-        service.setInvokeTimeout(60000);
-    }
+	PreComputedProxy(int clientId) throws SecretSharingException {
+		if (Configuration.getInstance().useTLSEncryption()) {
+			serversResponseHandler = new PreComputedPlainServersResponseHandler();
+		} else {
+			serversResponseHandler =
+					new PreComputedEncryptedServersResponseHandler(clientId);
+		}
+		this.service = new ExtendedServiceProxy(clientId, serversResponseHandler,
+				serversResponseHandler, serversResponseHandler);
+		this.confidentialityScheme = new CobraConfidentialityScheme(service.getViewManager().getCurrentView());
+		serversResponseHandler.setCobraConfidentialityScheme(confidentialityScheme);
+		isSendAllSharesTogether = Configuration.getInstance().isSendAllSharesTogether();
+		service.setInvokeTimeout(60000);
+	}
 
-    public void setPreComputedValues(byte[] plainData, byte[] privateData,
+	public void setPreComputedValues(byte[] plainData, byte[] privateData,
 									 EncryptedPublishedShares[] shares, byte[] commonData,
 									 Map<Integer, byte[]> privateDataShares) {
-        if (serversResponseHandler instanceof PreComputedPlainServersResponseHandler) {
+		if (serversResponseHandler instanceof PreComputedPlainServersResponseHandler) {
 			((PreComputedPlainServersResponseHandler) serversResponseHandler).setPreComputed(true);
 		} else if (serversResponseHandler instanceof PreComputedEncryptedServersResponseHandler) {
 			((PreComputedEncryptedServersResponseHandler) serversResponseHandler).setPreComputed(true);
 		}
-        this.preComputed = true;
-        this.plainData = plainData;
-        this.privateData = privateData;
-        this.shares = shares;
-        this.commonData = commonData;
-        this.privateDataShares = privateDataShares;
-    }
+		this.preComputed = true;
+		this.plainData = plainData;
+		this.privateData = privateData;
+		this.shares = shares;
+		this.commonData = commonData;
+		this.privateDataShares = privateDataShares;
+	}
 
-    Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-        serversResponseHandler.reset();
+	Response invokeOrdered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+		serversResponseHandler.reset();
 		ServiceResponse response;
 		byte metadata = (byte)(confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
 		if (preComputed) {
 			response = service.invokeOrdered(commonData,
 					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateDataShares, metadata);
 		} else {
-            EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
-            if (confidentialData.length != 0 && shares == null)
-                return null;
-            byte[] commonData = serializeCommonData(plainData, shares);
-            if (commonData == null)
-                return null;
+			EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
+			if (confidentialData.length != 0 && shares == null)
+				return null;
+			byte[] commonData = serializeCommonData(plainData, shares);
+			if (commonData == null)
+				return null;
 
-            Map<Integer, byte[]> privateData = null;
-            if (!isSendAllSharesTogether && confidentialData.length != 0) {
-                int[] servers = service.getViewManager().getCurrentViewProcesses();
-                privateData = new HashMap<>(servers.length);
-                for (int server : servers) {
-                    byte[] b = serializePrivateDataFor(server, shares);
-                    privateData.put(server, b);
-                }
-            }
+			Map<Integer, byte[]> privateData = null;
+			if (!isSendAllSharesTogether && confidentialData.length != 0) {
+				int[] servers = service.getViewManager().getCurrentViewProcesses();
+				privateData = new HashMap<>(servers.length);
+				for (int server : servers) {
+					byte[] b = serializePrivateDataFor(server, shares);
+					privateData.put(server, b);
+				}
+			}
 			response = service.invokeOrdered(commonData, privateData, metadata);
 		}
-        return preComputed ? null : composeResponse(response);
-    }
+		return preComputed ? null : composeResponse(response);
+	}
 
 	Response invokeOrderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
 		serversResponseHandler.reset();
@@ -134,36 +133,36 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 		return preComputed ? null : composeResponse(response);
 	}
 
-    Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
-        serversResponseHandler.reset();
-        ServiceResponse response;
+	Response invokeUnordered(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+		serversResponseHandler.reset();
+		ServiceResponse response;
 		byte metadata = (byte) (confidentialData.length == 0 ? Metadata.DOES_NOT_VERIFY.ordinal() : Metadata.VERIFY.ordinal());
 		if (preComputed) {
-            response = service.invokeUnordered(commonData,
+			response = service.invokeUnordered(commonData,
 					confidentialData.length == 0 || isSendAllSharesTogether ? null : privateDataShares, metadata);
-        } else {
-            EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
-            if (confidentialData.length != 0 && shares == null)
-                return null;
+		} else {
+			EncryptedPublishedShares[] shares = sharePrivateData(confidentialData);
+			if (confidentialData.length != 0 && shares == null)
+				return null;
 
-            byte[] commonData = serializeCommonData(plainData, shares);
-            if (commonData == null)
-                return null;
+			byte[] commonData = serializeCommonData(plainData, shares);
+			if (commonData == null)
+				return null;
 
-            Map<Integer, byte[]> privateData = null;
-            if (!isSendAllSharesTogether && confidentialData.length != 0) {
-                int[] servers = service.getViewManager().getCurrentViewProcesses();
-                privateData = new HashMap<>(servers.length);
-                for (int server : servers) {
-                    byte[] b = serializePrivateDataFor(server, shares);
-                    privateData.put(server, b);
-                }
-            }
-            response = service.invokeUnordered(commonData, privateData, metadata);
-        }
+			Map<Integer, byte[]> privateData = null;
+			if (!isSendAllSharesTogether && confidentialData.length != 0) {
+				int[] servers = service.getViewManager().getCurrentViewProcesses();
+				privateData = new HashMap<>(servers.length);
+				for (int server : servers) {
+					byte[] b = serializePrivateDataFor(server, shares);
+					privateData.put(server, b);
+				}
+			}
+			response = service.invokeUnordered(commonData, privateData, metadata);
+		}
 
-        return preComputed ? null : composeResponse(response);
-    }
+		return preComputed ? null : composeResponse(response);
+	}
 
 	Response invokeUnorderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
 		serversResponseHandler.reset();
@@ -196,134 +195,158 @@ public class PreComputedProxy implements IClientSideReconfigurationListener {
 		return preComputed ? null : composeResponse(response);
 	}
 
-    public void close() {
-        service.close();
-    }
+	public void close() {
+		service.close();
+	}
 
-    private Response composeResponse(ServiceResponse response) throws SecretSharingException {
-        if (response == null)
-            return null;
+	private Response composeResponse(ServiceResponse response) throws SecretSharingException {
+		if (response == null)
+			return null;
 
-        ExtractedResponse extractedResponse = (ExtractedResponse) response;
+		ExtractedResponse extractedResponse = (ExtractedResponse) response;
 
-        if (extractedResponse.getThrowable() != null)
-            throw extractedResponse.getThrowable();
-        return new Response(extractedResponse.getContent(), extractedResponse.getConfidentialData());
-    }
+		if (extractedResponse.getThrowable() != null)
+			throw extractedResponse.getThrowable();
+		return new Response(extractedResponse.getContent(), extractedResponse.getConfidentialData());
+	}
 
-    byte[] serializePrivateDataFor(int server, EncryptedPublishedShares[] shares) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutput out = new ObjectOutputStream(bos)) {
-            if (shares != null) {
-                BigInteger shareholder = confidentialityScheme.getShareholder(server);
-                for (EncryptedPublishedShares share : shares) {
-                    byte[] encryptedShareBytes = share.getShareOf(server);
-                    out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
-                    if (encryptedShareBytes != null)
-                        out.write(encryptedShareBytes);
-                    if (!isLinearCommitmentScheme) {
-                        ConstantCommitment commitment = (ConstantCommitment)share.getCommitment();
-                        byte[] witness = commitment.getWitness(shareholder);
-                        out.writeInt(witness.length);
-                        out.write(witness);
-                    }
-                }
-            }
+	byte[] serializePrivateDataFor(int server, EncryptedPublishedShares[] shares) {
+		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			 ObjectOutput out = new ObjectOutputStream(bos)) {
+			if (shares != null) {
+				BigInteger shareholder = confidentialityScheme.getShareholder(server);
+				for (EncryptedPublishedShares share : shares) {
+					byte[] encryptedShareBytes = share.getShareOf(server);
+					out.writeInt(encryptedShareBytes == null ? -1 : encryptedShareBytes.length);
+					if (encryptedShareBytes != null)
+						out.write(encryptedShareBytes);
+					Commitment commitment = share.getCommitment();
+					byte[] witness;
+					switch (confidentialityScheme.getCommitmentScheme().getCommitmentSchemeType()) {
+						case DL_KZG_SCHEME:
+							KZGCommitment kzgCommitment = (KZGCommitment) commitment;
+							witness = kzgCommitment.getWitness(shareholder);
+							out.writeInt(witness.length);
+							out.write(witness);
+							break;
+						case PED_KZG_SCHEME:
+							PedKZGCommitment pedKZGCommitment = (PedKZGCommitment) commitment;
+							witness = pedKZGCommitment.getWitness(shareholder);
+							byte[] blindingShare = pedKZGCommitment.getBlindingShare(shareholder);
+							out.writeInt(witness.length);
+							out.write(witness);
+							out.writeInt(blindingShare.length);
+							out.write(blindingShare);
+							break;
+					}
+				}
+			}
 
-            out.flush();
-            bos.flush();
-            return bos.toByteArray();
-        } catch (IOException e) {
-            logger.error("Occurred while composing request", e);
-            return null;
-        }
-    }
+			out.flush();
+			bos.flush();
+			return bos.toByteArray();
+		} catch (IOException e) {
+			logger.error("Occurred while composing request", e);
+			return null;
+		}
+	}
 
-    byte[] serializeCommonData(byte[] plainData, EncryptedPublishedShares[] shares) {
-        try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
-             ObjectOutput out = new ObjectOutputStream(bos)) {
+	byte[] serializeCommonData(byte[] plainData, EncryptedPublishedShares[] shares) {
+		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			 ObjectOutput out = new ObjectOutputStream(bos)) {
 
-            out.write((byte) MessageType.CLIENT.ordinal());
+			out.write((byte) MessageType.CLIENT.ordinal());
 
-            out.writeInt(plainData == null ? -1 : plainData.length);
-            if (plainData != null)
-                out.write(plainData);
+			out.writeInt(plainData == null ? -1 : plainData.length);
+			if (plainData != null)
+				out.write(plainData);
 
-            out.writeInt(shares == null ? -1 : shares.length);
-            if (shares != null) {
-                for (EncryptedPublishedShares share : shares) {
-                    if (isSendAllSharesTogether) {
-                        share.writeExternal(out);
-                    } else {
-                        byte[] sharedData = share.getSharedData();
-                        Commitment commitment = share.getCommitment();
-                        out.writeInt(sharedData == null ? -1 : sharedData.length);
-                        if (sharedData != null)
-                            out.write(sharedData);
-                        if (isLinearCommitmentScheme)
-                            CommitmentUtils.getInstance().writeCommitment(commitment, out);
-                        else {
-                            byte[] c = ((ConstantCommitment) commitment).getCommitment();
-                            out.writeInt(c.length);
-                            out.write(c);
-                        }
-                    }
-                }
-            }
+			out.writeInt(shares == null ? -1 : shares.length);
+			if (shares != null) {
+				for (EncryptedPublishedShares share : shares) {
+					if (isSendAllSharesTogether) {
+						share.writeExternal(out);
+					} else {
+						byte[] sharedData = share.getSharedData();
+						Commitment commitment = share.getCommitment();
+						out.writeInt(sharedData == null ? -1 : sharedData.length);
+						if (sharedData != null)
+							out.write(sharedData);
+						switch (confidentialityScheme.getCommitmentScheme().getCommitmentSchemeType()) {
+							case FELDMAN_SCHEME:
+							case EC_FELDMAN_SCHEME:
+							case C_EC_FELDMAN_SCHEME:
+								CommitmentUtils.getInstance().writeCommitment(commitment, out);
+								break;
+							case DL_KZG_SCHEME:
+								byte[] dlC = ((KZGCommitment) commitment).getCommitment();
+								out.writeInt(dlC.length);
+								out.write(dlC);
+								break;
+							case PED_KZG_SCHEME:
+								byte[] pedC = ((PedKZGCommitment) commitment).getCommitment();
+								out.writeInt(pedC.length);
+								out.write(pedC);
+								break;
 
-            out.flush();
-            bos.flush();
-            return bos.toByteArray();
-        } catch (IOException e) {
-            logger.error("Occurred while composing request", e);
-            return null;
-        }
-    }
+						}
+					}
+				}
+			}
 
-    EncryptedPublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
-        if (privateData == null)
-            return null;
-        EncryptedPublishedShares[] result = new EncryptedPublishedShares[privateData.length];
-        for (int i = 0; i < privateData.length; i++) {
-            result[i] = confidentialityScheme.share(privateData[i], Mode.LARGE_SECRET);
-        }
-        return result;
-    }
+			out.flush();
+			bos.flush();
+			return bos.toByteArray();
+		} catch (IOException e) {
+			logger.error("Occurred while composing request", e);
+			return null;
+		}
+	}
 
-    @Override
-    public void onReconfiguration(View view) {
-        Set<Integer> newServers = new HashSet<>(view.getProcesses().length);
-        for (int process : view.getProcesses()) {
-            if (confidentialityScheme.getShareholder(process) == null)
-                newServers.add(process);
-        }
-        for (Integer newServer : newServers) {
-            try {
-                confidentialityScheme.addShareholder(newServer, BigInteger.valueOf(newServer + 1));
-            } catch (SecretSharingException e) {
-                logger.error("Failed to add new server as shareholder", e);
-            }
-        }
+	EncryptedPublishedShares[] sharePrivateData(byte[]... privateData) throws SecretSharingException {
+		if (privateData == null)
+			return null;
+		EncryptedPublishedShares[] result = new EncryptedPublishedShares[privateData.length];
+		for (int i = 0; i < privateData.length; i++) {
+			result[i] = confidentialityScheme.share(privateData[i], Mode.LARGE_SECRET);
+		}
+		return result;
+	}
 
-        updatePreComputedValues();
-    }
+	@Override
+	public void onReconfiguration(View view) {
+		Set<Integer> newServers = new HashSet<>(view.getProcesses().length);
+		for (int process : view.getProcesses()) {
+			if (confidentialityScheme.getShareholder(process) == null)
+				newServers.add(process);
+		}
+		for (Integer newServer : newServers) {
+			try {
+				confidentialityScheme.addShareholder(newServer, BigInteger.valueOf(newServer + 1));
+			} catch (SecretSharingException e) {
+				logger.error("Failed to add new server as shareholder", e);
+			}
+		}
 
-    private void updatePreComputedValues() {
-        try {
+		updatePreComputedValues();
+	}
+
+	private void updatePreComputedValues() {
+		try {
 			if (privateData.length > 0) {
 				shares = sharePrivateData(privateData);
 			}
-            commonData = serializeCommonData(plainData, shares);
-            int[] servers = service.getViewManager().getCurrentViewProcesses();
-            privateDataShares = new HashMap<>(servers.length);
+			commonData = serializeCommonData(plainData, shares);
+			int[] servers = service.getViewManager().getCurrentViewProcesses();
+			privateDataShares = new HashMap<>(servers.length);
 			if (privateData.length > 0) {
 				for (int server : servers) {
 					byte[] b = serializePrivateDataFor(server, shares);
 					privateDataShares.put(server, b);
 				}
 			}
-        } catch (SecretSharingException e) {
-            logger.error("Failed to update precomputed values", e);
-        }
-    }
+		} catch (SecretSharingException e) {
+			logger.error("Failed to update precomputed values", e);
+		}
+	}
 }

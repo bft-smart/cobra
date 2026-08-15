@@ -1,7 +1,6 @@
 package confidential.statemanagement.privatestate.receiver;
 
 import bftsmart.reconfiguration.ServerViewController;
-import confidential.Configuration;
 import confidential.server.ServerConfidentialityScheme;
 import confidential.statemanagement.privatestate.commitments.BlindedCommitmentHandler;
 import confidential.statemanagement.privatestate.commitments.ConstantCommitmentHandler;

@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-C_PROJECT=$(pwd)/pairing
-RELIC=$(pwd)/pairing/relic/relic-target
+C_PROJECT=$(pwd)/kzg
+RELIC=$(pwd)/kzg/relic/relic-target
 
 export LD_LIBRARY_PATH=$RELIC/lib:$LD_LIBRARY_PATH
 
-java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -Djava.library.path=$C_PROJECT/lib -cp "lib/*" $@
+java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -Djna.library.path=$C_PROJECT/lib -cp "lib/*" $@

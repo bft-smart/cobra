@@ -4,6 +4,7 @@ import org.bouncycastle.math.ec.ECCurve;
 import org.bouncycastle.math.ec.ECPoint;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
+import vss.commitment.CommitmentSchemeType;
 import vss.commitment.CommitmentType;
 import vss.facade.SecretSharingException;
 import vss.polynomial.Polynomial;
@@ -44,6 +45,11 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	}
 
 	@Override
+	public CommitmentSchemeType getCommitmentSchemeType() {
+		return CommitmentSchemeType.EC_FELDMAN_SCHEME;
+	}
+
+	@Override
 	public BigInteger getPrimeFieldOrder() {
 		return primeFieldOrder;
 	}
@@ -66,14 +72,6 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	}
 
 	@Override
-	public void startVerification(Commitment commitment) {
-	}
-
-	@Override
-	public void endVerification() {
-	}
-
-	@Override
 	public void addShareholder(BigInteger shareholder) {
 		throw new UnsupportedOperationException("TODO");
 	}
@@ -83,16 +81,8 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 		throw new UnsupportedOperationException("TODO");
 	}
 
-	@Override
-	public boolean checkValidity(Share share, Commitment commitment) {
-		ECPoint leftSide = generator.multiply(share.getShare());
-		ECPoint rightSide = computeRightSideOfVerification(share.getShareholder(),
-				(ECLinearCommitment) commitment);
-		return leftSide.equals(rightSide);
-	}
-
 	private ECPoint computeRightSideOfVerification(BigInteger x, ECLinearCommitment commitment) {
-		ECPoint[] c = commitment.getCommitment();
+		ECPoint[] c = commitment.getCommitments();
 
 		ECPoint gp = c[c.length - 1];
 		for (int i = 0; i < c.length - 1; i++) {
@@ -117,18 +107,21 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public boolean checkValidityWithoutPreComputation(Share share, Commitment commitment) {
-		return checkValidity(share, commitment);
+		ECPoint leftSide = generator.multiply(share.getShare());
+		ECPoint rightSide = computeRightSideOfVerification(share.getShareholder(),
+				(ECLinearCommitment) commitment);
+		return leftSide.equals(rightSide);
 	}
 
 	@Override
 	public Commitment sumCommitments(Commitment... commitments) throws SecretSharingException {
-		int size = ((ECLinearCommitment) commitments[0]).getCommitment().length;
+		int size = ((ECLinearCommitment) commitments[0]).getCommitments().length;
 		ECPoint[][] ecCommitments = new ECPoint[commitments.length][];
 		for (int i = 0; i < commitments.length; i++) {
 			ECLinearCommitment lc = (ECLinearCommitment)commitments[i];
-			if (size != lc.getCommitment().length)
+			if (size != lc.getCommitments().length)
 				throw new SecretSharingException("Commitments must have same size");
-			ecCommitments[i] = lc.getCommitment();
+			ecCommitments[i] = lc.getCommitments();
 		}
 
 		ECPoint[] result = new ECPoint[size];
@@ -144,8 +137,8 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment subtractCommitments(Commitment c1, Commitment c2) throws SecretSharingException {
-		ECPoint[] l1 = ((ECLinearCommitment) c1).getCommitment();
-		ECPoint[] l2 = ((ECLinearCommitment) c2).getCommitment();
+		ECPoint[] l1 = ((ECLinearCommitment) c1).getCommitments();
+		ECPoint[] l2 = ((ECLinearCommitment) c2).getCommitments();
 		if (l1.length != l2.length)
 			throw new SecretSharingException("Commitments must have same size");
 		ECPoint[] result = new ECPoint[l1.length];
@@ -158,7 +151,7 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment addConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
-		ECPoint[] rawCommitments = ((ECLinearCommitment) commitment).getCommitment();
+		ECPoint[] rawCommitments = ((ECLinearCommitment) commitment).getCommitments();
 		ECPoint[] newCommitments = new ECPoint[rawCommitments.length];
 		System.arraycopy(rawCommitments, 0, newCommitments, 0, rawCommitments.length);
 		newCommitments[newCommitments.length - 1] = generator.multiply(constant).add(rawCommitments[rawCommitments.length - 1]);
@@ -167,7 +160,7 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment subtractConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
-		ECPoint[] rawCommitments = ((ECLinearCommitment) commitment).getCommitment();
+		ECPoint[] rawCommitments = ((ECLinearCommitment) commitment).getCommitments();
 		ECPoint[] newCommitments = new ECPoint[rawCommitments.length];
 		System.arraycopy(rawCommitments, 0, newCommitments, 0, rawCommitments.length);
 		newCommitments[newCommitments.length - 1] = rawCommitments[rawCommitments.length - 1].subtract(generator.multiply(constant));
@@ -176,7 +169,7 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 
 	@Override
 	public Commitment multiplyByConstant(Commitment commitment, BigInteger constant) throws SecretSharingException {
-		ECPoint[] rawCommitment = ((ECLinearCommitment) commitment).getCommitment();
+		ECPoint[] rawCommitment = ((ECLinearCommitment) commitment).getCommitments();
 		ECPoint[] result = new ECPoint[rawCommitment.length];
 		for (int i = 0; i < rawCommitment.length; i++) {
 			result[i] = rawCommitment[i].multiply(constant);
@@ -198,11 +191,18 @@ public class ECFeldmanCommitmentScheme implements CommitmentScheme {
 	}
 
 	@Override
-	public Commitment recoverCommitment(BigInteger newShareholder, Map<BigInteger, Commitment> commitments) {
+	public Commitment recoverCommitment(BigInteger newShareholder, Map<BigInteger, Commitment> commitments) throws SecretSharingException {
+		Commitment selectedCommitment = null;
+		int selectedCommitmentHash = -1;
 		for (Commitment value : commitments.values()) {
-			return value;
+			if (selectedCommitment == null) {
+				selectedCommitment = value;
+				selectedCommitmentHash = value.consistentHash();
+			} else if (selectedCommitmentHash != value.consistentHash()) {
+				throw new SecretSharingException("Commitments are different");
+			}
 		}
-		return null;
+		return selectedCommitment;
 	}
 
 	@Override

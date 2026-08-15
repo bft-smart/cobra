@@ -106,7 +106,8 @@ public class ResharingBlindedStateHandler extends BlindedStateHandler {
                     Polynomial tempSecretPolynomial = new Polynomial(field, blindedSecret, zeroConstants);
                     Commitment blindedSecretCommitment = commitmentScheme.generateCommitments(tempSecretPolynomial);
                     BigInteger refreshedShare = blindedSecret.subtract(refreshShare.getShare().getShare()).mod(field);
-                    Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(blindedSecretCommitment,
+					Commitment myBlindedSecretCommitment = commitmentScheme.extractCommitment(shareholderId, blindedSecretCommitment);
+                    Commitment refreshedShareCommitment = commitmentScheme.subtractCommitments(myBlindedSecretCommitment,
                             refreshShare.getCommitments());
 
                     vs.setCommitments(refreshedShareCommitment);

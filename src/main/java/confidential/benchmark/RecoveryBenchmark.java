@@ -34,7 +34,7 @@ public class RecoveryBenchmark {
         if (args.length != 7) {
             System.out.println("USAGE: ... confidential.benchmark.RecoveryBenchmark " +
                     "<threshold> <num secrets> <warm up iterations> <test iterations> " +
-                    "<num processing threads> <verify correctness> <commitment scheme -> linear|constant>");
+                    "<num processing threads> <verify correctness> <commitment scheme -> linear|ec_linear|c_ec_linear|dl_kzg|ped_kzg>");
             System.exit(-1);
         }
 
@@ -65,13 +65,7 @@ public class RecoveryBenchmark {
         Properties properties = new Properties();
         properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
         properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
-
-        if (commitmentSchemeName.equals("linear")) {
-            properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_FELDMAN_SCHEME);
-        } else if (commitmentSchemeName.equals("dl_kzg")) {
-            properties.put(Constants.TAG_COMMITMENT_SCHEME, Constants.VALUE_DL_KZG_SCHEME);
-        } else
-            throw new IllegalStateException("Commitment scheme is unknown");
+		properties.put(Constants.TAG_COMMITMENT_SCHEME, commitmentSchemeName);
 
         rndGenerator = new SecureRandom("ola".getBytes());
         VSSFacade vssFacade = new VSSFacade(properties, shareholders);
@@ -233,16 +227,14 @@ public class RecoveryBenchmark {
                             Commitment verificationCommitment =
                                     commitmentScheme.sumCommitments(rCommitment,
                                             combinedCommitment);
-                            commitmentScheme.startVerification(verificationCommitment);
                             int j = 0;
                             for (Map.Entry<BigInteger, Share> entry : allRecoveringShares.entrySet()) {
-                                if (commitmentScheme.checkValidity(entry.getValue(), verificationCommitment)) {
+                                if (commitmentScheme.checkValidityWithoutPreComputation(entry.getValue(), verificationCommitment)) {
                                     recoveringShares[j++] = entry.getValue();
                                 } else {
                                     corruptedServers.add(entry.getValue().getShareholder());
                                 }
                             }
-                            commitmentScheme.endVerification();
                             shareNumber =
                                     vssFacade.getInterpolationStrategy().interpolateAt(shareholders[recoveryShareholderIndex], recoveringShares);
                         } else {
@@ -322,7 +314,7 @@ public class RecoveryBenchmark {
         Polynomial tempPolynomial = new Polynomial(vssFacade.getSubPrimeFieldOrder(), threshold,
                 BigInteger.ZERO, rndGenerator);
         BigInteger independentTerm =
-                tempPolynomial.evaluateAt(shareholders[recoveryShareholderIndex]).negate();
+                tempPolynomial.evaluateAt(shareholders[recoveryShareholderIndex]).negate().mod(vssFacade.getSubPrimeFieldOrder());
         BigInteger[] tempCoefficients = tempPolynomial.getCoefficients();
         BigInteger[] coefficients = Arrays.copyOfRange(tempCoefficients,
                 tempCoefficients.length - tempPolynomial.getDegree() - 1,
