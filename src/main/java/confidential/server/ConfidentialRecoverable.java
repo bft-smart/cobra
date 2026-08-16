@@ -395,9 +395,9 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 				}
 			}
 		}
-		byte[] commonContent = serializeCommonContent(plainData, nConfidentialData, sharedData, shareholders,
+		byte[] commonContent = serializeCommonContent(plainData, nConfidentialData, sharedData,
 				commitments);
-		byte[] replicaSpecificContent = serializeReplicaSpecificContent(nConfidentialData, serializedShares,
+		byte[] replicaSpecificContent = serializeReplicaSpecificContent(nConfidentialData, shareholders, serializedShares,
 				commitments);
 		return new ServiceContent(commonContent, replicaSpecificContent);
 	}
@@ -407,13 +407,15 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		responseSender.sendResponseTo(receiverMsgCtx, serviceContent);
 	}
 
-	private byte[] serializeReplicaSpecificContent(int nConfidentialData, byte[][] serializedShares,
-												   Commitment[] commitments) {
+	private byte[] serializeReplicaSpecificContent(int nConfidentialData, BigInteger[] shareholders,
+												   byte[][] serializedShares, Commitment[] commitments) {
 		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
 			 ObjectOutput out = new ObjectOutputStream(bos)) {
 			out.writeInt(nConfidentialData);
 			if (nConfidentialData != -1) {
 				for (int i = 0; i < nConfidentialData; i++) {
+					out.writeInt(shareholders[i].toByteArray().length);
+					out.write(shareholders[i].toByteArray());
 					byte[] serializedShare = serializedShares[i];
 					out.writeInt(serializedShare == null ? -1 : serializedShare.length);
 					if (serializedShare != null) {
@@ -432,7 +434,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	}
 
 	private byte[] serializeCommonContent(byte[] plainData, int nConfidentialData, byte[][] sharedData,
-										  BigInteger[] shareholders, Commitment[] commitments) {
+										  Commitment[] commitments) {
 		try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
 			 ObjectOutput out = new ObjectOutputStream(bos)) {
 			out.writeInt(plainData == null ? -1 : plainData.length);
@@ -445,8 +447,6 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 					if (sharedData[i] != null) {
 						out.write(sharedData[i]);
 					}
-					out.writeInt(shareholders[i].toByteArray().length);
-					out.write(shareholders[i].toByteArray());
 					int commitmentConsistHash = commitments[i].consistentHash();
 					out.writeInt(commitmentConsistHash);// for easy response comparison on client-side
 				}

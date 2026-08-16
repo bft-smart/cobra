@@ -90,18 +90,19 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 			return new ExtractedResponse(plainData, null);
 		}
 
-		BigInteger[] shareholders = new BigInteger[shares.length];
 		byte[][] sharedData = new byte[shares.length][];
 		for (int i = 0; i < shares.length; i++) {
-			shareholders[i] = shares[i].getShare().getShareholder();
 			sharedData[i] = shares[i].getSharedData();
 		}
 
 		LinkedList<ConfidentialMessage> correctConfidentialReplies = new LinkedList<>();
 		correctConfidentialReplies.add(fullConfidentialReply);
 		for (TOMMessage correctReply : correctReplies) {
+			if (correctReply.getSender() == fullReply.getSender()) {
+				continue;
+			}
 			ConfidentialMessage correctConfidentialReply = reconstructHashedConfidentialMessage(
-					fullReply.getReplicaSpecificContent(), shareholders, sharedData);
+					correctReply.getReplicaSpecificContent(), sharedData);
 			if (correctConfidentialReply == null) {
 				logger.error("This should not happen. Couldn't deserialized hashed response from {}",
 						correctReply.getSender());
@@ -234,7 +235,6 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 	protected ConfidentialMessage reconstructConfidentialMessage(ServiceContent response) {
 		byte[] plainData = null;
 		byte[][] sharedData = null;
-		BigInteger[] shareholders = null;
 		Commitment[] commitments = null;
 		Share[] shares = null;
 		try (ByteArrayInputStream bis = new ByteArrayInputStream(response.getCommonContent());
@@ -247,17 +247,12 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 			int nConfidentialData = in.readInt();
 			if (nConfidentialData != -1) {
 				sharedData = new byte[nConfidentialData][];
-				shareholders = new BigInteger[nConfidentialData];
 				for (int i = 0; i < nConfidentialData; i++) {
 					len = in.readInt();
 					if (len != -1) {
 						sharedData[i] = new byte[len];
 						in.readFully(sharedData[i]);
 					}
-
-					byte[] b = new byte[in.readInt()];
-					in.readFully(b);
-					shareholders[i] = new BigInteger(b);
 					in.readInt();// commitment hash
 				}
 			}
@@ -269,15 +264,18 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 		try (ByteArrayInputStream bis = new ByteArrayInputStream(response.getReplicaSpecificContent());
 			 ObjectInput in = new ObjectInputStream(bis)) {
 			int nConfidentialData = in.readInt();
-			if (nConfidentialData != -1 && shareholders != null) {
+			if (nConfidentialData != -1) {
 				commitments = new Commitment[nConfidentialData];
 				shares = new Share[nConfidentialData];
 				for (int i = 0; i < nConfidentialData; i++) {
+					byte[] b = new byte[in.readInt()];
+					in.readFully(b);
+					BigInteger shareholder = new BigInteger(b);
 					int len = in.readInt();
 					if (len != -1) {
 						byte[] serializedShare = new byte[len];
 						in.readFully(serializedShare);
-						shares[i] = reconstructShare(shareholders[i], serializedShare);
+						shares[i] = reconstructShare(shareholder, serializedShare);
 					}
 					commitments[i] = CommitmentUtils.getInstance().readCommitment(in);
 				}
@@ -301,7 +299,6 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 	}
 
 	protected ConfidentialMessage reconstructHashedConfidentialMessage(byte[] replicaSpecificContent,
-																	   BigInteger[] shareholders,
 																	   byte[][] sharedData) {
 		Commitment[] commitments = null;
 		Share[] shares = null;
@@ -309,15 +306,18 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 		try (ByteArrayInputStream bis = new ByteArrayInputStream(replicaSpecificContent);
 			 ObjectInput in = new ObjectInputStream(bis)) {
 			int nConfidentialData = in.readInt();
-			if (nConfidentialData != -1 && shareholders != null) {
+			if (nConfidentialData != -1) {
 				commitments = new Commitment[nConfidentialData];
 				shares = new Share[nConfidentialData];
 				for (int i = 0; i < nConfidentialData; i++) {
+					byte[] b = new byte[in.readInt()];
+					in.readFully(b);
+					BigInteger shareholder = new BigInteger(b);
 					int len = in.readInt();
 					if (len != -1) {
 						byte[] serializedShare = new byte[len];
 						in.readFully(serializedShare);
-						shares[i] = reconstructShare(shareholders[i], serializedShare);
+						shares[i] = reconstructShare(shareholder, serializedShare);
 					}
 					commitments[i] = CommitmentUtils.getInstance().readCommitment(in);
 				}

@@ -67,7 +67,7 @@ public class KVStore {
 			for (byte[] secret : response.getConfidentialData())
 				result.add(new String(secret));
 		} catch (SecretSharingException e) {
-			logger.error("Remove failed", e);
+			logger.error("GetAll failed", e);
 		}
 
 		return result;
