@@ -22,6 +22,8 @@ import confidential.MessageType;
 import confidential.Metadata;
 import confidential.encrypted.EncryptedPublishedShares;
 import confidential.encrypted.EncryptedVerifiableShare;
+import confidential.facade.server.ConfidentialReplicaContext;
+import confidential.facade.server.ConfidentialReplicaContextListener;
 import confidential.facade.server.ConfidentialSingleExecutable;
 import confidential.interServersCommunication.InterServersCommunication;
 import confidential.polynomial.DistributedPolynomial;
@@ -106,6 +108,13 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 			stateManager.setDistributedPolynomial(distributedPolynomial);
 			stateManager.setConfidentialityScheme(confidentialityScheme);
 			log = getLog();
+			ConfidentialReplicaContext confidentialReplicaContext = new ConfidentialReplicaContext(replicaContext,
+					interServersCommunication, confidentialityScheme, distributedPolynomial);
+			if (confidentialExecutor instanceof ConfidentialReplicaContextListener) {
+				((ConfidentialReplicaContextListener) confidentialExecutor)
+						.onConfidentialReplicaContextReady(confidentialReplicaContext);
+				logger.debug("Confidential replica context set for confidential executor");
+			}
 			stateManager.askCurrentConsensusId();
 		} catch (SecretSharingException e) {
 			logger.error("Failed to initialize ServerConfidentialityScheme", e);
