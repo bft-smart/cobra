@@ -64,6 +64,7 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	private final List<MessageContext> msgContexts;
 	private final boolean useTLSEncryption;
 	private final ConfidentialSingleExecutable confidentialExecutor;
+	private final ConfidentialReplicaContextListener contextListener;
 	private DistributedPolynomial distributedPolynomial;
 	private final boolean isCombinePrivateAndCommonData;
 	// Not the best solution. Requests failed during consensus, will not be removed from this map
@@ -72,8 +73,14 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 	private IResponseSender responseSender;
 
 	public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor) {
+		this(processId, confidentialExecutor, null);
+	}
+
+	public ConfidentialRecoverable(int processId, ConfidentialSingleExecutable confidentialExecutor,
+								   ConfidentialReplicaContextListener contextListener) {
 		this.processId = processId;
 		this.confidentialExecutor = confidentialExecutor;
+		this.contextListener = contextListener;
 		this.logLock = new ReentrantLock();
 		this.commands = new ArrayList<>();
 		this.msgContexts = new ArrayList<>();
@@ -108,11 +115,10 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 			stateManager.setDistributedPolynomial(distributedPolynomial);
 			stateManager.setConfidentialityScheme(confidentialityScheme);
 			log = getLog();
-			ConfidentialReplicaContext confidentialReplicaContext = new ConfidentialReplicaContext(replicaContext,
-					interServersCommunication, confidentialityScheme, distributedPolynomial);
-			if (confidentialExecutor instanceof ConfidentialReplicaContextListener) {
-				((ConfidentialReplicaContextListener) confidentialExecutor)
-						.onConfidentialReplicaContextReady(confidentialReplicaContext);
+			if (contextListener != null) {
+				ConfidentialReplicaContext confidentialReplicaContext = new ConfidentialReplicaContext(replicaContext,
+						interServersCommunication, confidentialityScheme, distributedPolynomial);
+				contextListener.onConfidentialReplicaContextReady(confidentialReplicaContext);
 				logger.debug("Confidential replica context set for confidential executor");
 			}
 			stateManager.askCurrentConsensusId();
